@@ -13,6 +13,10 @@
     "yoavbls.pretty-ts-errors",
     "richie5um2.vscode-sort-json",
     "meganrogge.template-string-converter",
-    "vscode-icons-team.vscode-icons"
+    "vscode-icons-team.vscode-icons",
+    "davidanson.vscode-markdownlint",
+    "yzhang.markdown-all-in-one",
+    "naumovs.color-highlight",
+    "kamikillerto.vscode-colorize"
   ]
 }

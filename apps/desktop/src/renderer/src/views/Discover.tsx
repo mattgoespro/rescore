@@ -44,6 +44,7 @@ export default function Discover({
   filters,
   setFilters,
   genres,
+  profileReady,
   selectedId,
   onOpen,
   onError,
@@ -52,6 +53,7 @@ export default function Discover({
   filters: DiscoverFilters;
   setFilters: (filters: DiscoverFilters) => void;
   genres: Genre[];
+  profileReady?: boolean;
   selectedId: string | null;
   onOpen: (movie: MovieSummary) => void;
   onError: (message: string) => void;
@@ -120,10 +122,18 @@ export default function Discover({
       });
       if (id !== requestId.current) return;
       pageRef.current = data.page;
-      totalPagesRef.current = Math.max(1, data.totalPages);
+      if (replace || data.totalResults > 0) {
+        totalPagesRef.current = Math.max(1, data.totalPages);
+        setTotalPages(totalPagesRef.current);
+        setTotalResults(data.totalResults);
+      } else if (!data.results.length) {
+        totalPagesRef.current = pageRef.current;
+        setTotalPages(pageRef.current);
+      } else {
+        totalPagesRef.current = pageRef.current + 1;
+        setTotalPages(pageRef.current + 1);
+      }
       setPage(data.page);
-      setTotalPages(totalPagesRef.current);
-      setTotalResults(data.totalResults);
       setItems((prev) => {
         if (replace) return data.results;
         return [...prev, ...data.results];
@@ -226,6 +236,7 @@ export default function Discover({
         filters={filters}
         setFilters={setFilters}
         genres={genres}
+        profileReady={profileReady}
         history={history}
         activeHistoryId={activeHistoryId}
         onApplyHistory={(entry) =>

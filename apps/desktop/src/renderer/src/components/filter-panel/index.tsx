@@ -7,7 +7,6 @@ import type {
 import { defaultFilters, mediaTypeOf } from "../../../../shared/types";
 import GenreChips from "./genre-chips";
 import Header from "./header";
-import LanguageField from "./language-field";
 import QueryField from "./query-field";
 import RatingSlider from "./rating-slider";
 import RuntimeRange from "./runtime-range";
@@ -21,6 +20,7 @@ export default function FilterPanel({
   filters,
   setFilters,
   genres,
+  profileReady,
   history,
   activeHistoryId,
   onApplyHistory,
@@ -29,6 +29,7 @@ export default function FilterPanel({
   filters: DiscoverFilters;
   setFilters: (filters: DiscoverFilters) => void;
   genres: Genre[];
+  profileReady?: boolean;
   history: SearchHistoryEntry[];
   activeHistoryId: string | null;
   onApplyHistory: (entry: SearchHistoryEntry) => void;
@@ -76,6 +77,7 @@ export default function FilterPanel({
       <SortField
         titleKind={filters.titleKind}
         value={filters.sortBy}
+        profileReady={profileReady}
         onChange={(sortBy) => patch({ sortBy })}
       />
       <GenreChips
@@ -103,10 +105,6 @@ export default function FilterPanel({
         runtimeMin={filters.runtimeMin}
         runtimeMax={filters.runtimeMax}
         onChange={(runtimeMin, runtimeMax) => patch({ runtimeMin, runtimeMax })}
-      />
-      <LanguageField
-        value={filters.language}
-        onChange={(language) => patch({ language })}
       />
       <VisibilityToggles
         hideWatched={filters.hideWatched}

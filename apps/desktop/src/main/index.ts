@@ -1,7 +1,8 @@
-import { app, shell, BrowserWindow } from "electron";
+import { app, session, shell, BrowserWindow } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../assets/icon.png?asset";
+import { createCatalogRuntime, type CatalogRuntime } from "./catalog-runtime";
 import { registerIpc } from "./ipc";
 import { AppStore } from "./store";
 import { windowBackgroundColor } from "./window-chrome";
@@ -12,6 +13,11 @@ import {
 } from "../shared/appearance";
 
 let mainWindow: BrowserWindow | null = null;
+let catalogRuntime: CatalogRuntime | null = null;
+let stopping = false;
+
+const IMAGE_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 function createWindow(store: AppStore): void {
   const settings = store.getSettings();
@@ -63,17 +69,36 @@ function createWindow(store: AppStore): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.imdbrain.app");
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    if (/tmdb\.org|themoviedb\.org/i.test(details.url)) {
+      requestHeaders["User-Agent"] = IMAGE_USER_AGENT;
+    }
+    callback({ requestHeaders });
+  });
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });
 
   const store = new AppStore();
-  registerIpc(store, () => mainWindow);
+  catalogRuntime = createCatalogRuntime(store, () => mainWindow);
+  registerIpc(store, () => mainWindow, catalogRuntime);
+  catalogRuntime.start();
   createWindow(store);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(store);
   });
+});
+
+app.on("before-quit", (event) => {
+  if (stopping || !catalogRuntime) return;
+  event.preventDefault();
+  stopping = true;
+  void Promise.race([
+    catalogRuntime.stop(),
+    new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+  ]).finally(() => app.quit());
 });
 
 app.on("window-all-closed", () => {

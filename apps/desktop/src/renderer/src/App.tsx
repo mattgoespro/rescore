@@ -9,6 +9,7 @@ import {
 } from "react";
 import type {
   AppView,
+  CatalogStatus,
   DiscoverFilters,
   Genre,
   LibraryEntry,
@@ -22,6 +23,7 @@ import {
   defaultFilters,
   defaultSettings,
   mediaTypeOf,
+  setMediaProxyOrigin,
   titleKey,
 } from "../../shared/types";
 import { applySearchHistory } from "../../shared/search-history";
@@ -32,6 +34,7 @@ import ForYou from "./views/ForYou";
 import Library from "./views/Library";
 import SettingsView from "./views/Settings";
 import Inspector from "./components/inspector";
+import CatalogLoader from "./components/catalog-loader";
 import {
   IconForYou,
   IconLibrary,
@@ -58,6 +61,9 @@ export default function App(): JSX.Element {
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [error, setError] = useState("");
   const [booting, setBooting] = useState(true);
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(
+    null,
+  );
   const detailsCache = useRef(new Map<string, MovieDetails>());
 
   const genres =
@@ -78,25 +84,41 @@ export default function App(): JSX.Element {
       window.api.configured(),
     ]);
     setSettings(nextSettings);
+    setMediaProxyOrigin(nextSettings.catalogApiUrl);
     setLibrary(nextLibrary);
     setConfigured(isConfigured);
     if (isConfigured) {
-      const [nextMovieGenres, nextTvGenres, nextProfile] = await Promise.all([
-        window.api.genres("movie").catch(() => [] as Genre[]),
-        window.api.genres("tv").catch(() => [] as Genre[]),
+      const [nextGenres, nextProfile] = await Promise.all([
+        window.api.genres().catch(() => [] as Genre[]),
         window.api.profile().catch(() => null),
       ]);
-      setMovieGenres(nextMovieGenres);
-      setTvGenres(nextTvGenres);
+      setMovieGenres(nextGenres);
+      setTvGenres(nextGenres);
       setProfile(nextProfile);
     }
   }, []);
 
   useEffect(() => {
-    refresh()
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setBooting(false));
-  }, [refresh]);
+    void window.api.getSettings().then((next) => {
+      setSettings(next);
+      setMediaProxyOrigin(next.catalogApiUrl);
+      applyAppearance(next);
+    });
+    void window.api.catalogStatus().then(setCatalogStatus);
+    return window.api.onCatalogStatus(setCatalogStatus);
+  }, []);
+
+  useEffect(() => {
+    if (catalogStatus?.phase === "error") {
+      setBooting(false);
+      return;
+    }
+    if (catalogStatus?.phase !== "ready") return;
+    setBooting(false);
+    setConfigured(true);
+    setError("");
+    void refresh().catch((err: Error) => setError(err.message));
+  }, [catalogStatus, refresh]);
 
   useEffect(() => {
     if (booting) return;
@@ -129,6 +151,10 @@ export default function App(): JSX.Element {
     window.api
       .movie(selected.imdbId, selected.mediaType)
       .then((movie) => {
+        if (!movie) {
+          if (!cancelled) setDetails(null);
+          return;
+        }
         detailsCache.current.set(key, movie);
         if (!cancelled) setDetails(movie);
       })
@@ -144,10 +170,15 @@ export default function App(): JSX.Element {
   async function saveSettings(patch: Partial<Settings>): Promise<void> {
     const next = await window.api.setSettings(patch);
     setSettings(next);
+    setMediaProxyOrigin(next.catalogApiUrl);
     applyAppearance(next);
     setError("");
     if (isAppearanceOnlyPatch(patch)) return;
     setConfigured(Boolean(next.catalogApiUrl.trim()));
+    if (patch.catalogApiUrl !== undefined) {
+      setBooting(true);
+      return;
+    }
     await refresh();
   }
 
@@ -161,7 +192,17 @@ export default function App(): JSX.Element {
     setProfile(await window.api.profile().catch(() => profile));
   }
 
-  const showWelcome = !booting && !configured && view !== "settings";
+  const catalogBusy =
+    !catalogStatus ||
+    catalogStatus.phase === "starting" ||
+    catalogStatus.phase === "building";
+  const catalogFailed = catalogStatus?.phase === "error";
+  const showWelcome =
+    !booting &&
+    !catalogBusy &&
+    !catalogFailed &&
+    !configured &&
+    view !== "settings";
   const discoverLayout = view === "discover" && configured && !booting;
   const forYouLayout = view === "foryou" && configured && !booting;
 
@@ -179,6 +220,7 @@ export default function App(): JSX.Element {
       }
       docked={!discoverLayout}
       genreMap={genreMap}
+      creditsReady={catalogStatus?.creditsReady !== false}
       onUpsert={upsert}
       onRemove={async (id, mediaType) => {
         setLibrary(await window.api.removeLibrary(id, mediaType));
@@ -266,10 +308,54 @@ export default function App(): JSX.Element {
               {error}
             </div>
           ) : null}
-          {booting ? (
-            <div className="px-4 py-9 text-center text-muted">
-              Loading your ranking studio…
-            </div>
+          {booting || catalogBusy ? (
+            <CatalogLoader
+              label={catalogStatus?.message ?? "Loading your ranking studio…"}
+              download={catalogStatus?.download}
+              detail={
+                catalogStatus?.phase === "building"
+                  ? "IMDb’s non-commercial datasets are several hundred MB. Your ratings, watchlist, and skips are kept."
+                  : undefined
+              }
+            />
+          ) : view === "settings" ? (
+            <SettingsView
+              settings={settings}
+              catalogStatus={catalogStatus}
+              onSave={saveSettings}
+              onLibraryChange={setLibrary}
+              onError={setError}
+            />
+          ) : catalogFailed ? (
+            <section className="mx-auto my-[8vh] max-w-160 px-0 py-2">
+              <h2 className="mt-0 mb-2.5 text-[32px] tracking-title">
+                Catalog is not ready.
+              </h2>
+              <p className="leading-[1.55] text-muted">
+                {catalogStatus?.error ||
+                  catalogStatus?.message ||
+                  "The local catalog could not start."}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  className={btn("primary")}
+                  onClick={() => {
+                    setError("");
+                    setBooting(true);
+                    if (catalogStatus?.error) void window.api.rebuildCatalog();
+                    else void window.api.retryCatalog();
+                  }}
+                >
+                  Try again
+                </button>
+                <button
+                  className={btn()}
+                  onClick={() => setView("settings")}
+                >
+                  Open Settings
+                </button>
+              </div>
+            </section>
           ) : showWelcome ? (
             <section className="mx-auto my-[8vh] max-w-160 px-0 py-2">
               <h2 className="mt-0 mb-2.5 text-[32px] tracking-title">
@@ -281,8 +367,8 @@ export default function App(): JSX.Element {
                 as their canonical identity.
               </p>
               <p className="leading-[1.55] text-muted">
-                Build the catalog with `npm run build:catalog`, start the API,
-                then confirm its URL in Settings.
+                Confirm the catalog API URL in Settings if it is not the
+                default localhost service.
               </p>
               <button
                 className={btn("primary")}
@@ -296,6 +382,7 @@ export default function App(): JSX.Element {
               filters={filters}
               setFilters={setFilters}
               genres={genres}
+              profileReady={Boolean(profile?.ready)}
               selectedId={selected ? titleKey(selected) : null}
               onOpen={setSelected}
               onError={setError}
@@ -318,20 +405,15 @@ export default function App(): JSX.Element {
               onOpen={setSelected}
               onChange={setLibrary}
             />
-          ) : (
-            <SettingsView
-              settings={settings}
-              onSave={saveSettings}
-              onLibraryChange={setLibrary}
-              onError={setError}
-            />
-          )}
+          ) : null}
         </main>
         {!discoverLayout &&
         selected &&
         view !== "settings" &&
         !showWelcome &&
-        !booting
+        !booting &&
+        !catalogBusy &&
+        !catalogFailed
           ? inspector
           : null}
       </div>

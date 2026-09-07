@@ -5,28 +5,34 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n api,desktop -c cyan,magenta \"npm run dev -w @imdbrain/api\" \"npm run dev -w imdbrain\"",
-    "start": "concurrently -k -n api,desktop -c cyan,magenta \"npm run start -w @imdbrain/api\" \"npm run start -w imdbrain\"",
+    "dev": "npm run dev --workspace=imdbrain",
+    "start": "npm run start --workspace=imdbrain",
     "dev:api": "npm run dev --workspace=@imdbrain/api",
     "dev:desktop": "npm run dev --workspace=imdbrain",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspace=@imdbrain/api",
     "build": "npm run build --workspace=imdbrain",
     "build:win": "npm run build:win --workspace=imdbrain",
-    "sanity:ratings": "tsx scripts/sanity-check-ratings.ts",
+    "lint": "eslint .",
+    "validate:ratings": "tsx scripts/validate-ratings.ts",
     "build:catalog": "npm run build:catalog --workspace=@imdbrain/api",
     "enrich:posters": "npm run enrich:posters --workspace=@imdbrain/api",
     "format:prettier": "prettier --write {apps,scripts}/**/*.{js,jsx,ts,tsx,json,css}"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
+    "eslint": "^10.10.0",
     "playwright": "^1.55.0",
-    "tsx": "^4.20.5"
+    "prettier": "^3.9.6",
+    "tsx": "^4.20.5",
+    "typescript-eslint": "^8.69.0"
   },
   "allowScripts": {
     "electron@39.2.6": true,
     "electron@39.8.10": true,
     "electron-winstaller@5.4.0": true,
     "esbuild@0.25.12": true,
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "better-sqlite3@12.11.1": true
   }
 }

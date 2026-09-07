@@ -22,7 +22,14 @@ export default function Poster({
       }
     >
       {src ? (
-        <img className="block size-full object-cover" src={src} alt="" />
+        <img
+          className="block size-full object-cover"
+          src={src}
+          alt=""
+          onError={(event) => {
+            event.currentTarget.remove();
+          }}
+        />
       ) : null}
     </div>
   );

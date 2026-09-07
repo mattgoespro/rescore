@@ -30,6 +30,7 @@ export default function Inspector({
   entry,
   match,
   genreMap,
+  creditsReady,
   docked,
   onUpsert,
   onRemove,
@@ -39,6 +40,7 @@ export default function Inspector({
   entry?: LibraryEntry;
   match?: number | null;
   genreMap: Map<number, string>;
+  creditsReady?: boolean;
   docked?: boolean;
   onUpsert: (
     movie: MovieSummary,
@@ -119,6 +121,12 @@ export default function Inspector({
           onRemove={onRemove}
         />
         {entry?.status ? <LibraryStatus status={entry.status} /> : null}
+        {creditsReady === false &&
+        !(details?.directors?.length || details?.cast?.length) ? (
+          <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
+            Loading credits…
+          </p>
+        ) : null}
         {details?.directors ? (
           <Directors directors={details.directors} />
         ) : null}

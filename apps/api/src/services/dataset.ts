@@ -30,14 +30,14 @@ async function ensureDataset(
   const present = existsSync(file);
 
   if (present && !store.ready()) {
-    await loadFromFile(store, file);
+    await loadFromFile(store, file, false);
   }
 
   if (!force && present && !isStale(file) && store.ready()) return;
 
   try {
-    await ensureGzipFile(DATASET_URL, file, true);
-    await loadFromFile(store, file);
+    await ensureGzipFile(DATASET_URL, file, false);
+    await loadFromFile(store, file, true);
   } catch (error) {
     if (store.ready()) {
       console.warn(
@@ -50,10 +50,14 @@ async function ensureDataset(
   }
 }
 
-async function loadFromFile(store: RatingsStore, file: string): Promise<void> {
+async function loadFromFile(
+  store: RatingsStore,
+  file: string,
+  persist: boolean,
+): Promise<void> {
   const ratings = await parseRatingsTsv(file);
   if (!ratings.size) throw new Error("IMDb ratings file parsed empty");
-  store.replace(ratings, new Date().toISOString());
+  store.replace(ratings, new Date().toISOString(), persist);
 }
 
 export async function parseRatingsTsv(

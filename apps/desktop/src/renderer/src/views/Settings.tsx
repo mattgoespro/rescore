@@ -5,6 +5,7 @@ import {
   parseAccentColor,
 } from "../../../shared/appearance";
 import type {
+  CatalogStatus,
   ImportProgress,
   LibraryEntry,
   RankingMode,
@@ -24,11 +25,13 @@ const RANKING_OPTIONS = [
 
 export default function SettingsView({
   settings,
+  catalogStatus,
   onSave,
   onLibraryChange,
   onError,
 }: {
   settings: Settings;
+  catalogStatus: CatalogStatus | null;
   onSave: (patch: Partial<Settings>) => Promise<void>;
   onLibraryChange: (library: LibraryEntry[]) => void;
   onError: (message: string) => void;
@@ -37,6 +40,7 @@ export default function SettingsView({
   const [region, setRegion] = useState(settings.region);
   const [mode, setMode] = useState<RankingMode>(settings.rankingMode);
   const [imdbApiUrl, setImdbApiUrl] = useState(settings.imdbApiUrl);
+  const [tmdbApiKey, setTmdbApiKey] = useState(settings.tmdbApiKey);
   const [themeMode, setThemeMode] = useState<ThemeMode>(settings.themeMode);
   const [accentColor, setAccentColor] = useState(settings.accentColor);
   const [accentDraft, setAccentDraft] = useState(settings.accentColor);
@@ -48,6 +52,7 @@ export default function SettingsView({
     setRegion(settings.region);
     setMode(settings.rankingMode);
     setImdbApiUrl(settings.imdbApiUrl);
+    setTmdbApiKey(settings.tmdbApiKey);
     setThemeMode(settings.themeMode);
     setAccentColor(settings.accentColor);
     setAccentDraft(settings.accentColor);
@@ -73,9 +78,22 @@ export default function SettingsView({
       region,
       rankingMode: mode,
       imdbApiUrl: imdbApiUrl.trim(),
+      tmdbApiKey: tmdbApiKey.trim(),
       themeMode,
       accentColor,
     });
+  }
+
+  async function rebuildCatalog(): Promise<void> {
+    if (
+      !confirm(
+        "Rebuild the catalog from IMDb’s non-commercial datasets? This can take several minutes. Dumps that still match IMDb (ETag, size, gzip) are not downloaded again. Your ratings, watchlist, and skips are kept.",
+      )
+    ) {
+      return;
+    }
+    onError("");
+    await window.api.rebuildCatalog();
   }
 
   async function importCsv(): Promise<void> {
@@ -99,7 +117,8 @@ export default function SettingsView({
           <h2 className="m-0 text-[28px] font-650 tracking-title">Settings</h2>
           <p className="mt-1.5 mb-0 max-w-[640px] text-[13px] leading-[1.45] text-muted">
             Choose a look, connect the catalog, tune how watch streaks affect
-            ranking, and import your IMDb history.
+            ranking, and import your IMDb history. Rebuild the catalog from
+            this page when you want a fresh copy of IMDb’s datasets.
           </p>
         </div>
       </div>
@@ -182,8 +201,35 @@ export default function SettingsView({
             />
           </label>
           <p className="text-xs leading-[1.45] text-muted tabular">
-            The local Express catalog service in this repository. Its default
+            Built automatically on first launch from IMDb’s non-commercial
+            datasets. Later launches reuse the local SQLite catalog. Default
             address is http://127.0.0.1:3847.
+          </p>
+          <p className="text-xs leading-[1.45] text-muted tabular">
+            {catalogSummary(catalogStatus)}
+          </p>
+          <button
+            className={cn(btn(), "mb-3")}
+            disabled={catalogStatus?.phase === "building"}
+            onClick={() => void rebuildCatalog()}
+          >
+            Rebuild catalog
+          </button>
+          <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+            TMDB API key
+            <input
+              type="password"
+              value={tmdbApiKey}
+              onChange={(e) => setTmdbApiKey(e.target.value)}
+              placeholder="Needed for poster images"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <p className="text-xs leading-[1.45] text-muted tabular">
+            IMDb’s dumps don’t include posters. IMDBrain looks them up on TMDB
+            in the background after the catalog is ready. Without a key,
+            titles show placeholders.
           </p>
           <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
             IMDb ratings API
@@ -276,4 +322,16 @@ export default function SettingsView({
       </div>
     </section>
   );
+}
+
+function catalogSummary(status: CatalogStatus | null): string {
+  if (!status) return "Catalog status is not available yet.";
+  const count =
+    status.titleCount > 0
+      ? `${status.titleCount.toLocaleString()} titles`
+      : "no titles yet";
+  if (!status.builtAt) return `Local catalog: ${count}.`;
+  const built = new Date(status.builtAt);
+  if (Number.isNaN(built.getTime())) return `Local catalog: ${count}.`;
+  return `Local catalog: ${count}, last built ${built.toLocaleString()}.`;
 }

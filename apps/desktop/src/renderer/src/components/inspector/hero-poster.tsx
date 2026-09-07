@@ -8,7 +8,7 @@ export default function HeroPoster({
 }): JSX.Element {
   const thumb = posterUrl(path, "w185");
   const hero = posterUrl(path, "w780");
-  const [src, setSrc] = useState(thumb);
+  const [src, setSrc] = useState<string | null>(thumb);
 
   useEffect(() => {
     setSrc(thumb);
@@ -30,6 +30,7 @@ export default function HeroPoster({
       className="absolute inset-0 size-full object-cover object-top"
       src={src}
       alt=""
+      onError={() => setSrc(null)}
     />
   );
 }

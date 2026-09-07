@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  CatalogStatus,
   DiscoverFilters,
   ForYouResult,
   Genre,
@@ -23,6 +24,18 @@ const api = {
   setSettings: (patch: Partial<Settings>): Promise<Settings> =>
     ipcRenderer.invoke("settings:set", patch),
   configured: (): Promise<boolean> => ipcRenderer.invoke("catalog:configured"),
+  catalogStatus: (): Promise<CatalogStatus> =>
+    ipcRenderer.invoke("catalog:status"),
+  retryCatalog: (): Promise<CatalogStatus> =>
+    ipcRenderer.invoke("catalog:retry"),
+  rebuildCatalog: (): Promise<CatalogStatus> =>
+    ipcRenderer.invoke("catalog:rebuild"),
+  onCatalogStatus: (handler: (status: CatalogStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: CatalogStatus): void =>
+      handler(status);
+    ipcRenderer.on("catalog:status", listener);
+    return () => ipcRenderer.removeListener("catalog:status", listener);
+  },
   genres: (mediaType?: MediaType): Promise<Genre[]> =>
     ipcRenderer.invoke("catalog:genres", mediaType),
   providers: (): Promise<WatchProvider[]> =>
@@ -33,7 +46,7 @@ const api = {
     ipcRenderer.invoke("catalog:searchKeywords", query),
   discover: (filters: DiscoverFilters): Promise<PagedMovies> =>
     ipcRenderer.invoke("catalog:discover", filters),
-  movie: (id: string, _mediaType?: MediaType): Promise<MovieDetails> =>
+  movie: (id: string, _mediaType?: MediaType): Promise<MovieDetails | null> =>
     ipcRenderer.invoke("catalog:title", id),
   movieMeta: (
     movies: MovieSummary[],
@@ -78,6 +91,5 @@ if (process.contextIsolated) {
     console.error(error);
   }
 } else {
-  // @ts-ignore context isolation off
   window.api = api;
 }

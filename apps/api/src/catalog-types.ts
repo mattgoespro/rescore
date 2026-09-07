@@ -44,3 +44,9 @@ export interface ImportStatusDto {
   importedTitles: number;
   message: string | null;
 }
+
+export interface ForYouResponse {
+  library: LibraryEntryDto[];
+  facets: FacetsResponse;
+  candidates: TitleDto[];
+}
