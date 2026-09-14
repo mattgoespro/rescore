@@ -56,7 +56,10 @@ export function planApiLaunch(
   const command = resolveNode(ctx, apiRoot, exists);
   const args = resolveArgs(ctx, apiRoot, exists);
   if (!command || !args) {
-    return { ok: false, message: DEV_RUNTIME_MISSING };
+    return {
+      ok: false,
+      message: ctx.packaged ? PACKAGED_API_MISSING : DEV_RUNTIME_MISSING,
+    };
   }
 
   return {
@@ -105,7 +108,6 @@ function resolveNode(
   if (ctx.npmNodeExecPath && exists(ctx.npmNodeExecPath)) {
     return ctx.npmNodeExecPath;
   }
-  if (ctx.dev) return null;
   return ctx.platform === "win32" ? "node.exe" : "node";
 }
 

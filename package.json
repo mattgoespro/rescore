@@ -10,7 +10,7 @@
     "dev:api": "npm run dev --workspace=@rescore/api",
     "dev:desktop": "npm run dev --workspace=rescore",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspace=@rescore/api",
+    "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspace=rescore",
     "build:win": "npm run build:win --workspace=rescore",
     "lint": "eslint .",
