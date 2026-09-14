@@ -84,6 +84,13 @@ export default function Select({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [open, value, options]);
+
   function choose(next: string): void {
     onChange(next);
     setOpen(false);
@@ -93,6 +100,7 @@ export default function Select({
   function onButtonKey(event: ReactKeyboardEvent<HTMLButtonElement>): void {
     if (
       event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
       event.key === "Enter" ||
       event.key === " "
     ) {
@@ -102,7 +110,10 @@ export default function Select({
   }
 
   function onMenuKey(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    const index = options.findIndex((opt) => opt.value === value);
+    const index = Math.max(
+      0,
+      options.findIndex((opt) => opt.value === value),
+    );
     if (event.key === "ArrowDown") {
       event.preventDefault();
       const next = options[Math.min(options.length - 1, index + 1)];
@@ -113,7 +124,17 @@ export default function Select({
       const next = options[Math.max(0, index - 1)];
       if (next) onChange(next.value);
     }
-    if (event.key === "Enter" || event.key === "Escape") {
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const next = options[event.key === "Home" ? 0 : options.length - 1];
+      if (next) onChange(next.value);
+    }
+    if (event.key === "Tab") {
+      // Resume native tab navigation from the trigger, not the body portal.
+      setOpen(false);
+      buttonRef.current?.focus();
+    }
+    if (event.key === "Enter" || event.key === " " || event.key === "Escape") {
       event.preventDefault();
       setOpen(false);
       buttonRef.current?.focus();
@@ -137,7 +158,7 @@ export default function Select({
               menuRef={menuRef}
               id={id}
               options={options}
-              value={value}
+              value={selected?.value ?? value}
               top={menuPos.top}
               left={menuPos.left}
               width={menuPos.width}

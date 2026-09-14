@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Start IMDb ratings API",
+      "label": "Start Rescore API",
       "type": "process",
       "command": "node",
       "args": ["--import", "tsx", "--inspect=9229", "src/index.ts"],
@@ -11,7 +11,7 @@
       },
       "isBackground": true,
       "problemMatcher": {
-        "owner": "imdbrain-api",
+        "owner": "rescore-api",
         "pattern": {
           "regexp": "^([^\\\\s].*)\\\\((\\\\d+,\\\\d+)\\\\):\\\\s*(.*)$",
           "file": 1,
@@ -26,7 +26,7 @@
       }
     },
     {
-      "label": "Start IMDBrain desktop",
+      "label": "Start Rescore desktop",
       "type": "process",
       "command": "node",
       "args": [
@@ -42,7 +42,7 @@
       },
       "isBackground": true,
       "problemMatcher": {
-        "owner": "imdbrain-desktop",
+        "owner": "rescore-desktop",
         "pattern": {
           "regexp": "^([^\\\\s].*)\\\\((\\\\d+,\\\\d+)\\\\):\\\\s*(.*)$",
           "file": 1,
@@ -57,13 +57,13 @@
       }
     },
     {
-      "label": "Start IMDBrain debug services",
+      "label": "Start Rescore debug services",
       "dependsOrder": "parallel",
-      "dependsOn": ["Start IMDb ratings API", "Start IMDBrain desktop"],
+      "dependsOn": ["Start Rescore API", "Start Rescore desktop"],
       "problemMatcher": []
     },
     {
-      "label": "Stop IMDBrain debug services",
+      "label": "Stop Rescore debug services",
       "type": "process",
       "command": "${env:WINDIR}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [

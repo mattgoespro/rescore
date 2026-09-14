@@ -5,7 +5,7 @@ import {
 } from "../../../shared/appearance";
 import type { Settings } from "../../../shared/types";
 
-const CACHE_KEY = "imdbrain.appearance";
+const CACHE_KEY = "rescore.appearance";
 
 export function applyAppearance(
   input: Pick<Settings, "themeMode" | "accentColor">,

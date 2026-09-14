@@ -1,16 +1,16 @@
-import { app, session, shell, BrowserWindow } from "electron";
+import { electronApp, is, optimizer } from "@electron-toolkit/utils";
+import { app, BrowserWindow, session, shell } from "electron";
 import { join } from "path";
-import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../assets/icon.png?asset";
-import { createCatalogRuntime, type CatalogRuntime } from "./catalog-runtime";
-import { registerIpc } from "./ipc";
-import { AppStore } from "./store";
-import { windowBackgroundColor } from "./window-chrome";
 import {
   normalizeAccentColor,
   normalizeThemeMode,
   windowSymbolColor,
 } from "../shared/appearance";
+import { createCatalogRuntime, type CatalogRuntime } from "./catalog-runtime";
+import { registerIpc } from "./ipc";
+import { AppStore } from "./store";
+import { windowBackgroundColor } from "./window-chrome";
 
 let mainWindow: BrowserWindow | null = null;
 let catalogRuntime: CatalogRuntime | null = null;
@@ -32,7 +32,7 @@ function createWindow(store: AppStore): void {
     show: false,
     autoHideMenuBar: true,
     backgroundColor,
-    title: "IMDBrain",
+    title: "Rescore",
     icon,
     titleBarStyle: "hidden",
     titleBarOverlay: {
@@ -68,7 +68,7 @@ function createWindow(store: AppStore): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId("com.imdbrain.app");
+  electronApp.setAppUserModelId("com.rescore.app");
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     if (/tmdb\.org|themoviedb\.org/i.test(details.url)) {

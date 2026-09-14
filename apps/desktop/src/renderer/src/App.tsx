@@ -7,6 +7,8 @@ import {
   type JSX,
   type ReactNode,
 } from "react";
+import { isAppearanceOnlyPatch } from "../../shared/appearance";
+import { applySearchHistory } from "../../shared/search-history";
 import type {
   AppView,
   CatalogStatus,
@@ -18,7 +20,6 @@ import type {
   Settings,
   TasteProfile,
 } from "../../shared/types";
-import { isAppearanceOnlyPatch } from "../../shared/appearance";
 import {
   defaultFilters,
   defaultSettings,
@@ -26,14 +27,6 @@ import {
   setMediaProxyOrigin,
   titleKey,
 } from "../../shared/types";
-import { applySearchHistory } from "../../shared/search-history";
-import { applyAppearance } from "./lib/appearance";
-import { listSearchHistory } from "./lib/search-history-store";
-import Discover from "./views/Discover";
-import ForYou from "./views/ForYou";
-import Library from "./views/Library";
-import SettingsView from "./views/Settings";
-import Inspector from "./components/inspector";
 import CatalogLoader from "./components/catalog-loader";
 import {
   IconForYou,
@@ -41,8 +34,15 @@ import {
   IconSearch,
   IconSettings,
 } from "./components/icons";
+import Inspector from "./components/inspector";
+import { applyAppearance } from "./lib/appearance";
 import { cn } from "./lib/cn";
+import { listSearchHistory } from "./lib/search-history-store";
 import { btn } from "./lib/ui";
+import Discover from "./views/Discover";
+import ForYou from "./views/ForYou";
+import Library from "./views/Library";
+import SettingsView from "./views/Settings";
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<AppView>("discover");
@@ -235,8 +235,8 @@ export default function App(): JSX.Element {
 
   return (
     <div className="grid h-full grid-rows-[36px_1fr]">
-      <div className="app-drag flex items-center border-b border-line px-4 text-[11px] tracking-[0.16em] text-muted uppercase">
-        <span className="mr-2 text-accent">●</span> IMDBrain
+      <div className="flex items-center border-b border-line px-4 text-[11px] tracking-[0.16em] text-muted uppercase app-drag">
+        <span className="mr-2 text-accent">●</span> Rescore
       </div>
       <div
         className={
@@ -246,7 +246,7 @@ export default function App(): JSX.Element {
         }
       >
         <nav
-          className="app-no-drag flex flex-col items-center gap-2 border-r border-line bg-transparent px-2 py-4"
+          className="flex flex-col items-center gap-2 border-r border-line bg-transparent px-2 py-4 app-no-drag"
           aria-label="Primary"
         >
           <div className="mb-2 grid size-9.5 place-items-center rounded-xl bg-linear-to-b from-accent-2 to-accent text-xs font-bold tracking-[-0.06em] text-accent-ink shadow-accent">
@@ -300,7 +300,7 @@ export default function App(): JSX.Element {
           {error ? (
             <div
               className={cn(
-                "mb-3.5 rounded-app border border-(--color-danger-border) bg-(--color-danger-bg) px-3 py-2.5 text-danger-fg",
+                "mb-3.5 rounded-app border border-danger-border bg-danger-bg px-3 py-2.5 text-danger-fg",
                 (discoverLayout || forYouLayout) && "shrink-0",
                 discoverLayout && "mx-4 mt-3 mb-0",
               )}
@@ -348,10 +348,7 @@ export default function App(): JSX.Element {
                 >
                   Try again
                 </button>
-                <button
-                  className={btn()}
-                  onClick={() => setView("settings")}
-                >
+                <button className={btn()} onClick={() => setView("settings")}>
                   Open Settings
                 </button>
               </div>
@@ -362,13 +359,13 @@ export default function App(): JSX.Element {
                 Connect your local catalog.
               </h2>
               <p className="leading-[1.55] text-muted">
-                IMDBrain uses your local catalog API, then ranks titles against
+                Rescore uses your local catalog API, then ranks titles against
                 ratings, skips, and watch history. Catalog titles use IMDb IDs
                 as their canonical identity.
               </p>
               <p className="leading-[1.55] text-muted">
-                Confirm the catalog API URL in Settings if it is not the
-                default localhost service.
+                Confirm the catalog API URL in Settings if it is not the default
+                localhost service.
               </p>
               <button
                 className={btn("primary")}
@@ -441,7 +438,7 @@ function NavBtn({
       type="button"
       className={cn(
         "relative grid size-10 place-items-center rounded-xl border-0 p-0 transition-[background,color] duration-140",
-        "after:pointer-events-none after:absolute after:top-1/2 after:left-[calc(100%+10px)] after:z-5 after:-translate-y-1/2 after:rounded-lg after:border after:border-line after:bg-raised after:px-2.5 after:py-1.5 after:text-[11px] after:font-semibold after:tracking-normal after:text-ink after:whitespace-nowrap after:shadow-panel after:content-none hover:after:content-[attr(data-tip)] focus-visible:after:content-[attr(data-tip)]",
+        "after:pointer-events-none after:absolute after:top-1/2 after:left-[calc(100%+10px)] after:z-5 after:-translate-y-1/2 after:rounded-lg after:border after:border-line after:bg-raised after:px-2.5 after:py-1.5 after:text-[11px] after:font-semibold after:tracking-normal after:whitespace-nowrap after:text-ink after:shadow-panel after:content-none hover:after:content-[attr(data-tip)] focus-visible:after:content-[attr(data-tip)]",
         view === id
           ? "bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent"
           : "bg-transparent text-muted hover:bg-wash-6 hover:text-ink",

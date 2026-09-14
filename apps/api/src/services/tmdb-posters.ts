@@ -68,9 +68,20 @@ export async function enrichPosters(
   }
 
   while (!stop) {
-    const pending = catalog.listTitlesNeedingPosters(pageSize, drainPriorityIds());
+    const pending = catalog.listTitlesNeedingPosters(
+      pageSize,
+      drainPriorityIds(),
+    );
     if (!pending.length) break;
-    await enrichPage(catalog, apiKey, pending, concurrency, stats, pendingTotal, () => stop);
+    await enrichPage(
+      catalog,
+      apiKey,
+      pending,
+      concurrency,
+      stats,
+      pendingTotal,
+      () => stop,
+    );
     await yieldEventLoop();
   }
 
@@ -90,7 +101,11 @@ async function enrichPage(
   shouldStop: () => boolean,
 ): Promise<void> {
   let cursor = 0;
-  let batch: Array<{ id: string; posterUrl: string | null; synopsis: string | null }> = [];
+  let batch: Array<{
+    id: string;
+    posterUrl: string | null;
+    synopsis: string | null;
+  }> = [];
   const flush = (): void => {
     if (!batch.length) return;
     const rows = batch;
@@ -144,10 +159,14 @@ async function findTitleMedia(
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
     if (response.status === 429) {
       const retryAfter = Number(response.headers.get("retry-after"));
-      await sleep((Number.isFinite(retryAfter) ? retryAfter : 1 + attempt) * 1000);
+      await sleep(
+        (Number.isFinite(retryAfter) ? retryAfter : 1 + attempt) * 1000,
+      );
       continue;
     }
     if (response.status === 401 || response.status === 403) {
@@ -168,7 +187,9 @@ async function findTitleMedia(
       preferred[0];
     const overview = hit?.overview?.trim() || null;
     return {
-      posterUrl: hit?.poster_path ? `${TMDB_IMAGE_BASE}${hit.poster_path}` : null,
+      posterUrl: hit?.poster_path
+        ? `${TMDB_IMAGE_BASE}${hit.poster_path}`
+        : null,
       synopsis: overview,
     };
   }
@@ -186,7 +207,9 @@ export async function enrichOneTitle(
     const media = await findTitleMedia(apiKey, id, kind);
     catalog.updatePosterUrls([{ id, ...media }]);
   } catch (error) {
-    log(`Failed ${id}: ${error instanceof Error ? error.message : "unknown error"}`);
+    log(
+      `Failed ${id}: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
   }
 }
 
@@ -203,7 +226,7 @@ export function readTmdbApiKey(): string {
   if (fromEnv) return fromEnv;
   const appData = process.env.APPDATA;
   if (appData) {
-    const file = join(appData, "imdbrain", "imdbrain.json");
+    const file = join(appData, "rescore", "rescore.json");
     if (existsSync(file)) {
       const raw = JSON.parse(readFileSync(file, "utf8")) as {
         settings?: { tmdbApiKey?: string };
@@ -265,7 +288,9 @@ export function startPosterEnrichment(
     handleSignals: false,
   })
     .catch((error: unknown) => {
-      log(`Poster lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+      log(
+        `Poster lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return null;
     })
     .finally(() => {

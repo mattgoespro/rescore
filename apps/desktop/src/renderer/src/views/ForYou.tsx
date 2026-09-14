@@ -90,7 +90,7 @@ export default function ForYou({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className={iconBtn("primary", loading && "busy")}
+            className={iconBtn(loading && "busy")}
             onClick={() => void load()}
             disabled={loading}
             aria-label="Refresh ranking"

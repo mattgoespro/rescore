@@ -1,6 +1,7 @@
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, Ref } from "react";
 import type { SelectOption } from "./types";
 import Option from "./option";
+import { overlayPanelClass } from "../../lib/ui";
 
 export default function Menu({
   menuRef,
@@ -25,19 +26,25 @@ export default function Menu({
   onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   onChoose: (value: string) => void;
 }): JSX.Element {
+  const selectedIndex = options.findIndex((opt) => opt.value === value);
   return (
     <div
       ref={menuRef}
       id={id}
-      className="fixed z-40 overflow-auto rounded-app border border-line bg-raised p-1 shadow-panel"
+      className={overlayPanelClass}
       role="listbox"
+      aria-labelledby={`${id}-trigger`}
+      aria-activedescendant={
+        selectedIndex >= 0 ? `${id}-option-${selectedIndex}` : undefined
+      }
       tabIndex={-1}
       style={{ top, left, width, maxHeight }}
       onKeyDown={onKeyDown}
     >
-      {options.map((opt) => (
+      {options.map((opt, index) => (
         <Option
           key={opt.value}
+          id={`${id}-option-${index}`}
           label={opt.label}
           selected={opt.value === value}
           onSelect={() => onChoose(opt.value)}

@@ -76,6 +76,7 @@ export default function Library({
           <button
             key={id}
             className={btn(tab === id && "primary")}
+            aria-pressed={tab === id}
             onClick={() => setTab(id)}
           >
             {id}
@@ -96,36 +97,44 @@ export default function Library({
         <div className="flex flex-col">
           {rows.map((entry) => (
             <div
-              className={rankedRow(selectedId === titleKey(entry))}
+              className={rankedRow(
+                selectedId === titleKey(entry),
+                "relative isolate",
+              )}
               key={titleKey(entry)}
-              onClick={() =>
-                onOpen({
-                  mediaType: entry.mediaType ?? "movie",
-                  titleKind:
-                    entry.titleKind ??
-                    (entry.mediaType === "tv" ? "tv" : "movie"),
-                  imdbId: entry.imdbId,
-                  title: entry.title,
-                  overview: entry.overview ?? "",
-                  posterPath: entry.posterPath ?? null,
-                  backdropPath: entry.backdropPath ?? null,
-                  releaseDate: entry.releaseDate ?? "",
-                  year: entry.year,
-                  genreIds: entry.genreIds,
-                  originalLanguage: entry.originalLanguage ?? "",
-                  popularity: 0,
-                  voteAverage: entry.voteAverage,
-                  voteCount: entry.voteCount,
-                  adult: false,
-                  runtime: entry.runtime,
-                  certification: entry.certification,
-                  directorIds: entry.directorIds,
-                  directorNames: entry.directorNames,
-                  castIds: entry.castIds,
-                  castNames: entry.castNames,
-                })
-              }
             >
+              <button
+                type="button"
+                className="absolute inset-0 z-1 border-0 bg-transparent p-0"
+                aria-label={`Open ${entry.title}`}
+                onClick={() =>
+                  onOpen({
+                    mediaType: entry.mediaType ?? "movie",
+                    titleKind:
+                      entry.titleKind ??
+                      (entry.mediaType === "tv" ? "tv" : "movie"),
+                    imdbId: entry.imdbId,
+                    title: entry.title,
+                    overview: entry.overview ?? "",
+                    posterPath: entry.posterPath ?? null,
+                    backdropPath: entry.backdropPath ?? null,
+                    releaseDate: entry.releaseDate ?? "",
+                    year: entry.year,
+                    genreIds: entry.genreIds,
+                    originalLanguage: entry.originalLanguage ?? "",
+                    popularity: 0,
+                    voteAverage: entry.voteAverage,
+                    voteCount: entry.voteCount,
+                    adult: false,
+                    runtime: entry.runtime,
+                    certification: entry.certification,
+                    directorIds: entry.directorIds,
+                    directorNames: entry.directorNames,
+                    castIds: entry.castIds,
+                    castNames: entry.castNames,
+                  })
+                }
+              />
               <div className="tabular text-center text-xl font-bold tracking-title text-accent">
                 {entry.rating ?? "–"}
               </div>
@@ -154,7 +163,7 @@ export default function Library({
                 </div>
               </div>
               <button
-                className={btn("ghost")}
+                className={`${btn("ghost")} relative z-2`}
                 onClick={async (event) => {
                   event.stopPropagation();
                   onChange(

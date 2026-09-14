@@ -33,6 +33,7 @@ import CatalogLoader from "../components/catalog-loader";
 import { IconGrid, IconList } from "../components/icons";
 import { enterDelayMs, gridColumnCount } from "../motion";
 import { cn } from "../lib/cn";
+import { segmentedCell, segmentedGroup } from "../lib/ui";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const HISTORY_SCROLL_PX = 400;
@@ -102,7 +103,6 @@ export default function Discover({
       void load(1, true);
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey]);
 
   async function load(nextPage: number, replace: boolean): Promise<void> {
@@ -244,8 +244,8 @@ export default function Discover({
         }
         onRemoveHistory={(id) => setHistory(removeSearchHistory(id))}
       />
-      <div className="flex min-h-0 min-w-0 flex-col pt-5 pr-0 pb-4 pl-[18px]">
-        <div className="mb-2 flex items-center justify-between gap-3 pr-[18px]">
+      <div className="flex min-h-0 min-w-0 flex-col pt-5 pr-0 pb-4 pl-4.5">
+        <div className="mb-2 flex items-center justify-between gap-3 pr-4.5">
           <h2 className="m-0 text-[22px] font-650 tracking-title">
             Results
             <span className="ml-2 text-xs font-medium text-muted">
@@ -254,19 +254,15 @@ export default function Discover({
           </h2>
           <div className="flex items-center gap-2.5">
             <div
-              className="flex overflow-hidden rounded-lg border border-line"
+              className={segmentedGroup("icon")}
               role="group"
               aria-label="Result layout"
             >
               <button
                 type="button"
-                className={cn(
-                  "grid h-7.5 w-8.5 place-items-center border-0 p-0",
-                  layout === "list"
-                    ? "bg-accent-soft text-accent"
-                    : "bg-transparent text-muted",
-                )}
+                className={segmentedCell(layout === "list", "icon")}
                 aria-label="List view"
+                aria-pressed={layout === "list"}
                 title="List"
                 onClick={() => setLayout("list")}
               >
@@ -274,13 +270,9 @@ export default function Discover({
               </button>
               <button
                 type="button"
-                className={cn(
-                  "grid h-7.5 w-8.5 place-items-center border-0 p-0",
-                  layout === "grid"
-                    ? "bg-accent-soft text-accent"
-                    : "bg-transparent text-muted",
-                )}
+                className={segmentedCell(layout === "grid", "icon")}
                 aria-label="Grid view"
+                aria-pressed={layout === "grid"}
                 title="Grid"
                 onClick={() => setLayout("grid")}
               >

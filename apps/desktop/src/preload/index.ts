@@ -5,18 +5,18 @@ import type {
   ForYouResult,
   Genre,
   ImportProgress,
+  KeywordRef,
   LibraryEntry,
+  MediaType,
   MovieDetails,
   MovieEnrichment,
   MovieSummary,
   PagedMovies,
+  PersonRef,
   Settings,
   TasteProfile,
   WatchProvider,
   WatchStatus,
-  KeywordRef,
-  MediaType,
-  PersonRef,
 } from "../shared/types";
 
 const api = {
@@ -62,8 +62,7 @@ const api = {
   removeLibrary: (
     imdbId: string,
     _mediaType?: MediaType,
-  ): Promise<LibraryEntry[]> =>
-    ipcRenderer.invoke("library:remove", imdbId),
+  ): Promise<LibraryEntry[]> => ipcRenderer.invoke("library:remove", imdbId),
   clearLibrary: (): Promise<LibraryEntry[]> =>
     ipcRenderer.invoke("library:clear"),
   exportLibrary: (): Promise<{ ok: boolean; path?: string }> =>
@@ -82,7 +81,7 @@ const api = {
   },
 };
 
-export type ImdbrainAPI = typeof api;
+export type RescoreAPI = typeof api;
 
 if (process.contextIsolated) {
   try {

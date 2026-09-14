@@ -51,7 +51,7 @@ npm run dev:desktop
 npm run build:win
 ```
 
-The NSIS setup lands in `apps/desktop/dist/`. The packaged app does not bundle the catalog API; run `npm run dev:api` (or `npm start -w @imdbrain/api`) alongside it. The first time that API starts with an empty catalog, it builds titles from IMDb dumps, then hydrates credits and posters in the background.
+The NSIS setup lands in `apps/desktop/dist/`. Opening `IMDBrain.exe` starts a hidden catalog API (bundled Node 22, compiled `@imdbrain/api`) and stops it when the app quits. The first launch with an empty catalog builds titles from IMDb dumps, then hydrates credits and posters in the background. Later launches reuse `%APPDATA%/imdbrain/data/catalog.sqlite`.
 
 ## Ranking model
 

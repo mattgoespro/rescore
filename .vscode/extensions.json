@@ -17,6 +17,7 @@
     "davidanson.vscode-markdownlint",
     "yzhang.markdown-all-in-one",
     "naumovs.color-highlight",
-    "kamikillerto.vscode-colorize"
+    "kamikillerto.vscode-colorize",
+    "redhat.vscode-yaml"
   ]
 }

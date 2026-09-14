@@ -22,19 +22,23 @@ export default function Trigger({
   return (
     <button
       ref={buttonRef}
+      id={`${menuId}-trigger`}
       type="button"
       className={cn(
-        "flex w-full min-w-0 max-w-full items-center justify-between gap-2.5 rounded-app border bg-input px-3 py-2.5 text-left text-ink outline-none transition-colors duration-140",
+        "field-control flex items-center justify-between gap-2.5 text-left text-ink",
         open ? "border-accent" : "border-line focus-visible:border-accent",
       )}
       aria-label={ariaLabel}
+      aria-describedby={ariaLabel ? `${menuId}-value` : undefined}
       aria-haspopup="listbox"
       aria-expanded={open}
       aria-controls={menuId}
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
-      <span className="min-w-0 truncate">{label}</span>
+      <span id={`${menuId}-value`} className="min-w-0 truncate">
+        {label}
+      </span>
       <Chevron />
     </button>
   );

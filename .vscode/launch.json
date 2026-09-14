@@ -17,8 +17,8 @@
       "request": "attach",
       "port": 9230,
       "restart": true,
-      "preLaunchTask": "Start IMDBrain debug services",
-      "postDebugTask": "Stop IMDBrain debug services",
+      "preLaunchTask": "Start Rescore debug services",
+      "postDebugTask": "Stop Rescore debug services",
       "presentation": {
         "hidden": true
       },
@@ -38,7 +38,7 @@
   ],
   "compounds": [
     {
-      "name": "Debug IMDBrain",
+      "name": "Debug Rescore",
       "configurations": ["Debug Main Process", "Debug Renderer Process"],
       "stopAll": true,
       "presentation": {

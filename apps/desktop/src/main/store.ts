@@ -28,7 +28,7 @@ export class AppStore {
   constructor() {
     const dir = app.getPath("userData");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    this.path = join(dir, "imdbrain.json");
+    this.path = join(dir, "rescore.json");
     this.imdbIdsPath = join(dir, "imdb-ids.json");
     this.state = this.load();
     this.imdbIds = this.loadImdbIds();

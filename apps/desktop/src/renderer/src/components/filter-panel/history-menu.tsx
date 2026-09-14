@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { SearchHistoryEntry } from "../../../../shared/types";
-import { btn } from "../../lib/ui";
+import { btn, overlayPanelClass } from "../../lib/ui";
 import { cn } from "../../lib/cn";
 import Chevron from "../select/chevron";
 import HistoryOption from "./history-option";
@@ -127,7 +127,7 @@ export default function HistoryMenu({
             <div
               ref={menuRef}
               id={id}
-              className="fixed z-40 overflow-auto rounded-app border border-line bg-raised p-1 shadow-panel"
+              className={overlayPanelClass}
               role="menu"
               aria-label="Search history"
               tabIndex={-1}

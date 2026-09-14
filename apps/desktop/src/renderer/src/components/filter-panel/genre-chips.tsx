@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import type { Genre } from "../../../../shared/types";
-import { cn } from "../../lib/cn";
+import { chipClass } from "../../lib/ui";
 
 export default function GenreChips({
   genres,
@@ -24,12 +24,8 @@ export default function GenreChips({
           <button
             type="button"
             key={genre.id}
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-[11px] leading-[1.2] font-semibold whitespace-nowrap transition-[background,color,border-color] duration-140",
-              selected.includes(genre.id)
-                ? "border-accent bg-accent text-accent-ink"
-                : "border-line bg-wash-3 text-muted",
-            )}
+            className={chipClass(selected.includes(genre.id))}
+            aria-pressed={selected.includes(genre.id)}
             onClick={() => onToggle(genre.id)}
           >
             {genre.name}

@@ -15,7 +15,13 @@ import type {
 import Select from "../components/select";
 import { applyAppearance } from "../lib/appearance";
 import { cn } from "../lib/cn";
-import { btn } from "../lib/ui";
+import {
+  btn,
+  progressBarClass,
+  progressFillClass,
+  segmentedCell,
+  segmentedGroup,
+} from "../lib/ui";
 
 const RANKING_OPTIONS = [
   { value: "balanced", label: "Balanced — taste plus a little recent context" },
@@ -112,24 +118,24 @@ export default function SettingsView({
 
   return (
     <section>
-      <div className="mb-[22px] flex items-end justify-between gap-4">
+      <div className="mb-5.5 flex items-end justify-between gap-4">
         <div>
           <h2 className="m-0 text-[28px] font-650 tracking-title">Settings</h2>
-          <p className="mt-1.5 mb-0 max-w-[640px] text-[13px] leading-[1.45] text-muted">
+          <p className="mt-1.5 mb-0 max-w-160 text-[13px] leading-[1.45] text-muted">
             Choose a look, connect the catalog, tune how watch streaks affect
-            ranking, and import your IMDb history. Rebuild the catalog from
-            this page when you want a fresh copy of IMDb’s datasets.
+            ranking, and import your IMDb history. Rebuild the catalog from this
+            page when you want a fresh copy of IMDb’s datasets.
           </p>
         </div>
       </div>
       <div className="grid grid-cols-1 items-stretch inspect:grid-cols-2 inspect:gap-0">
-        <div className="min-w-0 border border-line p-[18px] inspect:col-span-2">
+        <div className="min-w-0 border border-line p-4.5 inspect:col-span-2">
           <h3 className="kicker">Appearance</h3>
           <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
             <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
               Theme
               <div
-                className="flex overflow-hidden rounded-app border border-line"
+                className={segmentedGroup("text")}
                 role="radiogroup"
                 aria-label="Theme"
               >
@@ -139,12 +145,7 @@ export default function SettingsView({
                     type="button"
                     role="radio"
                     aria-checked={themeMode === modeOption}
-                    className={cn(
-                      "flex-1 border-0 px-3 py-2.5 text-[13px] font-semibold",
-                      themeMode === modeOption
-                        ? "bg-accent-soft text-accent"
-                        : "bg-transparent text-muted hover:bg-wash-6 hover:text-ink",
-                    )}
+                    className={segmentedCell(themeMode === modeOption, "text")}
                     onClick={() => commitAppearance(modeOption, accentColor)}
                   >
                     {modeOption === "dark" ? "Dark" : "Light"}
@@ -162,7 +163,7 @@ export default function SettingsView({
                   onChange={(event) =>
                     commitAppearance(themeMode, event.target.value)
                   }
-                  className="size-10.5 shrink-0 cursor-pointer rounded-app border border-line bg-transparent p-1 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[7px] [&::-webkit-color-swatch]:border-0"
+                  className="size-10.5 shrink-0 cursor-pointer rounded-app border border-line bg-transparent p-1 [&::-webkit-color-swatch]:rounded-[7px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
                 />
                 <input
                   type="text"
@@ -189,7 +190,7 @@ export default function SettingsView({
             Theme and accent apply immediately on this PC.
           </p>
         </div>
-        <div className="min-w-0 border border-t-0 border-line p-[18px]">
+        <div className="min-w-0 border border-t-0 border-line p-4.5">
           <h3 className="kicker">Catalog access</h3>
           <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
             Catalog API URL
@@ -226,10 +227,10 @@ export default function SettingsView({
               spellCheck={false}
             />
           </label>
-          <p className="text-xs leading-[1.45] text-muted tabular">
-            IMDb’s dumps don’t include posters. IMDBrain looks them up on TMDB
-            in the background after the catalog is ready. Without a key,
-            titles show placeholders.
+          <p className="leading-[1.45] text-muted tabular">
+            IMDb’s dumps don’t include posters. Rescore looks them up on TMDB in
+            the background after the catalog is ready. Without a key, titles
+            show placeholders.
           </p>
           <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
             IMDb ratings API
@@ -265,10 +266,10 @@ export default function SettingsView({
             Save settings
           </button>
         </div>
-        <div className="min-w-0 border border-t-0 border-line p-[18px] inspect:border-l-0">
+        <div className="min-w-0 border border-t-0 border-line p-4.5 inspect:border-l-0">
           <h3 className="kicker">IMDb ratings import</h3>
           <p className="text-xs leading-[1.45] text-muted tabular">
-            On IMDb: Ratings → Export. Choose the CSV here. IMDBrain looks up
+            On IMDb: Ratings → Export. Choose the CSV here. Rescore looks up
             each `tt` ID, stores the movie as watched, and rebuilds your taste
             model.
           </p>
@@ -301,9 +302,9 @@ export default function SettingsView({
           </div>
           {progress ? (
             <div>
-              <div className="my-2.5 h-2 overflow-hidden rounded-full bg-track">
+              <div className={cn("my-2.5", progressBarClass)}>
                 <div
-                  className="h-full bg-accent"
+                  className={progressFillClass}
                   style={{
                     width: progress.total
                       ? `${(progress.current / progress.total) * 100}%`

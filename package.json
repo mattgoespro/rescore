@@ -1,27 +1,28 @@
 {
-  "name": "imdbrain-monorepo",
+  "name": "rescore-monorepo",
   "private": true,
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=imdbrain",
-    "start": "npm run start --workspace=imdbrain",
-    "dev:api": "npm run dev --workspace=@imdbrain/api",
-    "dev:desktop": "npm run dev --workspace=imdbrain",
+    "dev": "npm run dev --workspace=rescore",
+    "start": "npm run start --workspace=rescore",
+    "dev:api": "npm run dev --workspace=@rescore/api",
+    "dev:desktop": "npm run dev --workspace=rescore",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspace=@imdbrain/api",
-    "build": "npm run build --workspace=imdbrain",
-    "build:win": "npm run build:win --workspace=imdbrain",
+    "test": "npm run test --workspace=@rescore/api",
+    "build": "npm run build --workspace=rescore",
+    "build:win": "npm run build:win --workspace=rescore",
     "lint": "eslint .",
     "validate:ratings": "tsx scripts/validate-ratings.ts",
-    "build:catalog": "npm run build:catalog --workspace=@imdbrain/api",
-    "enrich:posters": "npm run enrich:posters --workspace=@imdbrain/api",
+    "build:catalog": "npm run build:catalog --workspace=@rescore/api",
+    "enrich:posters": "npm run enrich:posters --workspace=@rescore/api",
     "format:prettier": "prettier --write {apps,scripts}/**/*.{js,jsx,ts,tsx,json,css}"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "eslint": "^10.10.0",
+    "eslint-plugin-tailwindcss": "^4.4.0",
     "playwright": "^1.55.0",
     "prettier": "^3.9.6",
     "tsx": "^4.20.5",

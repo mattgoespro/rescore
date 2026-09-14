@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { readFileSync, writeFileSync } from "fs";
+import { isAppearanceOnlyPatch } from "../shared/appearance";
 import {
   sortMovies,
   titleKey,
@@ -13,12 +14,16 @@ import {
   type Settings,
   type WatchStatus,
 } from "../shared/types";
-import { parseImdbRatingsCsv } from "./csv";
 import { CatalogClient, CatalogError, genreId } from "./catalog-client";
-import { buildProfile, describeProfile, publicProfile, scoreMovie } from "./ranking";
-import { isAppearanceOnlyPatch } from "../shared/appearance";
-import type { AppStore } from "./store";
 import type { CatalogRuntime } from "./catalog-runtime";
+import { parseImdbRatingsCsv } from "./csv";
+import {
+  buildProfile,
+  describeProfile,
+  publicProfile,
+  scoreMovie,
+} from "./ranking";
+import type { AppStore } from "./store";
 import { applyWindowChrome } from "./window-chrome";
 
 let store: AppStore;
@@ -38,8 +43,12 @@ export function registerIpc(
     const previousUrl = store.getSettings().catalogApiUrl;
     const next = store.setSettings(patch);
     if (next.catalogApiUrl !== previousUrl) catalog.retry();
-    else if (patch.tmdbApiKey !== undefined) void startPosterEnrichment(next.catalogApiUrl);
-    else if (!isAppearanceOnlyPatch(patch)) void getClient().genres().catch(() => undefined);
+    else if (patch.tmdbApiKey !== undefined)
+      void startPosterEnrichment(next.catalogApiUrl);
+    else if (!isAppearanceOnlyPatch(patch))
+      void getClient()
+        .genres()
+        .catch(() => undefined);
     applyWindowChrome(getWindow(), next);
     return next;
   });
@@ -50,14 +59,15 @@ export function registerIpc(
   });
   ipcMain.handle("catalog:rebuild", () => catalog.rebuild());
   ipcMain.handle("catalog:configured", () => getClient().configured());
-  ipcMain.handle("catalog:genres", () => withCatalog([], () => getClient().genres()));
+  ipcMain.handle("catalog:genres", () =>
+    withCatalog([], () => getClient().genres()),
+  );
   ipcMain.handle("catalog:providers", () => []);
   ipcMain.handle("catalog:searchPeople", () => []);
   ipcMain.handle("catalog:searchKeywords", () => []);
   ipcMain.handle("catalog:discover", (_event, filters: DiscoverFilters) =>
-    withCatalog(
-      { page: 1, totalPages: 0, totalResults: 0, results: [] },
-      () => discover(filters),
+    withCatalog({ page: 1, totalPages: 0, totalResults: 0, results: [] }, () =>
+      discover(filters),
     ),
   );
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>
@@ -66,20 +76,28 @@ export function registerIpc(
   ipcMain.handle("catalog:movieMeta", (_event, movies: MovieSummary[]) =>
     withCatalog({}, () => enrichMovies(movies)),
   );
-  ipcMain.handle("library:list", () => withCatalog([], () => getClient().listLibrary()));
-  ipcMain.handle("library:upsert", (_event, payload: LibraryUpsert) => upsertLibrary(payload));
+  ipcMain.handle("library:list", () =>
+    withCatalog([], () => getClient().listLibrary()),
+  );
+  ipcMain.handle("library:upsert", (_event, payload: LibraryUpsert) =>
+    upsertLibrary(payload),
+  );
   ipcMain.handle("library:remove", async (_event, imdbId: string) => {
     await getClient().removeLibrary(imdbId);
     return getClient().listLibrary();
   });
   ipcMain.handle("library:clear", async () => {
     const entries = await getClient().listLibrary();
-    await Promise.all(entries.map((entry) => getClient().removeLibrary(entry.imdbId)));
+    await Promise.all(
+      entries.map((entry) => getClient().removeLibrary(entry.imdbId)),
+    );
     return [];
   });
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
-  ipcMain.handle("ranking:forYou", () => withCatalog(emptyForYou(), () => forYou()));
+  ipcMain.handle("ranking:forYou", () =>
+    withCatalog(emptyForYou(), () => forYou()),
+  );
   ipcMain.handle("ranking:profile", async () => {
     const [library, genres] = await Promise.all([
       withCatalog([], () => getClient().listLibrary()),
@@ -89,7 +107,11 @@ export function registerIpc(
   });
 }
 
-interface LibraryUpsert { movie: MovieSummary | MovieDetails; status: WatchStatus; rating?: number }
+interface LibraryUpsert {
+  movie: MovieSummary | MovieDetails;
+  status: WatchStatus;
+  rating?: number;
+}
 
 let catalogClient: CatalogClient | null = null;
 let catalogClientUrl = "";
@@ -117,16 +139,23 @@ async function withCatalog<T>(fallback: T, run: () => Promise<T>): Promise<T> {
 
 function emptyForYou(): ForYouResult {
   const profile = buildProfile([], []);
-  return { profile: publicProfile(profile), insights: describeProfile(profile), movies: [] };
+  return {
+    profile: publicProfile(profile),
+    insights: describeProfile(profile),
+    movies: [],
+  };
 }
 
 async function startPosterEnrichment(baseUrl: string): Promise<void> {
   try {
-    await fetch(new URL("/v1/catalog/enrich-posters", `${baseUrl.replace(/\/+$/, "")}/`), {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(4000),
-    });
+    await fetch(
+      new URL("/v1/catalog/enrich-posters", `${baseUrl.replace(/\/+$/, "")}/`),
+      {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(4000),
+      },
+    );
   } catch {
     /* catalog will pick the key up on the next start */
   }
@@ -140,7 +169,10 @@ async function discover(filters: DiscoverFilters) {
     2,
   );
   if (filters.sortBy !== "match") return page;
-  const [library, genres] = await Promise.all([getClient().listLibrary(), getClient().genres()]);
+  const [library, genres] = await Promise.all([
+    getClient().listLibrary(),
+    getClient().genres(),
+  ]);
   const profile = buildProfile(library, genres);
   if (profile.ratedCount < 3) return page;
   const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
@@ -155,15 +187,20 @@ async function discover(filters: DiscoverFilters) {
   };
 }
 
-async function upsertLibrary({ movie, status, rating }: LibraryUpsert): Promise<LibraryEntry[]> {
+async function upsertLibrary({
+  movie,
+  status,
+  rating,
+}: LibraryUpsert): Promise<LibraryEntry[]> {
   await getClient().saveLibrary(movie as MovieSummary, status, rating);
   return getClient().listLibrary();
 }
 
 async function forYou(): Promise<ForYouResult> {
   const payload = await getClient().forYouPage(250);
-  const library = payload.library.map(({ title, status, personalRating, updatedAt }) =>
-    toLibraryFromDto(title, status, personalRating ?? undefined, updatedAt),
+  const library = payload.library.map(
+    ({ title, status, personalRating, updatedAt }) =>
+      toLibraryFromDto(title, status, personalRating ?? undefined, updatedAt),
   );
   const genres = payload.facets.genres.map((genre) => ({
     id: genreId(genre.value),
@@ -174,10 +211,16 @@ async function forYou(): Promise<ForYouResult> {
   const profile = buildProfile(library, genres);
   void getClient().enrichPosters(candidates.map((movie) => movie.imdbId));
   const movies = sortMovies(
-    candidates.map((movie) => scoreMovie(movie, profile, store.getSettings().rankingMode, entries)),
+    candidates.map((movie) =>
+      scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
+    ),
     "match",
   ).slice(0, 40);
-  return { profile: publicProfile(profile), insights: describeProfile(profile), movies };
+  return {
+    profile: publicProfile(profile),
+    insights: describeProfile(profile),
+    movies,
+  };
 }
 
 function toSummaryFromDto(title: {
@@ -245,41 +288,96 @@ function toLibraryFromDto(
   };
 }
 
-async function enrichMovies(movies: MovieSummary[]): Promise<Record<string, MovieEnrichment>> {
-  const [library, genres] = await Promise.all([getClient().listLibrary(), getClient().genres()]);
+async function enrichMovies(
+  movies: MovieSummary[],
+): Promise<Record<string, MovieEnrichment>> {
+  const [library, genres] = await Promise.all([
+    getClient().listLibrary(),
+    getClient().genres(),
+  ]);
   const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
   const profile = buildProfile(library, genres);
-  return Object.fromEntries(movies.map((movie) => {
-    const ranked = scoreMovie(movie, profile, store.getSettings().rankingMode, entries);
-    return [titleKey(movie), { match: ranked.match, reasons: ranked.reasons }];
-  }));
+  return Object.fromEntries(
+    movies.map((movie) => {
+      const ranked = scoreMovie(
+        movie,
+        profile,
+        store.getSettings().rankingMode,
+        entries,
+      );
+      return [
+        titleKey(movie),
+        { match: ranked.match, reasons: ranked.reasons },
+      ];
+    }),
+  );
 }
 
 async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
-  const options = { title: "Export IMDBrain library", defaultPath: "imdbrain-library.json", filters: [{ name: "JSON", extensions: ["json"] }] };
+  const options = {
+    title: "Export Rescore library",
+    defaultPath: "rescore-library.json",
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  };
   const window = getWindow();
-  const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+  const result = window
+    ? await dialog.showSaveDialog(window, options)
+    : await dialog.showSaveDialog(options);
   if (result.canceled || !result.filePath) return { ok: false };
-  writeFileSync(result.filePath, JSON.stringify({ exportedAt: new Date().toISOString(), library: await getClient().listLibrary() }, null, 2), "utf8");
+  writeFileSync(
+    result.filePath,
+    JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        library: await getClient().listLibrary(),
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
   return { ok: true, path: result.filePath };
 }
 
 async function importImdbCsv(): Promise<ImportProgress> {
-  const options = { title: "Import IMDb ratings.csv", filters: [{ name: "CSV", extensions: ["csv"] }], properties: ["openFile"] as Array<"openFile"> };
+  const options = {
+    title: "Import IMDb ratings.csv",
+    filters: [{ name: "CSV", extensions: ["csv"] }],
+    properties: ["openFile"] as Array<"openFile">,
+  };
   const window = getWindow();
-  const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
-  const empty: ImportProgress = { current: 0, total: 0, title: "", imported: 0, skipped: 0, errors: 0, done: true };
+  const picked = window
+    ? await dialog.showOpenDialog(window, options)
+    : await dialog.showOpenDialog(options);
+  const empty: ImportProgress = {
+    current: 0,
+    total: 0,
+    title: "",
+    imported: 0,
+    skipped: 0,
+    errors: 0,
+    done: true,
+  };
   if (picked.canceled || !picked.filePaths[0]) return empty;
   const rows = parseImdbRatingsCsv(readFileSync(picked.filePaths[0], "utf8"));
   const progress = { ...empty, total: rows.length, done: false };
   for (const [index, row] of rows.entries()) {
-    progress.current = index + 1; progress.title = row.title; getWindow()?.webContents.send("library:importProgress", progress);
+    progress.current = index + 1;
+    progress.title = row.title;
+    getWindow()?.webContents.send("library:importProgress", progress);
     try {
       const movie = await getClient().findByImdb(row.imdbId);
       if (!movie) progress.skipped++;
-      else { await getClient().saveLibrary(movie, "watched", row.rating); progress.imported++; }
-    } catch { progress.errors++; }
+      else {
+        await getClient().saveLibrary(movie, "watched", row.rating);
+        progress.imported++;
+      }
+    } catch {
+      progress.errors++;
+    }
   }
-  progress.done = true; progress.title = "Import complete"; getWindow()?.webContents.send("library:importProgress", progress);
+  progress.done = true;
+  progress.title = "Import complete";
+  getWindow()?.webContents.send("library:importProgress", progress);
   return progress;
 }

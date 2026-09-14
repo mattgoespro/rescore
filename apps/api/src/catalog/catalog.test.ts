@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { CatalogDatabase } from "./database.js";
 import { bayesianScore } from "./bayesian.js";
+import { CatalogDatabase } from "./database.js";
 
 const dirs: string[] = [];
 
 function openCatalog(): CatalogDatabase {
-  const dir = mkdtempSync(join(tmpdir(), "imdbrain-catalog-"));
+  const dir = mkdtempSync(join(tmpdir(), "rescore-catalog-"));
   dirs.push(dir);
   return new CatalogDatabase(join(dir, "catalog.sqlite"));
 }
@@ -48,7 +48,12 @@ function seedTitle(
 
 test("titles are ready without credits", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0133093", title: "The Matrix", rating: 8.7, votes: 2_000_000 });
+  seedTitle(catalog, {
+    id: "tt0133093",
+    title: "The Matrix",
+    rating: 8.7,
+    votes: 2_000_000,
+  });
   catalog.setCatalogMeta({
     builtAt: new Date().toISOString(),
     revision: "test",
@@ -69,7 +74,12 @@ test("batch hydrate attaches genres and people", () => {
     genres: ["Action", "Sci-Fi"],
   });
   catalog.insertPeople([
-    { titleId: "tt0133093", name: "Lana Wachowski", role: "director", position: 0 },
+    {
+      titleId: "tt0133093",
+      name: "Lana Wachowski",
+      role: "director",
+      position: 0,
+    },
     { titleId: "tt0133093", name: "Keanu Reeves", role: "cast", position: 0 },
   ]);
   const page = catalog.listTitles({
@@ -87,8 +97,18 @@ test("batch hydrate attaches genres and people", () => {
 
 test("rating sort uses persisted bayesian score", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0000001", title: "Obscure Ten", rating: 10, votes: 12 });
-  seedTitle(catalog, { id: "tt0000002", title: "Popular Nine", rating: 9, votes: 500_000 });
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Obscure Ten",
+    rating: 10,
+    votes: 12,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Popular Nine",
+    rating: 9,
+    votes: 500_000,
+  });
   const page = catalog.listTitles({
     page: 1,
     pageSize: 10,
@@ -96,16 +116,24 @@ test("rating sort uses persisted bayesian score", () => {
     order: "desc",
   });
   assert.equal(page.data[0]?.id, "tt0000002");
-  assert.ok(
-    bayesianScore(9, 500_000) > bayesianScore(10, 12),
-  );
+  assert.ok(bayesianScore(9, 500_000) > bayesianScore(10, 12));
   catalog.close();
 });
 
 test("FTS prefix search finds titles", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0133093", title: "The Matrix", rating: 8.7, votes: 1000 });
-  seedTitle(catalog, { id: "tt0000002", title: "Unrelated", rating: 7, votes: 1000 });
+  seedTitle(catalog, {
+    id: "tt0133093",
+    title: "The Matrix",
+    rating: 8.7,
+    votes: 1000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Unrelated",
+    rating: 7,
+    votes: 1000,
+  });
   const page = catalog.listTitles({
     page: 1,
     pageSize: 10,
@@ -120,7 +148,12 @@ test("FTS prefix search finds titles", () => {
 
 test("exact IMDb id search does not use FTS", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0133093", title: "The Matrix", rating: 8.7, votes: 1000 });
+  seedTitle(catalog, {
+    id: "tt0133093",
+    title: "The Matrix",
+    rating: 8.7,
+    votes: 1000,
+  });
   const page = catalog.listTitles({
     page: 1,
     pageSize: 10,
@@ -163,8 +196,18 @@ test("includeTotal false still pages when the page is full", () => {
 
 test("for-you candidates exclude watched and skipped", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0000001", title: "Watched", rating: 8, votes: 10_000 });
-  seedTitle(catalog, { id: "tt0000002", title: "Open", rating: 8, votes: 9_000 });
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Watched",
+    rating: 8,
+    votes: 10_000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Open",
+    rating: 8,
+    votes: 9_000,
+  });
   catalog.setCatalogMeta({
     builtAt: new Date().toISOString(),
     revision: "test",
@@ -172,7 +215,13 @@ test("for-you candidates exclude watched and skipped", () => {
   });
   catalog.saveLibrary("tt0000001", "watched", 8, null);
   const candidates = catalog.listForYouCandidates(50);
-  assert.equal(candidates.some((title) => title.id === "tt0000001"), false);
-  assert.equal(candidates.some((title) => title.id === "tt0000002"), true);
+  assert.equal(
+    candidates.some((title) => title.id === "tt0000001"),
+    false,
+  );
+  assert.equal(
+    candidates.some((title) => title.id === "tt0000002"),
+    true,
+  );
   catalog.close();
 });

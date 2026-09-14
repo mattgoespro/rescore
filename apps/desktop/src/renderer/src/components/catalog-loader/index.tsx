@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import type { CatalogDownloadProgress } from "../../../../shared/types";
+import { progressBarClass, progressFillClass } from "../../lib/ui";
 import Spinner from "./spinner";
 
 export default function CatalogLoader({
@@ -21,7 +22,7 @@ export default function CatalogLoader({
       {download ? (
         <div className="flex w-72 max-w-full flex-col items-stretch gap-1.5">
           <div
-            className="h-2 overflow-hidden rounded-full bg-track"
+            className={progressBarClass}
             role="progressbar"
             aria-label="Dataset download progress"
             aria-valuemin={0}
@@ -29,7 +30,7 @@ export default function CatalogLoader({
             aria-valuenow={Math.round(percent ?? 0)}
           >
             <div
-              className="h-full bg-accent transition-[width] duration-200"
+              className={`${progressFillClass} transition-[width] duration-200`}
               style={{ width: `${Math.min(100, Math.max(0, percent ?? 0))}%` }}
             />
           </div>

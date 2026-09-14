@@ -182,7 +182,7 @@ export function describeProfile(profile: InternalProfile): string[] {
 
   if (!profile.ratedCount) {
     insights.push(
-      "Rate a handful of movies you have already seen so IMDBrain can learn your taste.",
+      "Rate a handful of movies you have already seen so Rescore can learn your taste.",
     );
     return insights;
   }

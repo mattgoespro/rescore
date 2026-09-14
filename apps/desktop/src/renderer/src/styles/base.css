@@ -16,7 +16,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--imd-accent);
     outline-offset: 2px;
   }
 
@@ -37,6 +37,7 @@
   input[type="text"],
   input[type="number"],
   input[type="password"],
+  input[type="url"],
   textarea {
     @apply field-control;
   }
@@ -47,6 +48,6 @@
 
   input:focus,
   textarea:focus {
-    border-color: var(--color-accent);
+    border-color: var(--imd-accent);
   }
 }

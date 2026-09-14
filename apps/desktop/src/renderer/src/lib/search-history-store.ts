@@ -6,7 +6,7 @@ import {
 } from "../../../shared/search-history";
 import type { SearchHistoryEntry } from "../../../shared/types";
 
-const STORAGE_KEY = "imdbrain.searchHistory";
+const STORAGE_KEY = "rescore.searchHistory";
 
 export function listSearchHistory(): SearchHistoryEntry[] {
   try {

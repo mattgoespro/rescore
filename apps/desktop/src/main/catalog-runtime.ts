@@ -8,6 +8,7 @@ import {
   type CatalogPhase,
   type CatalogStatus,
 } from "../shared/types";
+import { planApiLaunch } from "./api-launch";
 import type { AppStore } from "./store";
 
 const START_TIMEOUT_MS = 30_000;
@@ -127,8 +128,7 @@ export function createCatalogRuntime(
       if (!reached) {
         publish({
           phase: "error",
-          message:
-            "Cannot reach the local catalog API. Check the URL in Settings or start it with npm run dev:api.",
+          message: unreachableMessage(),
           titleCount: 0,
           builtAt: null,
           error: "Catalog API did not become reachable.",
@@ -247,7 +247,7 @@ export function createCatalogRuntime(
       if (!reached) {
         publish({
           phase: "error",
-          message: "Cannot reach the local catalog API.",
+          message: unreachableMessage(),
           titleCount: current.titleCount,
           builtAt: current.builtAt,
           error: "Catalog API did not become reachable.",
@@ -264,50 +264,35 @@ export function createCatalogRuntime(
   function spawnApi(baseUrl: string):
     | { ok: true; child: ChildProcess }
     | { ok: false; message: string } {
-    if (!isLocalUrl(baseUrl)) {
-      return {
-        ok: false,
-        message:
-          "The catalog API URL is not local, so IMDBrain cannot start it. Confirm the URL in Settings.",
-      };
-    }
-    const apiRoot = resolveApiRoot();
-    if (!apiRoot) {
-      return {
-        ok: false,
-        message:
-          "Cannot find the catalog API. Start it with npm run dev:api, then relaunch IMDBrain.",
-      };
-    }
-    const tsxCli = resolveTsx(apiRoot);
-    const node = resolveNode();
-    if (!tsxCli || !node) {
-      return {
-        ok: false,
-        message:
-          "Cannot start the catalog API (Node or tsx is missing). Run npm install and npm run dev:api.",
-      };
-    }
-    const dataDir = is.dev
-      ? join(apiRoot, "data")
-      : join(app.getPath("userData"), "data");
-    const tmdbApiKey = store.getSettings().tmdbApiKey.trim();
-    const child = spawn(
-      node,
-      [tsxCli, join(apiRoot, "src", "index.ts")],
+    const plan = planApiLaunch(
       {
-        cwd: apiRoot,
-        env: {
-          ...process.env,
-          PORT: portFromUrl(baseUrl),
-          IMDB_DATA_DIR: dataDir,
-          CATALOG_DB_PATH: join(dataDir, "catalog.sqlite"),
-          ...(tmdbApiKey ? { TMDB_API_KEY: tmdbApiKey } : {}),
-        },
-        stdio: ["ignore", "inherit", "inherit"],
-        windowsHide: true,
+        dev: is.dev,
+        packaged: app.isPackaged,
+        localUrl: isLocalUrl(baseUrl),
+        appPath: app.getAppPath(),
+        dirname: __dirname,
+        cwd: process.cwd(),
+        resourcesPath: process.resourcesPath,
+        userDataDir: app.getPath("userData"),
+        npmNodeExecPath: process.env.npm_node_execpath,
+        platform: process.platform,
       },
+      existsSync,
     );
+    if (!plan.ok) return plan;
+    const tmdbApiKey = store.getSettings().tmdbApiKey.trim();
+    const child = spawn(plan.command, plan.args, {
+      cwd: plan.cwd,
+      env: {
+        ...process.env,
+        PORT: portFromUrl(baseUrl),
+        IMDB_DATA_DIR: plan.dataDir,
+        CATALOG_DB_PATH: join(plan.dataDir, "catalog.sqlite"),
+        ...(tmdbApiKey ? { TMDB_API_KEY: tmdbApiKey } : {}),
+      },
+      stdio: plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
+      windowsHide: plan.windowsHide,
+    });
     child.on("error", (error) => {
       console.error("[api] failed to start", error);
     });
@@ -341,8 +326,7 @@ export function createCatalogRuntime(
         if (generation !== gen) return;
         publish({
           phase: "error",
-          message:
-            "Cannot reach the local catalog API. Start it or check the URL in Settings.",
+          message: unreachableMessage(),
           titleCount: current.titleCount,
           builtAt: current.builtAt,
           error: "Catalog API did not become reachable.",
@@ -397,6 +381,13 @@ export function createCatalogRuntime(
     status: () => current,
     stop,
   };
+}
+
+function unreachableMessage(): string {
+  if (app.isPackaged) {
+    return "Cannot reach the local catalog API. Check the URL in Settings, then use Retry.";
+  }
+  return "Cannot reach the local catalog API. Check the URL in Settings or start it with npm run dev:api.";
 }
 
 function catalogUrl(store: AppStore): string {
@@ -472,38 +463,6 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
     titlesReady: health.titlesReady,
     creditsReady: health.creditsReady,
   };
-}
-
-function resolveApiRoot(): string | null {
-  const candidates = [
-    join(app.getAppPath(), "../api"),
-    join(__dirname, "../../../api"),
-    join(process.cwd(), "apps/api"),
-    join(process.cwd(), "../api"),
-  ];
-  return (
-    candidates.find(
-      (dir) =>
-        existsSync(join(dir, "package.json")) &&
-        existsSync(join(dir, "src", "index.ts")),
-    ) ?? null
-  );
-}
-
-function resolveTsx(apiRoot: string): string | null {
-  const candidates = [
-    join(apiRoot, "node_modules/tsx/dist/cli.mjs"),
-    join(apiRoot, "../../node_modules/tsx/dist/cli.mjs"),
-    join(apiRoot, "node_modules/tsx/dist/cli.cjs"),
-    join(apiRoot, "../../node_modules/tsx/dist/cli.cjs"),
-  ];
-  return candidates.find((file) => existsSync(file)) ?? null;
-}
-
-function resolveNode(): string | null {
-  const fromNpm = process.env.npm_node_execpath;
-  if (fromNpm && existsSync(fromNpm)) return fromNpm;
-  return process.platform === "win32" ? "node.exe" : "node";
 }
 
 function sleep(ms: number): Promise<void> {

@@ -1,6 +1,6 @@
-import type { Config } from "tailwindcss";
 import forms from "@tailwindcss/forms";
 import typography from "@tailwindcss/typography";
+import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 
 const palette = {
@@ -24,7 +24,7 @@ const palette = {
   poster: "var(--imd-poster)",
 } as const;
 
-const imdbrain = plugin(({ addUtilities }) => {
+const rescore = plugin(({ addUtilities }) => {
   addUtilities({
     ".app-drag": {
       "-webkit-app-region": "drag",
@@ -97,7 +97,8 @@ export default {
       },
       boxShadow: {
         panel: "var(--imd-shadow-panel)",
-        accent: "0 6px 16px color-mix(in srgb, var(--imd-accent) 28%, transparent)",
+        accent:
+          "0 6px 16px color-mix(in srgb, var(--imd-accent) 28%, transparent)",
       },
       letterSpacing: {
         title: "-0.04em",
@@ -125,5 +126,5 @@ export default {
       },
     },
   },
-  plugins: [forms({ strategy: "class" }), typography, imdbrain],
+  plugins: [forms({ strategy: "class" }), typography, rescore],
 } satisfies Config;

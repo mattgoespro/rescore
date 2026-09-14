@@ -4,7 +4,10 @@
   "debug.internalConsoleOptions": "openOnSessionStart",
   "debug.toolBarLocation": "commandCenter",
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "always"
+    "source.fixAll.eslint": "always",
+    "source.organizeImports": "always",
+    "source.removeUnused.ts": "never",
+    "source.fixAll.tailwindcss": "always"
   },
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.fontFamily": "Fira Code, Ubuntu Mono, monospace",
@@ -12,9 +15,6 @@
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
   "editor.letterSpacing": -0.4,
-  "editor.quickSuggestions": {
-    "strings": "on"
-  },
   "eslint.probe": ["typescript", "typescriptreact", "javascript"],
   "eslint.validate": ["typescript", "typescriptreact", "javascript"],
   "files.associations": {
