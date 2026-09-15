@@ -32,7 +32,7 @@ export function iconBtn(...variants: Array<"busy" | false | undefined>): string 
 
 export function rankedRow(active = false, extra?: string): string {
   return cn(
-    "grid w-full cursor-pointer grid-cols-[48px_52px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-none border-0 border-b border-line px-1.5 py-2.5 text-left text-inherit",
+    "grid w-full cursor-pointer grid-cols-[48px_52px_minmax(0,1fr)_auto] items-start gap-3.5 rounded-none border-0 border-b border-line px-1.5 py-2.5 text-left text-inherit",
     active
       ? "inset-accent bg-accent-soft hover:bg-accent-soft"
       : "bg-transparent hover:bg-wash-3",

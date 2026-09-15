@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { RequestHandler } from "express";
 import { POSTER_CACHE_DIR } from "../config.js";
 
@@ -29,7 +31,7 @@ export const mediaHandler: RequestHandler = async (req, res, next) => {
     if (existsSync(cached.file)) {
       res.setHeader("Content-Type", contentTypeFor(cached.file));
       res.setHeader("Cache-Control", "public, max-age=604800, immutable");
-      res.send(readFileSync(cached.file));
+      createReadStream(cached.file).pipe(res);
       return;
     }
 
@@ -50,12 +52,16 @@ export const mediaHandler: RequestHandler = async (req, res, next) => {
       res.status(502).end();
       return;
     }
-    const buffer = Buffer.from(await upstream.arrayBuffer());
     mkdirSync(cached.dir, { recursive: true });
-    writeFileSync(cached.file, buffer);
+    await pipeline(
+      Readable.fromWeb(
+        upstream.body as import("node:stream/web").ReadableStream,
+      ),
+      createWriteStream(cached.file),
+    );
     res.setHeader("Content-Type", type);
     res.setHeader("Cache-Control", "public, max-age=604800, immutable");
-    res.send(buffer);
+    createReadStream(cached.file).pipe(res);
   } catch (error) {
     next(error);
   }

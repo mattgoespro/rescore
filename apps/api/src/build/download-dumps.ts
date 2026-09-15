@@ -26,7 +26,9 @@ export interface CreditDumpFiles {
   names: string;
 }
 
-export async function downloadTitleDumps(): Promise<TitleDumpFiles> {
+export async function downloadTitleDumps(
+  force = false,
+): Promise<TitleDumpFiles> {
   const dumps = [
     { key: "ratings" as const, name: DATASET_FILE, url: DATASET_URL },
     {
@@ -35,10 +37,12 @@ export async function downloadTitleDumps(): Promise<TitleDumpFiles> {
       url: `${IMDB_DATASETS_BASE}/${TITLE_FILES.basics}`,
     },
   ];
-  return downloadWave(dumps);
+  return downloadWave(dumps, force);
 }
 
-export async function downloadCreditDumps(): Promise<CreditDumpFiles> {
+export async function downloadCreditDumps(
+  force = false,
+): Promise<CreditDumpFiles> {
   const dumps = (
     ["crew", "principals", "names"] as const
   ).map((key) => ({
@@ -46,11 +50,12 @@ export async function downloadCreditDumps(): Promise<CreditDumpFiles> {
     name: TITLE_FILES[key],
     url: `${IMDB_DATASETS_BASE}/${TITLE_FILES[key]}`,
   }));
-  return downloadWave(dumps);
+  return downloadWave(dumps, force);
 }
 
 async function downloadWave<K extends string>(
   dumps: Array<{ key: K; name: string; url: string }>,
+  force = false,
 ): Promise<Record<K, string>> {
   const files = {} as Record<K, string>;
   await Promise.all(
@@ -60,7 +65,7 @@ async function downloadWave<K extends string>(
       reportDownload({
         message: `Checking ${dump.name} (${fileIndex} of ${dumps.length})`,
       });
-      files[dump.key] = await ensureGzipFile(dump.url, dest, false, (bytes) => {
+      files[dump.key] = await ensureGzipFile(dump.url, dest, force, (bytes) => {
         reportDownload({
           message: `Downloading ${dump.name} (${fileIndex} of ${dumps.length})`,
           download: {

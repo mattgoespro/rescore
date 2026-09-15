@@ -4,7 +4,7 @@ This document is an implementation contract for IMDBrain’s cataloguing system.
 
 **In scope:** SQLite catalogue, IMDb dump ingest, credits import, FTS/filter query, SQL hydration, TMDB poster/synopsis overlay, licensed overlay import, ratings sync, health/readiness, Electron catalog runtime, and Discover search over IPC/HTTP.
 
-**Out of scope:** taste-ranking weights and modes, For You insight copy, IMDb ratings CSV library import UX, Settings chrome, search-history `localStorage`. Ranking appears only as a labeled post-query desktop step in the search sequence.
+**Out of scope:** taste-ranking weights and modes, For You insight copy, IMDb ratings CSV library import UX, Settings chrome. Ranking appears only as a labeled post-query desktop step in the search sequence. Search history persistence lives in the desktop `userData` store, not in the catalogue API.
 
 ---
 
@@ -44,18 +44,18 @@ Desktop `CatalogStatus.phase` values: `"starting" | "building" | "ready" | "erro
 
 | Feature | Contract | Owner |
 | --- | --- | --- |
-| Local SQLite catalogue | WAL, `busy_timeout=5000`, `foreign_keys=ON`, migrations 1–6 | `apps/api/src/catalog/schema.ts`, `database.ts` |
-| IMDb dump ingest | Parallel download of ratings + basics; keep movie/tv/miniseries, non-adult, rated, non-empty title | `apps/api/src/build/`, `apps/api/src/services/gzip-tsv.ts` |
-| Credits import | Background after titles; max 4 directors, max 8 cast; display names only | `apps/api/src/build/import-credits.ts`, `apps/api/src/build/types.ts` |
-| Ratings sync | Daily `title.ratings.tsv.gz`; in-memory store then chunked SQLite UPDATE; no new titles | `apps/api/src/services/dataset.ts`, `ratings-store.ts` |
-| Bayesian catalogue sort | `bayesian_score = (votes / (votes + 25000)) * rating`; `sort=rating` uses this column | `apps/api/src/catalog/bayesian.ts` |
+| Local SQLite catalogue | WAL, `busy_timeout=5000`, `foreign_keys=ON`, migrations 1–9 | `apps/api/src/catalog/schema.ts`, `database.ts` |
+| IMDb dump ingest | Parallel download of ratings + basics; keep movie/tv/miniseries, non-adult, rated, non-empty title; reconcile rather than wipe | `apps/api/src/build/`, `apps/api/src/services/gzip-tsv.ts` |
+| Credits import | Background after titles; skip when dump fingerprints match; max 4 directors, max 8 cast; `people(nconst)` + JOIN for display names | `apps/api/src/build/import-credits.ts`, `apps/api/src/build/types.ts` |
+| Ratings sync | Daily `title.ratings.tsv.gz`; gzip streamed into diff-only SQLite UPDATE; no new titles; in-memory Map only during title ingest | `apps/api/src/services/dataset.ts`, `ratings-store.ts` |
+| IMDb rating sort | `sort=rating` → `ORDER BY t.imdb_rating, t.imdb_votes, t.id`; `bayesian_score` still persisted for ranking helpers | `apps/api/src/catalog/query.ts`, `bayesian.ts` |
 | FTS5 search | `titles_fts` on `title`, `original_title`, `id`; prefix AND; exact `tt` id bypasses FTS | `apps/api/src/catalog/query.ts` |
 | SQL hydration | Batch-load genres + people into `TitleDto` | `apps/api/src/catalog/hydrate.ts` |
 | TMDB media overlay | Optional `poster_url` + `synopsis` only; miss stored as `""`; `/v1/media` disk cache | `apps/api/src/services/tmdb-posters.ts`, `apps/api/src/routes/media.ts` |
 | Licensed overlay | `POST /v1/imports/catalog`, version `1`, max 50_000 titles, provider-neutral JSON | `apps/api/src/routes/v1.ts`, `CatalogDatabase.upsertTitles` |
 | Readiness | Titles usable before credits | `apps/api/src/catalog/meta.ts`, `apps/api/src/services/ensure-catalog.ts` |
 | Desktop catalog runtime | Spawn/adopt localhost API, poll `/health`, push `catalog:status` | `apps/desktop/src/main/catalog-runtime.ts` |
-| Work queue | Serializes ratings upserts, poster writes, `ANALYZE` | `apps/api/src/catalog/work-queue.ts` |
+| Work queues | `catalogWorkQueue` (ratings), `mediaWorkQueue` (poster writes), `maintenanceWorkQueue` (`ANALYZE` after 250ms idle) | `apps/api/src/catalog/work-queue.ts` |
 
 ---
 
@@ -166,14 +166,14 @@ Keep a `title.basics` row only if all of:
 1. Column 0 (`tconst`) is a non-empty IMDb value, lowercased.
 2. `mapKind(titleType)` is non-null.
 3. `isAdult` (column 4) is not `"1"`.
-4. A ratings row exists in `ratings_staging` for that id.
+4. A ratings row exists in the in-memory ratings `Map` for that id (`parseRatingsTsv`, not SQLite staging).
 5. Primary title (column 2) is non-empty (`imdbValue` rejects `""` and `\N`).
 
 Year: integer 1870–3000, else `null`. Runtime: integer 1–2000, else `null`. Genres: comma-split, trimmed, unique, skip `\N`.
 
-### 4.6 SQLite schema (migrations 1–6)
+### 4.6 SQLite schema (migrations 1–9)
 
-Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. During title/credits rebuild: `foreign_keys=OFF`, `synchronous=OFF`; restored to `synchronous=NORMAL`, `foreign_keys=ON` on finish.
+Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. During empty-DB first insert (`beginBulkLoad`): `foreign_keys=OFF`, `synchronous=OFF`, `temp_store=MEMORY`, FTS insert/update/delete triggers dropped; `endBulkLoad` rebuilds `titles_fts` once (`delete-all` then `INSERT … SELECT`), restores triggers, `synchronous=NORMAL`, `foreign_keys=ON`. Incremental reconcile keeps FTS triggers on.
 
 **`titles`**
 
@@ -189,24 +189,26 @@ Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. Dur
 | `poster_url` | TEXT | same NULL vs `''` rule |
 | `imdb_rating` | REAL | |
 | `imdb_votes` | INTEGER | |
-| `bayesian_score` | REAL | persisted; used for `sort=rating` |
+| `bayesian_score` | REAL | persisted for ranking helpers; Discover `sort=rating` uses `imdb_rating` |
 | `updated_at` | TEXT NOT NULL | |
 
 **`title_genres`:** `(title_id, genre)` PK, FK `titles(id)` ON DELETE CASCADE.
 
-**`title_people`:** `(title_id, name, role)` PK, `role` CHECK `('director','cast')`, `position` INTEGER NOT NULL.
+**`people`:** `nconst` TEXT PK, `name` TEXT NOT NULL. Licensed overlay names without an `nm` id use `personKey(name)` → `ex:{lowercase name}`.
 
-**`library_entries`:** `title_id` PK FK, `status` CHECK `('watched','watchlist','skipped')`, `personal_rating`, `note`, `updated_at`.
+**`title_people`:** `(title_id, nconst, role)` PK, `role` CHECK `('director','cast')`, `position` INTEGER NOT NULL, FK `titles(id)` ON DELETE CASCADE, FK `people(nconst)`. Migration 8 drops the old `(title_id, name, role)` table and clears `creditsReady` so credits refill nconsts.
 
-**`catalog_meta`:** `(key, value)` key/value. Written keys include `builtAt`, `revision`, `source`, `titlesReady` (`"1"`), flags `buildInProgress`, `creditsReady`, `creditsInProgress`.
+**`library_entries`:** `title_id` PK FK, `status` CHECK `('watched','watchlist','skipped')`, `personal_rating`, `note`, `updated_at`. Gone titles CASCADE-delete library rows during reconcile.
+
+**`catalog_meta`:** `(key, value)` key/value. Written keys include `builtAt`, `revision`, `source`, `titlesReady` (`"1"`), flags `buildInProgress`, `creditsReady`, `creditsInProgress`, dump fingerprints `titlesDumpFingerprint` / `creditsDumpFingerprint`, and `librarySkipRev` (incremented on library upsert/delete; count-cache invalidation).
 
 **`imports`:** import job rows.
 
-**`ratings_staging`:** temp table for bulk rating loads (`id` PK, `rating`, `votes`).
+**`ratings_staging`:** leftover table from migration 4; unused by ingest (ratings live in a JS `Map` during title import).
 
-**`titles_fts`:** FTS5 virtual table, `content='titles'`, `content_rowid='rowid'`, columns `title`, `original_title`, `id`. INSERT/UPDATE/DELETE triggers keep it in sync.
+**`titles_fts`:** FTS5 virtual table, `content='titles'`, `content_rowid='rowid'`, columns `title`, `original_title`, `id`. INSERT/DELETE triggers keep it in sync. UPDATE trigger `titles_fts_au` fires **only** `WHEN old.title IS NOT new.title OR old.original_title IS NOT new.original_title OR old.id IS NOT new.id` (migration 7). Rating/poster/synopsis/vote updates must not rewrite FTS.
 
-Indexes: `titles_sort_idx(kind, year, imdb_rating, imdb_votes)`, `titles_title_idx(title COLLATE NOCASE)`, `titles_votes_idx(kind, imdb_votes)`, `titles_runtime_idx(kind, runtime_minutes)`, `titles_bayesian_idx(kind, bayesian_score DESC)`, `title_genres_genre_idx(genre)`, `titles_poster_pending_idx` / `titles_enrich_pending_idx` on pending poster/synopsis.
+Indexes: `titles_sort_idx(kind, year, imdb_rating, imdb_votes)`, `titles_title_idx(title COLLATE NOCASE)`, `titles_votes_idx(kind, imdb_votes)`, `titles_kind_votes_desc_idx(kind, imdb_votes DESC)` (migration 9), `titles_runtime_idx(kind, runtime_minutes)`, `titles_bayesian_idx(kind, bayesian_score DESC)`, `title_genres_genre_idx(genre)`, `title_people_nconst_idx(nconst)`, `titles_poster_pending_idx` / `titles_enrich_pending_idx` on pending poster/synopsis.
 
 ### 4.7 Bayesian score
 
@@ -215,7 +217,7 @@ BAYESIAN_PRIOR_VOTES = 25000
 bayesianScore(rating, votes) = (count / (count + 25000)) * score
 ```
 
-where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on every ratings update. `ORDER BY t.bayesian_score` for `sort=rating`, **not** raw `imdb_rating`.
+where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on every ratings update. Discover `sort=rating` uses `ORDER BY t.imdb_rating, t.imdb_votes, t.id` so the list matches the stars shown on each card. `bayesian_score` remains available for taste-ranking helpers.
 
 ### 4.8 Constants
 
@@ -230,25 +232,26 @@ where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on e
 | `SYNC_INTERVAL_MS` | `24 * 60 * 60 * 1000` |
 | `MAX_RATING_IDS` | `200` |
 | `TMDB_API_BASE` | `https://api.themoviedb.org/3` |
-| `TMDB_IMAGE_BASE` | `https://image.tmdb.org/t/p/original` |
-| `TMDB_POSTER_CONCURRENCY` | `max(1, Number(process.env.TMDB_CONCURRENCY) \|\| 3)` |
+| `TMDB_IMAGE_BASE` | `https://image.tmdb.org/t/p/w342` |
+| `TMDB_POSTER_CONCURRENCY` | `max(1, Number(process.env.TMDB_CONCURRENCY) \|\| 12)` |
 | `TMDB_POSTER_PAGE_SIZE` | `max(50, Number(process.env.TMDB_POSTER_PAGE) \|\| 400)` |
 | `MAX_DIRECTORS` | `4` |
 | `MAX_CAST` | `8` |
-| `TITLE_BATCH` | `2000` |
-| `PERSON_BATCH` | `5000` |
-| `STAGING_BATCH` | `5000` |
+| `TITLE_BATCH` | `10_000` |
+| Multi-row INSERT | 50 titles / 80 people values per statement |
 | `RATING_CHUNK` | `5000` |
-| Count cache TTL | `30_000` ms |
+| Count cache | no TTL; key `{revision, librarySkipRev, condition, params, fts}`; invalidate on rebuild / library skip change |
 | Facets cache TTL | `10 * 60 * 1000` ms |
 | Media cache `Cache-Control` | `public, max-age=604800, immutable` |
+| Gzip stream | `highWaterMark` / gunzip `chunkSize` `256 * 1024` |
 | Gzip reuse min size | `64` bytes, magic `0x1f 0x8b` |
 | JSON body limit | `15mb` |
 | Licensed import cap | `50_000` titles, `version: 1` |
 | API list `pageSize` default | `25` (max `100`; `limit` overrides `pageSize`) |
 | Desktop discover `pageSize` | `40` |
 | For You candidate `imdb_votes` floor | `5000` |
-| For You default/desktop limit | `250` (API max `500`) |
+| For You default/max | `80` / `120` |
+| Desktop For You slice | `40` after scoring |
 | Desktop HTTP retries | search: 2 / 4000 ms; health: 1 / 1000 ms; long: 4 / 20000 ms |
 
 On-disk dump files under `DATA_DIR`:
@@ -265,71 +268,60 @@ On-disk dump files under `DATA_DIR`:
 
 “Hydrate” means two different things. Do not conflate them:
 
-1. **SQL hydration** (`hydrateTitles`): after a title-row SELECT, batch-load `title_genres` and `title_people` into `TitleDto`.
+1. **SQL hydration** (`hydrateTitles`): after a title-row SELECT, batch-load `title_genres` and `title_people` JOIN `people` into `TitleDto` display names.
 2. **TMDB media fill** (`findTitleMedia` / `updatePosterUrls`): write `poster_url` and `synopsis` onto existing title rows.
 
 ```mermaid
 flowchart TD
-  ensureCatalog["ensureCatalog"]
-  skipUsable["skip if usable catalog"]
-  downloadTitleDumps["downloadTitleDumps"]
-  stageRatings["stageRatings"]
-  snapshotLibrary["snapshotLibrary + snapshotPosterUrls"]
-  startRebuild["startRebuild"]
-  importBasics["importBasics"]
-  insertTitleRows["insertTitleRows"]
-  restorePosters["updatePosterUrls restore"]
-  finishRebuild["finishRebuild"]
-  setCatalogMeta["setCatalogMeta"]
-  startCreditsBuild["startCreditsBuild"]
-  startPosterEnrichment["startPosterEnrichment"]
-  ratingsSyncLoop["syncDataset loop 24h"]
-  hydrateOnQuery["hydrateTitles on query"]
-  serveV1["GET /v1/titles"]
+  ensure["ensureCatalog"]
+  dumps["HEAD dumps"]
+  skip["skip titles if ETags unchanged"]
+  ratingsMap["ratings gzip to Map"]
+  reconcile["upsert changed titles + delete missing"]
+  ftsFirst["first build: deferred FTS rebuild"]
+  creditsSkip["skip credits if dump meta unchanged"]
+  creditsScan["scan crew/principals; write credit diffs"]
+  names["resolve unknown nconsts only"]
+  ratingsDiff["ratings UPDATE where values changed"]
+  tmdb["TMDB find: concurrency 12, w342, no request blocking"]
+  serve["GET /v1/titles"]
 
-  ensureCatalog --> skipUsable
-  skipUsable -->|"force or empty/unhealthy"| downloadTitleDumps
-  skipUsable -->|"usable"| startCreditsBuild
-  downloadTitleDumps --> stageRatings
-  stageRatings --> snapshotLibrary
-  snapshotLibrary --> startRebuild
-  startRebuild --> importBasics
-  importBasics --> insertTitleRows
-  insertTitleRows --> restorePosters
-  restorePosters --> finishRebuild
-  finishRebuild --> setCatalogMeta
-  setCatalogMeta --> startCreditsBuild
-  setCatalogMeta --> startPosterEnrichment
-  setCatalogMeta --> ratingsSyncLoop
-  startCreditsBuild --> hydrateOnQuery
-  startPosterEnrichment --> hydrateOnQuery
-  hydrateOnQuery --> serveV1
+  ensure --> dumps
+  dumps --> skip
+  skip -->|"changed or empty"| ratingsMap
+  skip -->|"unchanged"| creditsSkip
+  ratingsMap --> reconcile
+  reconcile --> ftsFirst
+  ftsFirst --> creditsSkip
+  creditsSkip -->|"changed"| creditsScan
+  creditsScan --> names
+  reconcile --> ratingsDiff
+  ftsFirst --> tmdb
+  serve --> tmdb
 ```
 
 ### 5.1 Stage table
 
 | Stage | Function | Behavior |
 | --- | --- | --- |
-| Skip-if-usable | `ensureCatalog` / `catalogIsUsable` | Skip rebuild when `titleCount > 0` AND `builtAt` set AND `isHealthy()` unless `force: true`. If a leftover `buildInProgress` flag is set, clear it. Still call `startCreditsBuild` (no-op if credits already ready). |
-| Dump reuse | `ensureGzipFile(..., force=false)` | HEAD probe; reuse local gzip if valid magic/size and ETag or Last-Modified or Content-Length match `{file}.meta.json`. Incomplete `.tmp` files deleted on API start. |
-| Title dumps | `downloadTitleDumps` | Parallel: `title.ratings.tsv.gz` and `title.basics.tsv.gz`. Progress reported into catalog status `download`. |
-| Stage ratings | `stageRatings` | Stream ratings TSV into `ratings_staging`. |
-| Snapshot | `snapshotLibrary`, `snapshotPosterUrls` | Preserve library rows and any non-null poster/synopsis before DELETE. |
-| Rebuild start | `startRebuild` | FKs off. DELETE `title_people`, `title_genres`, `titles`. Library is **not** relied on to cascade (FKs are off); `finishRebuild` deletes `library_entries` then restores the snapshot. Invalidate facet + count caches. FTS triggers fire on DELETE/INSERT. |
-| Import titles | `importBasics` → `insertTitleRows` | Batches of 2000; compute `bayesian_score`; insert genres. |
-| Restore media | `updatePosterUrls` | Restore poster/synopsis for ids still in `titleIdSet()`. `updatePosterUrls` never overwrites a non-NULL column; null incoming values become `""`. |
-| Finish titles | `finishRebuild` | DELETE remaining library, restore snapshotted entries whose `title_id` still exists. Re-enable FKs. |
-| Meta | `setCatalogMeta` | `builtAt` ISO now, `revision = builtAt`, `source = "imdb-noncommercial-datasets"`, `titlesReady=1`. Clear `buildInProgress`. `queueAnalyze()`. |
-| Credits (API vs CLI) | `startCreditsBuild` / `buildCatalog` | After titles, `ensureCatalog` (API startup and `POST /v1/catalog/rebuild`) calls `void startCreditsBuild` — credits run in the **background** so search can open. CLI `npm run build:catalog` calls `buildCatalog`, which **awaits** credits before returning. `runBuildTitles` ignores `options.force` for dumps (`ensureGzipFile(..., false)` always). `--force` on the CLI is accepted but does not re-download unchanged dumps; the CLI always rebuilds SQLite because it does not go through `catalogIsUsable`. |
-| Credits import | `runBuildCredits` | Skip if `creditsReady && !creditsInProgress`. Download crew/principals/names. `startCreditsRebuild` deletes only `title_people`. Directors: first 4 `nconst` from `title.crew`. Cast: `actor`/`actress` principals, trim to 8 by ordering. Resolve names from `name.basics`. `insertPeople` batches of 5000. Set `creditsReady`. `ANALYZE title_people`. Failure logs a warning; titles stay usable. |
-| TMDB overlay | `startPosterEnrichment` | No-op without `TMDB_API_KEY` or desktop settings key. Priority ids first, then `imdb_votes DESC` where `poster_url IS NULL OR synopsis IS NULL`. `GET {TMDB_API_BASE}/find/{imdbId}?external_source=imdb_id&language=en-US`. Prefer `tv_results` for `tv`/`miniseries`, else `movie_results`. Poster URL = `TMDB_IMAGE_BASE + poster_path`. Miss writes `""`. Concurrency default 3, page size default 400. 429 retries; 401/403 abort. |
-| Ratings loop | `syncDataset` | On startup after ensure, then every `SYNC_INTERVAL_MS`. Re-download ratings if missing, stale (>24h mtime), or `force`. `RatingsStore.replace` loads the map, then `upsertRatingsChunked` UPDATEs existing title rows only; when that persist finishes the in-memory map is cleared and `POST /ratings` falls back to SQLite. Failed refresh keeps last good in-memory set if already ready. |
-| Work queue | `catalogWorkQueue` | One-at-a-time: chunked rating writes, queued poster updates, ANALYZE. |
-| Serve | `listTitles` | `buildWhere` + ORDER BY + LIMIT/OFFSET + `hydrateTitles`. |
+| Skip-if-usable | `ensureCatalog` / `catalogIsUsable` | If usable (`titleCount > 0` AND `builtAt` AND `isHealthy()`) **and** `force` is false, still call `buildCatalogTitles` so HEAD/ETag runs. Leftover `buildInProgress` is cleared. Credits start in the background either way. |
+| Dump reuse | `ensureGzipFile(..., force)` | HEAD probe; reuse local gzip if valid magic/size and ETag or Last-Modified or Content-Length match `{file}.meta.json`. `--force` / `POST /v1/catalog/rebuild` re-downloads (`force=true`) then **reconciles** (does not wipe). Incomplete `.tmp` files deleted on API start. |
+| Title dumps | `downloadTitleDumps` | Parallel: `title.ratings.tsv.gz` and `title.basics.tsv.gz`. Progress reported into catalog status `download`. Fingerprint = ratings dump fingerprint + basics dump fingerprint (`etag` else `lastModified` else `size`). |
+| Unchanged titles | `runBuildTitles` | If not `force`, catalogue already has titles + `builtAt`, and stored `titlesDumpFingerprint` matches → return `{ unchanged: true }` without parsing. `ensureCatalog` then returns `null`. |
+| Ratings Map | `parseRatingsTsv` | Stream ratings TSV into a JS `Map`. Used only for this ingest; dropped after `ingestTitles`. Daily `syncDataset` streams the gzip into SQLite and does not keep the Map. |
+| Reconcile | `ingestTitles` → `startTitleIngest` / `upsertTitleRows` / `finishTitleIngest` | Temp `ingest_seen`. Stream basics with §4.5 keep-filters. Rating from the Map. Batch `INSERT … ON CONFLICT(id) DO UPDATE SET … WHERE` title/kind/year/runtime/rating/votes differ. **Never** set `poster_url`/`synopsis` on conflict. Replace a title’s genre rows only when the genre list changed. `DELETE FROM titles WHERE id NOT IN ingest_seen` (FK CASCADE drops genres/people/library for gone ids). Create `ingest_seen` **after** `beginBulkLoad` (temp_store=MEMORY would drop a pre-existing TEMP table). |
+| First insert | empty DB | `beginBulkLoad`: drop FTS triggers, `synchronous=OFF`, `temp_store=MEMORY`, multi-row INSERT. `endBulkLoad` rebuilds FTS once. Incremental runs keep triggers; FTS `WHEN` handles the small diff. |
+| Meta | `setCatalogMeta` | `builtAt` ISO now, `revision = builtAt`, `source = "imdb-noncommercial-datasets"`, `titlesReady=1`, store `titlesDumpFingerprint`. Clear `buildInProgress`. `queueAnalyze()` on the maintenance queue (250ms idle), not on the ratings/media queues. |
+| Credits (API vs CLI) | `startCreditsBuild` / `buildCatalog` | After titles, `ensureCatalog` (API startup and `POST /v1/catalog/rebuild`) calls `void startCreditsBuild` — credits run in the **background** so search can open. CLI `npm run build:catalog` calls `buildCatalog`, which **awaits** credits before returning. |
+| Credits import | `runBuildCredits` | Skip if `creditsReady && !creditsInProgress` **and** credits dump fingerprint matches. Else scan crew/principals as now. `startCreditsRebuild` does **not** `DELETE FROM title_people`. Keep `MAX_DIRECTORS` / `MAX_CAST`. Upsert `people` only for nconsts not already present; `importNames` skips `neededNames` already in `people`. Replace `title_people` per title only when the nconst list changed. Set `creditsReady` and `creditsDumpFingerprint`. `ANALYZE title_people` on the maintenance queue. Failure logs a warning; titles stay usable. |
+| TMDB overlay | `startPosterEnrichment` | No-op without `TMDB_API_KEY` or desktop settings key; logs that message once per process and leaves existing `poster_url` values alone. Priority ids first (ids that still `titleNeedsMedia`), then `imdb_votes DESC` where `poster_url IS NULL OR synopsis IS NULL`. `GET {TMDB_API_BASE}/find/{imdbId}?external_source=imdb_id&language=en-US`. Prefer `tv_results` for `tv`/`miniseries`, else `movie_results`. Poster URL = `TMDB_IMAGE_BASE + poster_path` (`w342`). Miss writes `""`. Concurrency default 12, page size default 400. 429 retries; 401/403 abort. Poster writes go through `mediaWorkQueue`. |
+| Ratings loop | `syncDataset` | On startup after ensure, then every `SYNC_INTERVAL_MS`. Re-download ratings if missing, stale (>24h mtime), or `POST /sync` `force`. If the file is present, not stale, and the store/catalog is already ready, **return without rewriting rows** (title ingest already wrote today’s ratings). `upsertRatingsFromFile` streams gzip and `UPDATE … WHERE imdb_rating IS NOT ? OR imdb_votes IS NOT ?` for ids that exist. `RatingsStore` does not keep the dump Map after persist; `POST /ratings` reads SQLite. Failed refresh keeps last good in-memory set if already ready. |
+| Work queues | split | `catalogWorkQueue`: chunked rating writes. `mediaWorkQueue`: queued poster updates. `maintenanceWorkQueue`: `ANALYZE` after 250ms idle. |
+| Serve | `listTitles` | `buildWhere` + ORDER BY + LIMIT/OFFSET + `hydrateTitles` (JOIN `people` for names). |
 
 Usable catalog after titles are imported: search works with empty `directors`/`cast` until credits finish (`titlesReady` does not require `creditsReady`).
 
-Licensed overlay is a parallel ingest path, not part of the IMDb rebuild: `POST /v1/imports/catalog` upserts supplied metadata (replaces genres/people for those ids), then applies in-memory ratings for those ids. On `ON CONFLICT(id)`, the upsert updates title/kind/year/runtime/synopsis/poster/`updated_at` only — it does **not** overwrite `imdb_rating`, `imdb_votes`, or `bayesian_score`. New rows insert those rating columns as null, then `upsertRatings` fills them from `RatingsStore`. Ratings remain IMDb-synced via `/sync` and the daily job.
+Licensed overlay is a parallel ingest path, not part of the IMDb rebuild: `POST /v1/imports/catalog` upserts supplied metadata (replaces genres/people for those ids; people keys via `personKey`), then applies ratings for those ids from SQLite/`RatingsStore`. On `ON CONFLICT(id)`, the upsert updates title/kind/year/runtime/synopsis/poster/`updated_at` only — it does **not** overwrite `imdb_rating`, `imdb_votes`, or `bayesian_score`. New rows insert those rating columns as null, then `upsertRatings` fills them. Ratings remain IMDb-synced via `/sync` and the daily job.
 
 ---
 
@@ -373,7 +365,7 @@ sequenceDiagram
 - Page 1 replaces results and opens the first title. Later pages append (infinite scroll).
 - Page size is **not** set in the renderer; main hardcodes `40`.
 
-App boot (`App.tsx`) blocks on `catalog:status` until `phase === "ready"` (`CatalogLoader` during `starting`/`building`).
+App boot (`App.tsx`) blocks only when there is no usable catalogue (`isCatalogUiBlocked`: no `titlesReady` / `titleCount` while `starting`/`building`). A later launch with an existing SQLite catalogue stays interactive while dump HEAD checks run; `ensureCatalog` keeps `phase: "ready"` when the catalogue is already usable.
 
 ### 6.2 Default Discover filters
 
@@ -413,7 +405,7 @@ From `defaultFilters()`:
 | `language` | **no** | unused |
 | `cast` / `directors` / `keywords` / `providers` | **no** | IPC stubs return `[]` |
 
-**Always-on catalogue rule (not a UI toggle):** search `WHERE` always includes
+**Always-on catalogue rule (not a UI toggle):** search `WHERE` excludes skipped titles. The `NOT EXISTS (… status = 'skipped')` subquery is omitted when there are zero skipped library rows.
 
 ```sql
 NOT EXISTS (
@@ -442,7 +434,7 @@ SQL sort columns:
 | --- | --- |
 | `title` | `t.title COLLATE NOCASE` |
 | `year` | `t.year` |
-| `rating` | `t.bayesian_score` |
+| `rating` | `t.imdb_rating`, then `t.imdb_votes` |
 | `votes` | `t.imdb_votes` |
 | `updatedAt` | `t.updated_at` |
 
@@ -453,15 +445,15 @@ Tie-breaker always: `t.id ASC`. Order is `ASC` only when `query.order` uppercase
 1. If `query` trimmed matches `/^tt\d+$/i` → `t.id = @id` (lowercased). **No FTS.**
 2. Else tokenize: strip `"*():^,-`, split on whitespace, strip non-letter/number per Unicode, drop empty. If any tokens remain, FTS5 `MATCH` `token1* AND token2* AND …` and `JOIN titles_fts f ON f.rowid = t.rowid`.
 3. Optional genre IN-list EXISTS, exact `kind`, range filters on `year`, `imdb_rating`, `imdb_votes`, `runtime_minutes`.
-4. Always exclude skipped.
+4. Exclude skipped when any skipped library rows exist.
 5. Optional hide watched / hide watchlist via NOT EXISTS.
 
 ### 6.6 Pagination and totals
 
 - Offset = `(page - 1) * pageSize`.
-- Count cache: 30s TTL keyed by `{ condition, params, fts }`.
+- Count cache: no TTL; keyed by `{ revision, librarySkipRev, condition, params, fts }`. Invalidate on title reconcile / FTS bulk end / library skip upsert or delete (not on a timer).
 - `includeTotal !== false` (desktop page 1): run COUNT unless cache hit.
-- `includeTotal === false` (desktop page > 1): use cache if present; else if this page is short, `total = offset + rows.length`; else `total = offset + rows.length + 1` (estimate). `totalPages = max(1, ceil(total / pageSize))`.
+- `includeTotal === false` (desktop page > 1): use cache if present; on cache miss still COUNT once and store it. If a future change skips COUNT, a full page must estimate `total >= offset + rows.length + 1` so clients can request the next page.
 
 ### 6.7 DTO mapping (`TitleDto` → `MovieSummary`)
 
@@ -478,14 +470,14 @@ Tie-breaker always: `t.id ASC`. Order is `ASC` only when `query.order` uppercase
 
 After a successful discover:
 
-1. Fire-and-forget `POST /v1/catalog/enrich-posters` with visible IMDb ids, current filter query, `extraPages: 2` (look-ahead pages of the same query, pageSize 40).
-2. If `sortBy === "match"` **and** taste profile `ratedCount >= 3`, re-sort the **current page** with `scoreMovie` / `sortMovies("match")` in `apps/desktop/src/main/ranking.ts`. Do not reimplement ranking here. If `ratedCount < 3`, return API vote-desc order unchanged.
+1. Fire-and-forget `POST /v1/catalog/enrich-posters` with **visible** IMDb ids only (no look-ahead pages). The API keeps only ids that still `titleNeedsMedia`.
+2. If `sortBy === "match"` **and** taste profile `ratedCount >= 3`, re-sort the **current page** with `scoreMovie` / `sortMovies("match")` in `apps/desktop/src/main/ranking.ts`. Library and genre facets for match-sort are cached in desktop main until a library upsert/remove/clear. Do not reimplement ranking here. If `ratedCount < 3`, return API vote-desc order unchanged.
 
 Network-down (`CatalogError.status === 0`) on discover returns empty `{ page: 1, totalPages: 0, totalResults: 0, results: [] }` instead of throwing.
 
 ### 6.9 For You catalogue query (not ranking)
 
-`GET /v1/for-you?limit=` (default 250, max 500) returns `{ library, facets, candidates }` where candidates are:
+`GET /v1/for-you?limit=` (default 80, max 120) returns `{ library, facets, candidates }` where candidates are:
 
 ```sql
 SELECT t.* FROM titles t
@@ -498,7 +490,7 @@ ORDER BY t.imdb_votes DESC, t.id ASC
 LIMIT ?
 ```
 
-then `hydrateTitles`. Desktop scores these and slices to 40; that scoring is out of this spec.
+then `hydrateTitles`. Desktop scores these and slices to 40 **before** poster enrich; that scoring is out of this spec.
 
 ---
 
@@ -512,15 +504,15 @@ Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 | --- | --- | --- | --- | --- |
 | `GET` | `/health` | 200 | — | `HealthResponse` below |
 | `GET` | `/v1/titles` | 200 / 400 | `listQuery` | `TitleListResponse` |
-| `GET` | `/v1/titles/:id` | 200 / 404 | `tt` id | `{ data: TitleDto }`; if `titleNeedsMedia` (`poster_url` or `synopsis` IS NULL) and TMDB key exists, `enrichOneTitle` then re-read |
+| `GET` | `/v1/titles/:id` | 200 / 404 | `tt` id | `{ data: TitleDto }`; if `titleNeedsMedia` (`poster_url` or `synopsis` IS NULL), `void startPosterEnrichment({ ids: [id] })` — **do not await** TMDB; response may still have `posterUrl: null` |
 | `GET` | `/v1/facets` | 200 | — | `FacetsResponse`. In-memory 10 min TTL. Genres: `GROUP BY genre ORDER BY count DESC, genre`. Kinds: `GROUP BY kind ORDER BY count DESC, kind`. Years: `min(year)`, `max(year)`. |
-| `GET` | `/v1/for-you` | 200 | `limit` 1–500 default 250 | `ForYouResponse` |
-| `GET` | `/v1/media?src=` | 200 / 400 / 404 / 502 | https URL on `image.tmdb.org` \| `media.themoviedb.org` \| `www.themoviedb.org` | image bytes, disk cache under `POSTER_CACHE_DIR/{size}/{sha1}{ext}` |
+| `GET` | `/v1/for-you` | 200 | `limit` 1–120 default 80 | `ForYouResponse` |
+| `GET` | `/v1/media?src=` | 200 / 400 / 404 / 502 | https URL on `image.tmdb.org` \| `media.themoviedb.org` \| `www.themoviedb.org` | stream/pipe image bytes (`createReadStream` / `pipeline`), disk cache under `POSTER_CACHE_DIR/{size}/{sha1}{ext}` |
 | `GET` | `/v1/library` | 200 | optional `status` | `{ data: LibraryEntryDto[] }` newest `updated_at` first |
 | `PUT` | `/v1/library/:id` | 200 / 404 | `{ status, personalRating?, note? }` | `{ data: LibraryEntryDto }`. If `status==="watched"` and `personalRating` is provided it must not be `null`. |
 | `DELETE` | `/v1/library/:id` | 204 / 404 | — | empty |
-| `POST` | `/v1/catalog/rebuild` | 202 / 409 | `{ force?: boolean }` | `{ ok: true, ...catalogStatus() }`. Always starts `ensureCatalog({ force: true })` if not already building. Then ratings sync + poster enrichment. |
-| `POST` | `/v1/catalog/enrich-posters` | 202 | optional `ids` (max 400), `extraPages` 0–5, plus list-query fields | `{ ok: true, running }` |
+| `POST` | `/v1/catalog/rebuild` | 202 / 409 | `{ force?: boolean }` | `{ ok: true, ...catalogStatus() }`. Always starts `ensureCatalog({ force: true })` if not already building. Then ratings sync **without** force (skip persist if the file is fresh) + poster enrichment. |
+| `POST` | `/v1/catalog/enrich-posters` | 202 | optional `ids` (max 400) | `{ ok: true, running }`. Ignores look-ahead/filter fields. Only ids that `titleNeedsMedia` are queued. |
 | `POST` | `/v1/imports/catalog` | 201 / 400 | manifest below | `{ data: ImportStatusDto }`. Completes synchronously. Duplicate ids rejected. |
 | `GET` | `/v1/imports/:id` | 200 / 404 | UUID | `{ data: ImportStatusDto }` |
 | `POST` | `/ratings` | 200 / 400 / 503 | `{ ids: tt[] }` max 200 | `{ syncedAt, ratings }` from `RatingsStore` |
@@ -623,7 +615,7 @@ Runtime poll: `POLL_MS = 250`, start timeout `30_000`. Rebuild 409 is treated as
 | Command | Effect |
 | --- | --- |
 | `npm run dev:api` | API with `tsx watch` |
-| `npm run build:catalog` | always rebuilds SQLite titles then **waits** for credits; dumps reused unless remote HEAD changed; `--force` does not skip `catalogIsUsable` (CLI never checks it) and does not force dump re-download |
+| `npm run build:catalog` | HEAD dumps; skip parse when fingerprints match; otherwise reconcile titles then **wait** for credits. `--force` re-downloads dumps then reconciles (never wipe-rebuild) |
 | `npm run enrich:posters` | TMDB backfill |
 | `npm run migrate -w @imdbrain/api` | apply SQLite migrations |
 | `npm test` | `@imdbrain/api` tests including `catalog.test.ts` |
@@ -636,22 +628,23 @@ Behavioral tests in `apps/api/src/catalog/catalog.test.ts` plus live query/build
 
 1. **Titles ready without credits.** After inserting titles and `setCatalogMeta({ builtAt, revision, source })`, `titlesReady() === true` and `creditsReady() === false` until people exist or the credits flag is set.
 2. **Batch SQL hydration.** `listTitles` attaches genres (alphabetical from `ORDER BY genre`) and people (`ORDER BY role, position`, bucketed into `directors` / `cast`).
-3. **Rating sort uses bayesian_score.** A 10.0 title with 12 votes ranks below a 9.0 title with 500_000 votes when `sort=rating&order=desc`.
+3. **Rating sort uses displayed IMDb rating then votes.** An 8.5 title with 580_000 votes ranks above an 8.3 title with 1_700_000 votes when `sort=rating&order=desc`.
 4. **FTS prefix.** Query `"matr"` matches title `"The Matrix"` and not unrelated titles.
 5. **Exact IMDb id.** Query `"tt0133093"` uses `t.id` equality, not FTS.
 6. **`includeTotal: false` still pages.** A full page estimates `total >= actual` so clients can request the next page.
 7. **For You candidates exclude watched and skipped.** `imdb_votes >= 5000`; watchlist titles may still appear; watched/skipped must not.
 8. **Skipped titles never appear in `/v1/titles` search**, even if `hideWatched`/`hideWatchlist` are unset.
-9. **Rebuild preserves library and media** for surviving title ids: snapshot before DELETE, restore only rows whose `title_id` still exists after import. Dropped titles are not restored. Do not depend on FK CASCADE during rebuild (FKs are off).
-10. **Ratings-only sync does not insert titles.**
+9. **Reconcile preserves library and media** for surviving title ids: upsert-if-changed never overwrites `poster_url`/`synopsis`; `DELETE … NOT IN ingest_seen` drops gone ids (FK CASCADE). Survivors keep the same `rowid`. Wipe-rebuild and JS library/media snapshots are not used.
+10. **Ratings-only sync does not insert titles.** Unchanged rating/votes pairs produce `0` SQLite `changes`.
 11. **TMDB miss vs pending:** `NULL` = not looked up; `''` = looked up, none found; do not retry `''`. `updatePosterUrls` writes only when the column is currently `NULL`.
-12. **Dump reuse** does not require `--force` on gzip files during SQLite rebuild; HEAD/ETag/size/gzip checks still skip re-download.
+12. **Dump reuse** skips gzip re-download when HEAD/ETag/size/gzip checks match. Unchanged dump fingerprints skip TSV parse. `--force` re-downloads then reconciles.
 13. **IDs lowercased** at ingest, import, library, and query.
 14. **Genre chips** round-trip only if desktop uses `genreId(name)` as specified.
-15. **Credits caps:** ≤4 directors, ≤8 unique cast nconsts per title; unresolved nconsts omitted (no empty names).
-16. **Health `ready`** is false while `building` or `error`, even if some titles exist.
-17. **CORS** rejects non-localhost browser origins.
-18. **People storage is names on titles**, not a people catalogue.
+15. **Credits caps:** ≤4 directors, ≤8 unique cast nconsts per title; unresolved nconsts omitted (no empty names). Known nconsts are not re-read from `name.basics`.
+16. **Health `ready`** is true when titles exist and phase is not `error`, including dump checks against an already-usable catalogue. It is false during a first build (`building` and not `titlesReady`) or `error`.
+17. **Missing TMDB key** logs once per process that new poster lookups are skipped; existing `poster_url` values still render via `/v1/media`.
+18. **CORS** rejects non-localhost browser origins.
+19. **People storage is `nconst`**, not display-name PKs. `TitleDto.directors` / `cast` are still **names** via `hydrateTitles` JOIN. There are no `nm` ids in API responses.
 
 ---
 
@@ -663,7 +656,8 @@ Do **not** implement these as working catalogue features. They exist as TypeScri
 - Discover fields `withoutGenres`, `cast`, `directors`, `keywords`, `providers`, `language`, `ratingMax` are not query parameters
 - Separate people / keyword / watch-provider indexes
 - Desktop-direct TMDB or IMDb HTTP
-- Ranking algorithm, ranking modes, For You insight text, IMDb CSV import UI, search-history persistence
+- Ranking algorithm, ranking modes, For You insight text, IMDb CSV import UI
+- Search history is persisted in desktop `userData` (`rescore.json`) via IPC, not in this catalogue API
 - `movieMeta` IPC (exists; Discover does not call it for catalogue search)
 - Vendor-specific licensed bundle formats other than the version-1 JSON manifest above
 

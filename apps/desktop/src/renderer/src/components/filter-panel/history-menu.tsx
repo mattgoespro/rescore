@@ -159,8 +159,8 @@ export default function HistoryMenu({
                 </>
               ) : (
                 <p className="m-0 px-2.5 py-3 text-[12px] leading-[1.45] text-muted">
-                  No saved searches yet. Scroll through results or open a couple
-                  of titles to record the current filters.
+                  No saved searches yet. Run a search with filters or a sort
+                  other than the defaults to record it.
                 </p>
               )}
             </div>,

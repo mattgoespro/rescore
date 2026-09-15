@@ -61,6 +61,37 @@ export function isDefaultSearchHistory(snapshot: SearchHistoryInput): boolean {
   );
 }
 
+export function shouldRecordSearchHistory(options: {
+  saved: boolean;
+  snapshot: SearchHistoryInput;
+}): boolean {
+  if (options.saved) return false;
+  return !isDefaultSearchHistory(options.snapshot);
+}
+
+export function upsertSearchHistory(
+  current: SearchHistoryEntry[],
+  input: SearchHistoryInput,
+  now = new Date().toISOString(),
+): SearchHistoryEntry[] {
+  const key = searchHistoryKey(input);
+  const existing = current.find((entry) => searchHistoryKey(entry) === key);
+  const next: SearchHistoryEntry = {
+    id: existing?.id ?? crypto.randomUUID(),
+    savedAt: now,
+    titleKind: input.titleKind,
+    genres: input.genres.map((genre) => ({ id: genre.id, name: genre.name })),
+    yearMin: input.yearMin,
+    yearMax: input.yearMax,
+    ratingMin: input.ratingMin,
+    sortBy: input.sortBy,
+  };
+  return [next, ...current.filter((entry) => entry.id !== next.id)].slice(
+    0,
+    SEARCH_HISTORY_LIMIT,
+  );
+}
+
 export function applySearchHistory(
   filters: DiscoverFilters,
   entry: SearchHistoryEntry,

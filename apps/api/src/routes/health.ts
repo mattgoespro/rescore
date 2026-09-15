@@ -1,6 +1,9 @@
 import { Router } from "express";
 import type { CatalogDatabase } from "../services/catalog-db.js";
-import { catalogStatus } from "../services/ensure-catalog.js";
+import {
+  catalogHealthReady,
+  catalogStatus,
+} from "../services/ensure-catalog.js";
 import type { RatingsStore } from "../services/ratings-store.js";
 import type { HealthResponse } from "../types.js";
 
@@ -16,7 +19,11 @@ export function healthRouter(store: RatingsStore, catalog: CatalogDatabase): Rou
     const ready = catalog.readiness();
     const body: HealthResponse = {
       ok: true,
-      ready: titleCount > 0 && !building && runtime.phase !== "error",
+      ready: catalogHealthReady(
+        titleCount,
+        runtime.phase,
+        ready.titlesReady,
+      ),
       building,
       catalogPhase: runtime.phase,
       catalogMessage: runtime.message,

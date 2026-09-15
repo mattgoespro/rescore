@@ -5,7 +5,6 @@ import {
   useState,
   type JSX,
   type ReactNode,
-  type UIEvent,
 } from "react";
 import InfiniteScroll from "react-infinite-scroll-component";
 import type {
@@ -13,12 +12,13 @@ import type {
   Genre,
   MovieSummary,
   RankedMovie,
+  SearchHistoryEntry,
 } from "../../../shared/types";
 import { titleKey } from "../../../shared/types";
 import {
   applySearchHistory,
-  isDefaultSearchHistory,
   matchesSearchHistory,
+  shouldRecordSearchHistory,
   snapshotSearchHistory,
 } from "../../../shared/search-history";
 import {
@@ -36,9 +36,6 @@ import { cn } from "../lib/cn";
 import { segmentedCell, segmentedGroup } from "../lib/ui";
 
 const SEARCH_DEBOUNCE_MS = 400;
-const HISTORY_SCROLL_PX = 400;
-const HISTORY_SCROLL_VIEWPORT = 0.65;
-const HISTORY_OPEN_COUNT = 2;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
 
 export default function Discover({
@@ -68,7 +65,7 @@ export default function Discover({
   const [entering, setEntering] = useState(false);
   const [layout, setLayout] = useState<"list" | "grid">("list");
   const [gridCols, setGridCols] = useState(1);
-  const [history, setHistory] = useState(listSearchHistory);
+  const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const filtersRef = useRef(filters);
@@ -77,7 +74,7 @@ export default function Discover({
   const totalPagesRef = useRef(1);
   const loadingRef = useRef(true);
   const loadingMoreRef = useRef(false);
-  const historySession = useRef({ saved: false, opens: 0 });
+  const historySession = useRef({ saved: false });
   filtersRef.current = filters;
   genresRef.current = genres;
   pageRef.current = page;
@@ -94,8 +91,12 @@ export default function Discover({
   );
 
   useEffect(() => {
-    historySession.current = { saved: false, opens: 0 };
+    historySession.current = { saved: false };
   }, [filterKey]);
+
+  useEffect(() => {
+    void listSearchHistory().then(setHistory);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -143,6 +144,7 @@ export default function Discover({
         const first = data.results[0];
         if (first) onOpen(first);
         setEntering(true);
+        recordSearchHistory();
       }
     } catch (error) {
       if (id !== requestId.current) return;
@@ -168,20 +170,7 @@ export default function Discover({
     void load(pageRef.current + 1, false);
   }
 
-  function onResultsScroll(event: UIEvent<HTMLDivElement>): void {
-    const el = event.currentTarget;
-    if (
-      el.scrollTop <
-      Math.max(HISTORY_SCROLL_PX, el.clientHeight * HISTORY_SCROLL_VIEWPORT)
-    )
-      return;
-    recordSearchHistory();
-  }
-
   function handleCardOpen(movie: MovieSummary): void {
-    historySession.current.opens += 1;
-    if (historySession.current.opens >= HISTORY_OPEN_COUNT)
-      recordSearchHistory();
     onOpen(movie);
   }
 
@@ -191,16 +180,21 @@ export default function Discover({
       filtersRef.current,
       genresRef.current,
     );
-    if (isDefaultSearchHistory(snapshot)) {
+    if (
+      !shouldRecordSearchHistory({
+        saved: historySession.current.saved,
+        snapshot,
+      })
+    ) {
       historySession.current.saved = true;
       return;
     }
     historySession.current.saved = true;
-    try {
-      setHistory(saveSearchHistory(snapshot));
-    } catch {
-      historySession.current.saved = false;
-    }
+    void saveSearchHistory(snapshot)
+      .then(setHistory)
+      .catch(() => {
+        historySession.current.saved = false;
+      });
   }
 
   useEffect(() => {
@@ -242,7 +236,9 @@ export default function Discover({
         onApplyHistory={(entry) =>
           setFilters(applySearchHistory(filters, entry))
         }
-        onRemoveHistory={(id) => setHistory(removeSearchHistory(id))}
+        onRemoveHistory={(id) => {
+          void removeSearchHistory(id).then(setHistory);
+        }}
       />
       <div className="flex min-h-0 min-w-0 flex-col pt-5 pr-0 pb-4 pl-4.5">
         <div className="mb-2 flex items-center justify-between gap-3 pr-4.5">
@@ -285,7 +281,6 @@ export default function Discover({
           <OverlayScroll
             ref={scrollerRef}
             id={SCROLLABLE_TARGET_ID}
-            onScroll={onResultsScroll}
             className={cn(refreshing && "opacity-45")}
           >
             {loading && !items.length ? (

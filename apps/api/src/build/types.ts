@@ -2,6 +2,7 @@ export interface CatalogBuildResult {
   titleCount: number;
   builtAt: string;
   revision: string;
+  unchanged?: boolean;
 }
 
 export interface CatalogBuildProgress {
@@ -27,6 +28,4 @@ export interface Credit {
 
 export const MAX_DIRECTORS = 4;
 export const MAX_CAST = 8;
-export const TITLE_BATCH = 2_000;
-export const PERSON_BATCH = 5_000;
-export const STAGING_BATCH = 5_000;
+export const TITLE_BATCH = 10_000;

@@ -2,20 +2,27 @@ import { app } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
+  normalizeSearchHistory,
+  upsertSearchHistory,
+  type SearchHistoryInput,
+} from "../shared/search-history";
+import {
   normalizeSettings,
   titleKey,
   type LibraryEntry,
   type MediaType,
+  type SearchHistoryEntry,
   type Settings,
 } from "../shared/types";
 
 interface PersistedState {
   settings: Settings;
   library: Record<string, LibraryEntry>;
+  searchHistory: SearchHistoryEntry[];
 }
 
 function emptyState(): PersistedState {
-  return { settings: normalizeSettings(), library: {} };
+  return { settings: normalizeSettings(), library: {}, searchHistory: [] };
 }
 
 export class AppStore {
@@ -49,6 +56,7 @@ export class AppStore {
       return {
         settings: normalizeSettings(raw.settings),
         library,
+        searchHistory: normalizeSearchHistory(raw.searchHistory),
       };
     } catch {
       return emptyState();
@@ -100,6 +108,27 @@ export class AppStore {
   clearLibrary(): void {
     this.state.library = {};
     this.save();
+  }
+
+  listSearchHistory(): SearchHistoryEntry[] {
+    return [...this.state.searchHistory];
+  }
+
+  saveSearchHistory(input: SearchHistoryInput): SearchHistoryEntry[] {
+    this.state.searchHistory = upsertSearchHistory(
+      this.state.searchHistory,
+      input,
+    );
+    this.save();
+    return this.listSearchHistory();
+  }
+
+  removeSearchHistory(id: string): SearchHistoryEntry[] {
+    this.state.searchHistory = this.state.searchHistory.filter(
+      (entry) => entry.id !== id,
+    );
+    this.save();
+    return this.listSearchHistory();
   }
 
   listImdbIds(): Record<string, string> {

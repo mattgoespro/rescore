@@ -17,6 +17,7 @@ import {
 import { CatalogClient, CatalogError, genreId } from "./catalog-client";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
+import type { SearchHistoryInput } from "../shared/search-history";
 import {
   buildProfile,
   describeProfile,
@@ -84,6 +85,7 @@ export function registerIpc(
   );
   ipcMain.handle("library:remove", async (_event, imdbId: string) => {
     await getClient().removeLibrary(imdbId);
+    matchCache = null;
     return getClient().listLibrary();
   });
   ipcMain.handle("library:clear", async () => {
@@ -91,10 +93,19 @@ export function registerIpc(
     await Promise.all(
       entries.map((entry) => getClient().removeLibrary(entry.imdbId)),
     );
+    matchCache = null;
     return [];
   });
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
+  ipcMain.handle("search-history:list", () => store.listSearchHistory());
+  ipcMain.handle(
+    "search-history:save",
+    (_event, input: SearchHistoryInput) => store.saveSearchHistory(input),
+  );
+  ipcMain.handle("search-history:remove", (_event, id: string) =>
+    store.removeSearchHistory(id),
+  );
   ipcMain.handle("ranking:forYou", () =>
     withCatalog(emptyForYou(), () => forYou()),
   );
@@ -115,6 +126,21 @@ interface LibraryUpsert {
 
 let catalogClient: CatalogClient | null = null;
 let catalogClientUrl = "";
+let matchCache: { library: LibraryEntry[]; genres: { id: number; name: string }[] } | null =
+  null;
+
+async function matchContext(): Promise<{
+  library: LibraryEntry[];
+  genres: { id: number; name: string }[];
+}> {
+  if (matchCache) return matchCache;
+  const [library, genres] = await Promise.all([
+    getClient().listLibrary(),
+    getClient().genres(),
+  ]);
+  matchCache = { library, genres };
+  return matchCache;
+}
 
 function getClient(): CatalogClient {
   const url = store.getSettings().catalogApiUrl;
@@ -163,16 +189,9 @@ async function startPosterEnrichment(baseUrl: string): Promise<void> {
 
 async function discover(filters: DiscoverFilters) {
   const page = await getClient().discover(filters);
-  void getClient().enrichPosters(
-    page.results.map((movie) => movie.imdbId),
-    filters,
-    2,
-  );
+  void getClient().enrichPosters(page.results.map((movie) => movie.imdbId));
   if (filters.sortBy !== "match") return page;
-  const [library, genres] = await Promise.all([
-    getClient().listLibrary(),
-    getClient().genres(),
-  ]);
+  const { library, genres } = await matchContext();
   const profile = buildProfile(library, genres);
   if (profile.ratedCount < 3) return page;
   const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
@@ -193,11 +212,12 @@ async function upsertLibrary({
   rating,
 }: LibraryUpsert): Promise<LibraryEntry[]> {
   await getClient().saveLibrary(movie as MovieSummary, status, rating);
+  matchCache = null;
   return getClient().listLibrary();
 }
 
 async function forYou(): Promise<ForYouResult> {
-  const payload = await getClient().forYouPage(250);
+  const payload = await getClient().forYouPage(80);
   const library = payload.library.map(
     ({ title, status, personalRating, updatedAt }) =>
       toLibraryFromDto(title, status, personalRating ?? undefined, updatedAt),
@@ -209,13 +229,13 @@ async function forYou(): Promise<ForYouResult> {
   const candidates = payload.candidates.map(toSummaryFromDto);
   const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
   const profile = buildProfile(library, genres);
-  void getClient().enrichPosters(candidates.map((movie) => movie.imdbId));
   const movies = sortMovies(
     candidates.map((movie) =>
       scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
     ),
     "match",
   ).slice(0, 40);
+  void getClient().enrichPosters(movies.map((movie) => movie.imdbId));
   return {
     profile: publicProfile(profile),
     insights: describeProfile(profile),

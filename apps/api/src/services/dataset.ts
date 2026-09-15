@@ -55,9 +55,13 @@ async function loadFromFile(
   file: string,
   persist: boolean,
 ): Promise<void> {
+  if (persist) {
+    await store.persistFromFile(file);
+    return;
+  }
   const ratings = await parseRatingsTsv(file);
   if (!ratings.size) throw new Error("IMDb ratings file parsed empty");
-  store.replace(ratings, new Date().toISOString(), persist);
+  store.replace(ratings, new Date().toISOString(), false);
 }
 
 export async function parseRatingsTsv(

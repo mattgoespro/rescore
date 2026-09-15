@@ -13,11 +13,13 @@ import type {
   MovieSummary,
   PagedMovies,
   PersonRef,
+  SearchHistoryEntry,
   Settings,
   TasteProfile,
   WatchProvider,
   WatchStatus,
 } from "../shared/types";
+import type { SearchHistoryInput } from "../shared/search-history";
 
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("settings:get"),
@@ -69,6 +71,14 @@ const api = {
     ipcRenderer.invoke("library:export"),
   importImdbCsv: (): Promise<ImportProgress> =>
     ipcRenderer.invoke("library:importImdbCsv"),
+  listSearchHistory: (): Promise<SearchHistoryEntry[]> =>
+    ipcRenderer.invoke("search-history:list"),
+  saveSearchHistory: (
+    input: SearchHistoryInput,
+  ): Promise<SearchHistoryEntry[]> =>
+    ipcRenderer.invoke("search-history:save", input),
+  removeSearchHistory: (id: string): Promise<SearchHistoryEntry[]> =>
+    ipcRenderer.invoke("search-history:remove", id),
   forYou: (): Promise<ForYouResult> => ipcRenderer.invoke("ranking:forYou"),
   profile: (): Promise<TasteProfile> => ipcRenderer.invoke("ranking:profile"),
   onImportProgress: (

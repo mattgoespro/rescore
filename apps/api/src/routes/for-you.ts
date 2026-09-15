@@ -4,7 +4,7 @@ import type { ForYouResponse } from "../catalog-types.js";
 import type { CatalogDatabase } from "../services/catalog-db.js";
 
 const query = z.object({
-  limit: z.coerce.number().int().min(1).max(500).default(250),
+  limit: z.coerce.number().int().min(1).max(120).default(80),
 });
 
 export function forYouHandler(db: CatalogDatabase) {
