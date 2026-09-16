@@ -67,6 +67,7 @@ export interface CatalogTitleRow {
 
 export interface CatalogPersonRow {
   titleId: string;
+  nconst: string;
   name: string;
   role: "director" | "cast";
   position: number;
@@ -86,3 +87,9 @@ export interface TitleRow {
 }
 
 export const IMDB_ID = /^tt\d+$/i;
+
+export function personKey(name: string): string {
+  const trimmed = name.trim();
+  if (/^nm\d+$/i.test(trimmed)) return trimmed.toLowerCase();
+  return `ex:${trimmed.toLowerCase()}`;
+}

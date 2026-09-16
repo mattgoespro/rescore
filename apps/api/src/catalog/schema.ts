@@ -60,7 +60,71 @@ export const migrations = [
   `CREATE INDEX IF NOT EXISTS titles_enrich_pending_idx
      ON titles(imdb_votes DESC, id)
      WHERE poster_url IS NULL OR synopsis IS NULL;`,
+  `DROP TRIGGER IF EXISTS titles_fts_au;
+   CREATE TRIGGER titles_fts_au AFTER UPDATE ON titles
+   WHEN old.title IS NOT new.title
+     OR old.original_title IS NOT new.original_title
+     OR old.id IS NOT new.id
+   BEGIN
+    INSERT INTO titles_fts(titles_fts, rowid, title, original_title, id)
+    VALUES ('delete', old.rowid, old.title, old.original_title, old.id);
+    INSERT INTO titles_fts(rowid, title, original_title, id)
+    VALUES (new.rowid, new.title, new.original_title, new.id);
+   END;`,
+  `CREATE TABLE IF NOT EXISTS people (
+      nconst TEXT PRIMARY KEY,
+      name TEXT NOT NULL
+    );
+    DROP TABLE IF EXISTS title_people;
+    CREATE TABLE title_people (
+      title_id TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+      nconst TEXT NOT NULL REFERENCES people(nconst),
+      role TEXT NOT NULL CHECK(role IN ('director','cast')),
+      position INTEGER NOT NULL,
+      PRIMARY KEY(title_id, nconst, role)
+    );
+    CREATE INDEX IF NOT EXISTS title_people_nconst_idx ON title_people(nconst);
+    DELETE FROM catalog_meta WHERE key = 'creditsReady';`,
+  `CREATE INDEX IF NOT EXISTS titles_kind_votes_desc_idx ON titles(kind, imdb_votes DESC);`,
 ];
+
+export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN
+    INSERT INTO titles_fts(rowid, title, original_title, id)
+    VALUES (new.rowid, new.title, new.original_title, new.id);
+   END;`;
+
+export const FTS_DELETE_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ad AFTER DELETE ON titles BEGIN
+    INSERT INTO titles_fts(titles_fts, rowid, title, original_title, id)
+    VALUES ('delete', old.rowid, old.title, old.original_title, old.id);
+   END;`;
+
+export const FTS_UPDATE_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_au AFTER UPDATE ON titles
+   WHEN old.title IS NOT new.title
+     OR old.original_title IS NOT new.original_title
+     OR old.id IS NOT new.id
+   BEGIN
+    INSERT INTO titles_fts(titles_fts, rowid, title, original_title, id)
+    VALUES ('delete', old.rowid, old.title, old.original_title, old.id);
+    INSERT INTO titles_fts(rowid, title, original_title, id)
+    VALUES (new.rowid, new.title, new.original_title, new.id);
+   END;`;
+
+export function dropFtsTriggers(db: Database.Database): void {
+  db.exec(
+    "DROP TRIGGER IF EXISTS titles_fts_ai; DROP TRIGGER IF EXISTS titles_fts_ad; DROP TRIGGER IF EXISTS titles_fts_au;",
+  );
+}
+
+export function restoreFtsTriggers(db: Database.Database): void {
+  db.exec(`${FTS_INSERT_TRIGGER}; ${FTS_DELETE_TRIGGER}; ${FTS_UPDATE_TRIGGER}`);
+}
+
+export function rebuildFtsIndex(db: Database.Database): void {
+  db.exec("INSERT INTO titles_fts(titles_fts) VALUES('delete-all')");
+  db.exec(
+    "INSERT INTO titles_fts(rowid, title, original_title, id) SELECT rowid, title, original_title, id FROM titles",
+  );
+}
 
 export function applyMigrations(db: Database.Database): void {
   db.exec(

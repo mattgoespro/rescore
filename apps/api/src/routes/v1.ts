@@ -8,7 +8,6 @@ import type { RatingsStore } from "../services/ratings-store.js";
 import { mediaHandler } from "./media.js";
 import { forYouHandler } from "./for-you.js";
 import {
-  enrichOneTitle,
   isPosterEnrichmentRunning,
   startPosterEnrichment,
 } from "../services/tmdb-posters.js";
@@ -81,19 +80,14 @@ const libraryBody = z.object({
 export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
   const router = Router();
   router.get("/titles", (req, res) => res.json(db.listTitles(listQuery.parse(req.query))));
-  router.get("/titles/:id", async (req, res, next) => {
-    try {
-      const id = titleId.parse(req.params.id);
-      let title = db.title(id);
-      if (!title) return res.status(404).json({ error: "Title not found" });
-      if (db.titleNeedsMedia(id)) {
-        await enrichOneTitle(db, title.id, title.kind);
-        title = db.title(id) ?? title;
-      }
-      return res.json({ data: title });
-    } catch (error) {
-      return next(error);
+  router.get("/titles/:id", (req, res) => {
+    const id = titleId.parse(req.params.id);
+    const title = db.title(id);
+    if (!title) return res.status(404).json({ error: "Title not found" });
+    if (db.titleNeedsMedia(id)) {
+      void startPosterEnrichment(db, { ids: [id] });
     }
+    return res.json({ data: title });
   });
   router.get("/facets", (_req, res) => res.json(db.facets()));
   router.get("/for-you", forYouHandler(db));
@@ -108,7 +102,7 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     }
     void ensureCatalog(db, { force: true })
       .then(async () => {
-        await syncDataset(ratings, true).catch((error: unknown) => {
+        await syncDataset(ratings).catch((error: unknown) => {
           console.warn("Ratings sync after catalog rebuild failed.", error);
         });
         void startPosterEnrichment(db);
@@ -123,50 +117,10 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     const body = z
       .object({
         ids: z.array(titleId).max(400).optional(),
-        extraPages: z.number().int().min(0).max(5).optional(),
-        page: optionalInteger(1, 100000),
-        pageSize: optionalInteger(1, 100),
-        limit: optionalInteger(1, 100),
-        sort: z.enum(["title", "year", "rating", "votes", "updatedAt"]).optional(),
-        order: z.enum(["asc", "desc"]).optional(),
-        query: z.string().trim().min(1).max(200).optional(),
-        genre: z.union([z.string(), z.array(z.string())]).optional(),
-        kind: z.string().trim().min(1).max(40).optional(),
-        yearMin: optionalInteger(1870, 3000),
-        yearMax: optionalInteger(1870, 3000),
-        ratingMin: z.coerce.number().min(0).max(10).optional(),
-        votesMin: optionalInteger(0, 2_000_000_000),
-        runtimeMin: optionalInteger(1, 2000),
-        runtimeMax: optionalInteger(1, 2000),
-        hideWatched: z.boolean().optional(),
-        hideWatchlist: z.boolean().optional(),
       })
       .strict()
       .parse(req.body && typeof req.body === "object" ? req.body : {});
-    const ids = [...(body.ids ?? [])];
-    if ((body.extraPages ?? 0) > 0 && body.page) {
-      const lookAhead = listQuery.parse({
-        page: body.page,
-        pageSize: body.pageSize ?? body.limit ?? 40,
-        sort: body.sort,
-        order: body.order,
-        query: body.query,
-        genre: body.genre,
-        kind: body.kind,
-        yearMin: body.yearMin,
-        yearMax: body.yearMax,
-        ratingMin: body.ratingMin,
-        votesMin: body.votesMin,
-        runtimeMin: body.runtimeMin,
-        runtimeMax: body.runtimeMax,
-        hideWatched: body.hideWatched === undefined ? undefined : body.hideWatched ? "true" : "false",
-        hideWatchlist: body.hideWatchlist === undefined ? undefined : body.hideWatchlist ? "true" : "false",
-        includeTotal: "false",
-      });
-      for (let page = lookAhead.page + 1; page <= lookAhead.page + (body.extraPages ?? 0); page += 1) {
-        ids.push(...db.listTitleIds({ ...lookAhead, page, includeTotal: false }));
-      }
-    }
+    const ids = (body.ids ?? []).filter((id) => db.titleNeedsMedia(id));
     void startPosterEnrichment(db, { ids });
     return res.status(202).json({ ok: true, running: isPosterEnrichmentRunning() });
   });

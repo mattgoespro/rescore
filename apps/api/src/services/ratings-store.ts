@@ -21,14 +21,27 @@ export class RatingsStore {
     return this.syncedAt ?? this.catalog?.catalogMeta().builtAt ?? null;
   }
 
+  markSynced(syncedAt: string): void {
+    this.syncedAt = syncedAt;
+    this.ratings = new Map();
+  }
+
+  async persistFromFile(file: string): Promise<void> {
+    if (!this.catalog) {
+      throw new Error("No catalog to persist ratings");
+    }
+    await this.catalog.upsertRatingsFromFile(file);
+    this.markSynced(new Date().toISOString());
+  }
+
   replace(ratings: Map<string, ImdbRating>, syncedAt: string, persist = true): void {
     this.syncedAt = syncedAt;
-    this.ratings = ratings;
     if (persist && this.catalog) {
-      void this.catalog.upsertRatingsChunked(ratings).then(() => {
-        this.ratings = new Map();
-      });
+      this.ratings = new Map();
+      void this.catalog.upsertRatingsChunked(ratings);
+      return;
     }
+    this.ratings = ratings;
   }
 
   lookup(ids: string[]): Record<string, ImdbRating | null> {

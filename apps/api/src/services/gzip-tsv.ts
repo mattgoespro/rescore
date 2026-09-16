@@ -149,7 +149,9 @@ export async function downloadGzip(
 
 export async function* readTsvRows(file: string): AsyncGenerator<string[]> {
   const lines = createInterface({
-    input: createReadStream(file).pipe(createGunzip()),
+    input: createReadStream(file, { highWaterMark: 256 * 1024 }).pipe(
+      createGunzip({ chunkSize: 256 * 1024 }),
+    ),
     crlfDelay: Infinity,
   });
   let header = true;
@@ -194,6 +196,12 @@ function isValidGzipFile(file: string): boolean {
   } finally {
     if (fd != null) closeSync(fd);
   }
+}
+
+export function dumpFingerprint(file: string): string | null {
+  const meta = readMeta(file);
+  if (!meta) return null;
+  return meta.etag ?? meta.lastModified ?? (meta.size > 0 ? String(meta.size) : null);
 }
 
 function metaPath(file: string): string {

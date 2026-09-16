@@ -1,7 +1,9 @@
 import { CATALOG_DB_PATH } from "../config.js";
 import type { CatalogDatabase } from "../catalog/index.js";
+import { dumpFingerprint } from "../services/gzip-tsv.js";
+import { parseRatingsTsv } from "../services/dataset.js";
 import { downloadCreditDumps, downloadTitleDumps } from "./download-dumps.js";
-import { importBasics } from "./import-basics.js";
+import { ingestTitles } from "./import-basics.js";
 import {
   importCrew,
   importNames,
@@ -9,7 +11,6 @@ import {
   insertCredits,
 } from "./import-credits.js";
 import { log, setProgressSink } from "./progress.js";
-import { stageRatings } from "./ratings-staging.js";
 import type {
   CatalogBuildOptions,
   CatalogBuildResult,
@@ -33,7 +34,7 @@ export async function buildCatalogTitles(
 ): Promise<CatalogBuildResult> {
   setProgressSink(options.onProgress);
   try {
-    return await runBuildTitles(catalog);
+    return await runBuildTitles(catalog, options.force === true);
   } finally {
     setProgressSink(undefined);
   }
@@ -43,10 +44,9 @@ export async function buildCatalogCredits(
   catalog: CatalogDatabase,
   options: CatalogBuildOptions = {},
 ): Promise<void> {
-  if (catalog.creditsReady() && !catalog.isCreditsInProgress()) return;
   if (creditsInflight) return creditsInflight;
   setProgressSink(options.onProgress);
-  creditsInflight = runBuildCredits(catalog)
+  creditsInflight = runBuildCredits(catalog, options.force === true)
     .catch((error: unknown) => {
       console.warn(
         "Credits import failed.",
@@ -67,39 +67,48 @@ export function startCreditsBuild(
   return buildCatalogCredits(catalog, options);
 }
 
+function titleDumpKey(files: { ratings: string; basics: string }): string {
+  return [dumpFingerprint(files.ratings), dumpFingerprint(files.basics)].join(
+    "\n",
+  );
+}
+
 async function runBuildTitles(
   catalog: CatalogDatabase,
+  force: boolean,
 ): Promise<CatalogBuildResult> {
-  const files = await downloadTitleDumps();
-  log("Staging IMDb ratings");
-  await stageRatings(catalog, files.ratings);
+  const files = await downloadTitleDumps(force);
+  const fingerprint = titleDumpKey(files);
+  const existing = catalog.catalogMeta();
+  if (
+    !force &&
+    catalog.titleCount() > 0 &&
+    existing.builtAt &&
+    catalog.titleDumpFingerprint() === fingerprint
+  ) {
+    log("Title dumps unchanged; keeping existing catalogue");
+    return {
+      titleCount: catalog.titleCount(),
+      builtAt: existing.builtAt,
+      revision: existing.revision ?? existing.builtAt,
+      unchanged: true,
+    };
+  }
 
-  const library = catalog.snapshotLibrary();
-  const posters = catalog.snapshotPosterUrls();
-
+  log("Loading IMDb ratings");
+  const ratings = await parseRatingsTsv(files.ratings);
+  const firstBuild = catalog.titleCount() === 0;
   catalog.setBuildInProgress(true);
-  catalog.setCreditsReady(false);
-  catalog.startRebuild();
+  if (firstBuild) catalog.setCreditsReady(false);
   try {
-    log("Importing title.basics");
-    const imported = await importBasics(catalog, files.basics);
-    log(`Imported ${imported.toLocaleString()} titles`);
-    const kept = catalog.titleIdSet();
-    catalog.updatePosterUrls(
-      posters
-        .filter((row) => kept.has(row.id))
-        .map((row) => ({
-          id: row.id,
-          posterUrl: row.posterUrl,
-          synopsis: row.synopsis,
-        })),
-    );
+    log("Reconciling title.basics");
+    const imported = await ingestTitles(catalog, files.basics, ratings);
+    log(`Reconciled ${imported.toLocaleString()} titles`);
   } catch (error) {
-    catalog.finishRebuild(library);
+    catalog.setBuildInProgress(false);
     throw error;
   }
 
-  catalog.finishRebuild(library);
   const builtAt = new Date().toISOString();
   const revision = builtAt;
   catalog.setCatalogMeta({
@@ -107,6 +116,7 @@ async function runBuildTitles(
     revision,
     source: "imdb-noncommercial-datasets",
   });
+  catalog.setTitleDumpFingerprint(fingerprint);
   catalog.setBuildInProgress(false);
   const titleCount = catalog.titleCount();
   log(`Titles ready: ${titleCount.toLocaleString()} titles`);
@@ -114,9 +124,34 @@ async function runBuildTitles(
   return { titleCount, builtAt, revision };
 }
 
-async function runBuildCredits(catalog: CatalogDatabase): Promise<void> {
-  if (catalog.creditsReady() && !catalog.isCreditsInProgress()) return;
-  const files = await downloadCreditDumps();
+function creditDumpKey(files: {
+  crew: string;
+  principals: string;
+  names: string;
+}): string {
+  return [
+    dumpFingerprint(files.crew),
+    dumpFingerprint(files.principals),
+    dumpFingerprint(files.names),
+  ].join("\n");
+}
+
+async function runBuildCredits(
+  catalog: CatalogDatabase,
+  force: boolean,
+): Promise<void> {
+  const files = await downloadCreditDumps(force);
+  const fingerprint = creditDumpKey(files);
+  if (
+    !force &&
+    catalog.creditsReady() &&
+    !catalog.isCreditsInProgress() &&
+    catalog.creditsDumpFingerprint() === fingerprint
+  ) {
+    log("Credit dumps unchanged; keeping existing credits");
+    return;
+  }
+
   const kept = catalog.titleIdSet();
   const directors = new Map<string, Credit[]>();
   const cast = new Map<string, Credit[]>();
@@ -129,10 +164,13 @@ async function runBuildCredits(catalog: CatalogDatabase): Promise<void> {
     await importCrew(files.crew, kept, directors, neededNames);
     log("Reading title.principals");
     await importPrincipals(files.principals, kept, cast, neededNames);
+    const known = catalog.peopleNames(neededNames);
+    for (const nconst of known.keys()) neededNames.delete(nconst);
     log(`Resolving ${neededNames.size.toLocaleString()} names`);
     const names = await importNames(files.names, neededNames);
+    for (const [nconst, name] of known) names.set(nconst, name);
     log("Writing credits");
-    insertCredits(catalog, directors, cast, names);
+    insertCredits(catalog, directors, cast, names, kept);
   } catch (error) {
     catalog.finishCreditsRebuild();
     catalog.setCreditsInProgress(false);
@@ -141,6 +179,7 @@ async function runBuildCredits(catalog: CatalogDatabase): Promise<void> {
 
   catalog.finishCreditsRebuild();
   catalog.setCreditsReady(true);
+  catalog.setCreditsDumpFingerprint(fingerprint);
   catalog.setCreditsInProgress(false);
   log("Credits ready");
   void catalog.queueAnalyze("title_people");

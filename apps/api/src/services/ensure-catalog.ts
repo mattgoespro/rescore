@@ -40,6 +40,19 @@ export function isCatalogBuilding(): boolean {
   return status.phase === "building" || inflight != null;
 }
 
+export function progressPhase(usable: boolean, force = false): CatalogPhase {
+  return usable && !force ? "ready" : "building";
+}
+
+export function catalogHealthReady(
+  titleCount: number,
+  phase: CatalogPhase,
+  titlesReady: boolean,
+): boolean {
+  const blockingBuild = phase === "building" && !titlesReady;
+  return titleCount > 0 && !blockingBuild && phase !== "error";
+}
+
 function catalogIsUsable(catalog: CatalogDatabase): boolean {
   return (
     catalog.titleCount() > 0 &&
@@ -94,7 +107,8 @@ async function runEnsure(
   catalog: CatalogDatabase,
   options: { force?: boolean },
 ): Promise<CatalogBuildResult | null> {
-  if (!options.force && catalogIsUsable(catalog)) {
+  const usable = !options.force && catalogIsUsable(catalog);
+  if (usable) {
     if (catalog.isBuildInProgress()) {
       catalog.setBuildInProgress(false);
     }
@@ -108,20 +122,18 @@ async function runEnsure(
       error: null,
       download: null,
     });
-    void startCreditsBuild(catalog);
-    return null;
+  } else {
+    status = withReadiness(catalog, {
+      phase: "building",
+      message: catalog.isBuildInProgress()
+        ? "Resuming an interrupted catalog build…"
+        : "Building catalog from IMDb datasets…",
+      titleCount: catalog.titleCount(),
+      builtAt: catalog.catalogMeta().builtAt,
+      error: null,
+      download: null,
+    });
   }
-
-  status = withReadiness(catalog, {
-    phase: "building",
-    message: catalog.isBuildInProgress()
-      ? "Resuming an interrupted catalog build…"
-      : "Building catalog from IMDb datasets…",
-    titleCount: catalog.titleCount(),
-    builtAt: catalog.catalogMeta().builtAt,
-    error: null,
-    download: null,
-  });
 
   try {
     const result = await buildCatalogTitles(catalog, {
@@ -129,7 +141,7 @@ async function runEnsure(
       onProgress: (progress) => {
         status = withReadiness(catalog, {
           ...status,
-          phase: "building",
+          phase: progressPhase(usable, options.force === true),
           message: progress.message,
           titleCount: catalog.titleCount(),
           download: progress.download ?? null,
@@ -145,7 +157,7 @@ async function runEnsure(
       download: null,
     });
     void startCreditsBuild(catalog);
-    return result;
+    return result.unchanged ? null : result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     status = withReadiness(catalog, {

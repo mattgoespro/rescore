@@ -13,9 +13,11 @@ import { bayesianScore } from "./bayesian.js";
 import { invalidateFacetsCache } from "./facets-cache.js";
 import {
   flagIsSet,
+  getMetaValue,
   readCatalogMeta,
   readiness,
   setFlag,
+  setMetaValue,
   writeCatalogMeta,
 } from "./meta.js";
 import { now } from "./now.js";
@@ -24,39 +26,44 @@ import {
   invalidateCountCache,
   listForYouCandidates,
   listLibrary,
-  listTitleIds,
   listTitles,
   titleById,
 } from "./query.js";
 import {
-  clearRatingsStaging,
+  abortTitleIngest,
+  beginBulkLoad,
+  endBulkLoad,
   finishCreditsRebuild,
-  finishRebuild,
+  finishTitleIngest,
   insertPeople,
-  insertRatingsStaging,
   insertTitleRows,
-  lookupStagingRating,
   queueAnalyze,
   startCreditsRebuild,
-  startRebuild,
+  startTitleIngest,
   titleIdSet,
+  creditSignatures,
+  existingPeopleNames,
+  replaceTitleCredits,
   upsertRatingsChunked,
+  upsertRatingsFromFile,
   upsertRatingsSync,
+  upsertTitleRows,
 } from "./rebuild.js";
 import { applyMigrations } from "./schema.js";
-import type {
-  CatalogMeta,
-  CatalogPersonRow,
-  CatalogReadiness,
-  CatalogTitleInput,
-  CatalogTitleRow,
-  LibraryRow,
-  TitleQuery,
+import {
+  personKey,
+  type CatalogMeta,
+  type CatalogPersonRow,
+  type CatalogReadiness,
+  type CatalogTitleInput,
+  type CatalogTitleRow,
+  type TitleQuery,
 } from "./types.js";
-import { catalogWorkQueue } from "./work-queue.js";
+import { mediaWorkQueue } from "./work-queue.js";
 
 export class CatalogDatabase {
   private readonly db: Database.Database;
+  private ingestBulk = false;
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
@@ -80,8 +87,11 @@ export class CatalogDatabase {
     const clearPeople = this.db.prepare(
       "DELETE FROM title_people WHERE title_id = ?",
     );
+    const upsertPerson = this.db.prepare(
+      "INSERT INTO people(nconst, name) VALUES (?, ?) ON CONFLICT(nconst) DO UPDATE SET name=excluded.name",
+    );
     const addPerson = this.db.prepare(
-      "INSERT OR IGNORE INTO title_people(title_id, name, role, position) VALUES (?, ?, ?, ?)",
+      "INSERT OR IGNORE INTO title_people(title_id, nconst, role, position) VALUES (?, ?, ?, ?)",
     );
     this.db.transaction((items: CatalogTitleInput[]) => {
       for (const input of items) {
@@ -102,10 +112,14 @@ export class CatalogDatabase {
         for (const genre of input.genres ?? []) addGenre.run(input.id, genre);
         clearPeople.run(input.id);
         for (const [position, name] of (input.directors ?? []).entries()) {
-          addPerson.run(input.id, name, "director", position);
+          const nconst = personKey(name);
+          upsertPerson.run(nconst, name);
+          addPerson.run(input.id, nconst, "director", position);
         }
         for (const [position, name] of (input.cast ?? []).entries()) {
-          addPerson.run(input.id, name, "cast", position);
+          const nconst = personKey(name);
+          upsertPerson.run(nconst, name);
+          addPerson.run(input.id, nconst, "cast", position);
         }
       }
     })(titles);
@@ -151,10 +165,6 @@ export class CatalogDatabase {
     return listTitles(this.db, query);
   }
 
-  listTitleIds(query: TitleQuery): string[] {
-    return listTitleIds(this.db, query);
-  }
-
   title(id: string): TitleDto | null {
     return titleById(this.db, id);
   }
@@ -194,6 +204,7 @@ export class CatalogDatabase {
         `INSERT INTO library_entries(title_id,status,personal_rating,note,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(title_id) DO UPDATE SET status=excluded.status,personal_rating=excluded.personal_rating,note=excluded.note,updated_at=excluded.updated_at`,
       )
       .run(id.toLowerCase(), status, personalRating, note, now());
+    this.bumpLibrarySkipRev();
     return (
       this.listLibrary().find((entry) => entry.title.id === id.toLowerCase()) ??
       null
@@ -201,11 +212,18 @@ export class CatalogDatabase {
   }
 
   deleteLibrary(id: string): boolean {
-    return (
+    const changed =
       this.db
         .prepare("DELETE FROM library_entries WHERE title_id = ?")
-        .run(id.toLowerCase()).changes > 0
-    );
+        .run(id.toLowerCase()).changes > 0;
+    if (changed) this.bumpLibrarySkipRev();
+    return changed;
+  }
+
+  private bumpLibrarySkipRev(): void {
+    const next = Number(getMetaValue(this.db, "librarySkipRev") ?? "0") + 1;
+    setMetaValue(this.db, "librarySkipRev", String(next));
+    invalidateCountCache();
   }
 
   createImport(id: string, kind: ImportStatusDto["kind"]): void {
@@ -314,24 +332,6 @@ export class CatalogDatabase {
     return prioritized;
   }
 
-  snapshotPosterUrls(): Array<{
-    id: string;
-    posterUrl: string | null;
-    synopsis: string | null;
-  }> {
-    return this.db
-      .prepare(
-        `SELECT id, poster_url AS posterUrl, synopsis
-         FROM titles
-         WHERE poster_url IS NOT NULL OR synopsis IS NOT NULL`,
-      )
-      .all() as Array<{
-      id: string;
-      posterUrl: string | null;
-      synopsis: string | null;
-    }>;
-  }
-
   updatePosterUrls(
     rows: Array<{
       id: string;
@@ -364,7 +364,11 @@ export class CatalogDatabase {
       synopsis?: string | null;
     }>,
   ): Promise<void> {
-    return catalogWorkQueue.enqueue(() => this.updatePosterUrls(rows));
+    return mediaWorkQueue.enqueue(() => this.updatePosterUrls(rows));
+  }
+
+  upsertRatingsFromFile(file: string): Promise<number> {
+    return upsertRatingsFromFile(this.db, file);
   }
 
   catalogMeta(): CatalogMeta {
@@ -407,16 +411,12 @@ export class CatalogDatabase {
     return this.readiness().creditsReady;
   }
 
-  snapshotLibrary(): LibraryRow[] {
-    return this.db
-      .prepare(
-        "SELECT title_id, status, personal_rating, note, updated_at FROM library_entries",
-      )
-      .all() as LibraryRow[];
+  beginBulkLoad(): void {
+    beginBulkLoad(this.db);
   }
 
-  startRebuild(): void {
-    startRebuild(this.db);
+  endBulkLoad(): void {
+    endBulkLoad(this.db);
   }
 
   startCreditsRebuild(): void {
@@ -427,12 +427,62 @@ export class CatalogDatabase {
     insertTitleRows(this.db, rows);
   }
 
+  upsertTitleRows(rows: CatalogTitleRow[]): void {
+    upsertTitleRows(this.db, rows, this.ingestBulk);
+  }
+
+  startTitleIngest(): void {
+    this.ingestBulk = this.titleCount() === 0;
+    startTitleIngest(this.db, this.ingestBulk);
+  }
+
+  finishTitleIngest(): void {
+    finishTitleIngest(this.db, this.ingestBulk);
+    this.ingestBulk = false;
+  }
+
+  abortTitleIngest(): void {
+    abortTitleIngest(this.db, this.ingestBulk);
+    this.ingestBulk = false;
+  }
+
+  titleRowid(id: string): number | null {
+    const row = this.db
+      .prepare("SELECT rowid AS rowid FROM titles WHERE id = ?")
+      .get(id.toLowerCase()) as { rowid: number } | undefined;
+    return row?.rowid ?? null;
+  }
+
+  titleDumpFingerprint(): string | null {
+    return getMetaValue(this.db, "titlesDumpFingerprint");
+  }
+
+  setTitleDumpFingerprint(value: string): void {
+    setMetaValue(this.db, "titlesDumpFingerprint", value);
+  }
+
+  creditsDumpFingerprint(): string | null {
+    return getMetaValue(this.db, "creditsDumpFingerprint");
+  }
+
+  setCreditsDumpFingerprint(value: string): void {
+    setMetaValue(this.db, "creditsDumpFingerprint", value);
+  }
+
   insertPeople(rows: CatalogPersonRow[]): void {
     insertPeople(this.db, rows);
   }
 
-  finishRebuild(library: LibraryRow[]): void {
-    finishRebuild(this.db, library);
+  peopleNames(nconsts: Iterable<string>): Map<string, string> {
+    return existingPeopleNames(this.db, nconsts);
+  }
+
+  creditSignatures(): Map<string, string> {
+    return creditSignatures(this.db);
+  }
+
+  replaceTitleCredits(titleId: string, rows: CatalogPersonRow[]): void {
+    replaceTitleCredits(this.db, titleId, rows);
   }
 
   finishCreditsRebuild(): void {
@@ -443,24 +493,16 @@ export class CatalogDatabase {
     return queueAnalyze(this.db, target);
   }
 
-  clearRatingsStaging(): void {
-    clearRatingsStaging(this.db);
-  }
-
-  insertRatingsStaging(
-    rows: Array<{ id: string; rating: number; votes: number }>,
-  ): void {
-    insertRatingsStaging(this.db, rows);
-  }
-
-  lookupStagingRating(
-    id: string,
-  ): { rating: number; votes: number } | undefined {
-    return lookupStagingRating(this.db, id);
-  }
-
   titleIdSet(): Set<string> {
     return titleIdSet(this.db);
+  }
+
+  ftsShadowRowCount(): number {
+    return (
+      this.db.prepare("SELECT count(*) AS n FROM titles_fts_data").get() as {
+        n: number;
+      }
+    ).n;
   }
 
   close(): void {

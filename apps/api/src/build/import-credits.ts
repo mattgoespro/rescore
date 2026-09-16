@@ -5,7 +5,6 @@ import { log } from "./progress.js";
 import {
   MAX_CAST,
   MAX_DIRECTORS,
-  PERSON_BATCH,
   type Credit,
 } from "./types.js";
 
@@ -79,6 +78,7 @@ export async function importNames(
   neededNames: Set<string>,
 ): Promise<Map<string, string>> {
   const names = new Map<string, string>();
+  if (!neededNames.size) return names;
   let scanned = 0;
   for await (const row of readTsvRows(file)) {
     scanned += 1;
@@ -94,17 +94,19 @@ export async function importNames(
   return names;
 }
 
+function creditSignature(rows: CatalogPersonRow[]): string {
+  return rows.map((row) => `${row.role}:${row.nconst}`).join("|");
+}
+
 export function insertCredits(
   catalog: CatalogDatabase,
   directors: Map<string, Credit[]>,
   cast: Map<string, Credit[]>,
   names: Map<string, string>,
+  kept: Set<string>,
 ): void {
-  let batch: CatalogPersonRow[] = [];
-  const flush = (): void => {
-    catalog.insertPeople(batch);
-    batch = [];
-  };
+  const existing = catalog.creditSignatures();
+  const byTitle = new Map<string, CatalogPersonRow[]>();
   const push = (
     titleId: string,
     credits: Credit[],
@@ -113,8 +115,15 @@ export function insertCredits(
     credits.forEach((credit, position) => {
       const name = names.get(credit.nconst);
       if (!name) return;
-      batch.push({ titleId, name, role, position });
-      if (batch.length >= PERSON_BATCH) flush();
+      const list = byTitle.get(titleId) ?? [];
+      list.push({
+        titleId,
+        nconst: credit.nconst,
+        name,
+        role,
+        position,
+      });
+      byTitle.set(titleId, list);
     });
   };
   for (const [titleId, credits] of directors) {
@@ -124,5 +133,9 @@ export function insertCredits(
     trimCredits(credits, MAX_CAST);
     push(titleId, credits, "cast");
   }
-  flush();
+  for (const titleId of kept) {
+    const rows = byTitle.get(titleId) ?? [];
+    if (creditSignature(rows) === (existing.get(titleId) ?? "")) continue;
+    catalog.replaceTitleCredits(titleId, rows);
+  }
 }

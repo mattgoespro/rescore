@@ -39,7 +39,11 @@ export function hydrateTitles(
     .all(...ids) as Array<{ title_id: string; genre: string }>;
   const peopleRows = db
     .prepare(
-      `SELECT title_id, name, role FROM title_people WHERE title_id IN (${placeholders}) ORDER BY role, position`,
+      `SELECT tp.title_id, p.name, tp.role
+       FROM title_people tp
+       JOIN people p ON p.nconst = tp.nconst
+       WHERE tp.title_id IN (${placeholders})
+       ORDER BY tp.role, tp.position`,
     )
     .all(...ids) as Array<{
     title_id: string;

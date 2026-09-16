@@ -259,6 +259,10 @@ function log(message: string): void {
 
 let posterInflight: Promise<PosterEnrichmentResult | null> | null = null;
 const priorityIds: string[] = [];
+let loggedMissingKey = false;
+
+export const MISSING_TMDB_KEY_MESSAGE =
+  "No TMDB API key; skipping new poster lookups. Existing poster URLs are unchanged.";
 
 export function prioritizePosterIds(ids: string[]): void {
   for (const id of ids) {
@@ -280,7 +284,10 @@ export function startPosterEnrichment(
   if (posterInflight) return posterInflight;
   const apiKey = tryReadTmdbApiKey();
   if (!apiKey) {
-    log("No TMDB API key; posters stay empty until you add one in Settings.");
+    if (!loggedMissingKey) {
+      loggedMissingKey = true;
+      log(MISSING_TMDB_KEY_MESSAGE);
+    }
     return Promise.resolve(null);
   }
   posterInflight = enrichPosters(catalog, {

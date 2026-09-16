@@ -10,19 +10,27 @@ import {
   readFacetsCache,
   writeFacetsCache,
 } from "./facets-cache.js";
+import { getMetaValue } from "./meta.js";
 import { hydrateTitles } from "./hydrate.js";
 import { IMDB_ID, type TitleQuery, type TitleRow } from "./types.js";
 
-const COUNT_TTL_MS = 30_000;
-const countCache = new Map<string, { total: number; expires: number }>();
+const countCache = new Map<string, number>();
 
 const orderColumn = {
   title: "t.title COLLATE NOCASE",
   year: "t.year",
-  rating: "t.bayesian_score",
+  rating: "t.imdb_rating",
   votes: "t.imdb_votes",
   updatedAt: "t.updated_at",
 } as const;
+
+function orderBy(sort: TitleQuery["sort"], order: "ASC" | "DESC"): string {
+  const column = orderColumn[sort];
+  if (sort === "rating") {
+    return `${column} ${order}, t.imdb_votes ${order}, t.id ASC`;
+  }
+  return `${column} ${order}, t.id ASC`;
+}
 
 export function invalidateCountCache(): void {
   countCache.clear();
@@ -32,38 +40,42 @@ export function listTitles(
   db: Database.Database,
   query: TitleQuery,
 ): TitleListResponse {
-  const { condition, params, fts } = buildWhere(query);
+  const { condition, params, fts } = buildWhere(query, db);
   const order = query.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
-  const sort = orderColumn[query.sort];
   const offset = (query.page - 1) * query.pageSize;
-  const cacheKey = JSON.stringify({ condition, params, fts });
+  const cacheKey = JSON.stringify({
+    revision: getMetaValue(db, "revision") ?? "",
+    skipRev: getMetaValue(db, "librarySkipRev") ?? "0",
+    condition,
+    params,
+    fts,
+  });
   const includeTotal = query.includeTotal !== false;
   const cached = countCache.get(cacheKey);
-  const cacheHit = Boolean(cached && cached.expires > Date.now());
 
   const from = fts
     ? "titles t JOIN titles_fts f ON f.rowid = t.rowid"
     : "titles t";
   const rows = db
     .prepare(
-      `SELECT t.* FROM ${from} ${condition} ORDER BY ${sort} ${order}, t.id ASC LIMIT @limit OFFSET @offset`,
+      `SELECT t.* FROM ${from} ${condition} ORDER BY ${orderBy(query.sort, order)} LIMIT @limit OFFSET @offset`,
     )
     .all({ ...params, limit: query.pageSize, offset }) as TitleRow[];
 
   let total: number;
-  if (includeTotal || !cacheHit) {
-    if (cacheHit && cached) {
-      total = cached.total;
+  if (includeTotal || cached == null) {
+    if (cached != null) {
+      total = cached;
     } else {
       total = (
         db
           .prepare(`SELECT count(*) AS total FROM ${from} ${condition}`)
           .get(params) as { total: number }
       ).total;
-      countCache.set(cacheKey, { total, expires: Date.now() + COUNT_TTL_MS });
+      countCache.set(cacheKey, total);
     }
-  } else if (cached) {
-    total = cached.total;
+  } else if (cached != null) {
+    total = cached;
   } else if (rows.length < query.pageSize) {
     total = offset + rows.length;
   } else {
@@ -79,22 +91,6 @@ export function listTitles(
       totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
     },
   };
-}
-
-export function listTitleIds(db: Database.Database, query: TitleQuery): string[] {
-  const { condition, params, fts } = buildWhere(query);
-  const order = query.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
-  const sort = orderColumn[query.sort];
-  const offset = (query.page - 1) * query.pageSize;
-  const from = fts
-    ? "titles t JOIN titles_fts f ON f.rowid = t.rowid"
-    : "titles t";
-  const rows = db
-    .prepare(
-      `SELECT t.id FROM ${from} ${condition} ORDER BY ${sort} ${order}, t.id ASC LIMIT @limit OFFSET @offset`,
-    )
-    .all({ ...params, limit: query.pageSize, offset }) as Array<{ id: string }>;
-  return rows.map((row) => row.id);
 }
 
 export function titleById(db: Database.Database, id: string): TitleDto | null {
@@ -166,7 +162,20 @@ export function listForYouCandidates(
   return hydrateTitles(db, rows);
 }
 
-function buildWhere(query: TitleQuery): {
+function hasSkippedTitles(db: Database.Database): boolean {
+  return Boolean(
+    db
+      .prepare(
+        "SELECT 1 FROM library_entries WHERE status = 'skipped' LIMIT 1",
+      )
+      .get(),
+  );
+}
+
+function buildWhere(
+  query: TitleQuery,
+  db: Database.Database,
+): {
   condition: string;
   params: Record<string, string | number>;
   fts: boolean;
@@ -215,9 +224,11 @@ function buildWhere(query: TitleQuery): {
       params[field.match(/@(\w+)/)?.[1] ?? ""] = value;
     }
   }
-  where.push(
-    "NOT EXISTS (SELECT 1 FROM library_entries skipped WHERE skipped.title_id=t.id AND skipped.status='skipped')",
-  );
+  if (hasSkippedTitles(db)) {
+    where.push(
+      "NOT EXISTS (SELECT 1 FROM library_entries skipped WHERE skipped.title_id=t.id AND skipped.status='skipped')",
+    );
+  }
   if (query.hideWatched) {
     where.push(
       "NOT EXISTS (SELECT 1 FROM library_entries watched WHERE watched.title_id=t.id AND watched.status='watched')",

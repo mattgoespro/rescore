@@ -36,6 +36,10 @@ import {
 } from "./components/icons";
 import Inspector from "./components/inspector";
 import { applyAppearance } from "./lib/appearance";
+import {
+  catalogLoaderDetail,
+  isCatalogUiBlocked,
+} from "./lib/catalog-busy";
 import { cn } from "./lib/cn";
 import { listSearchHistory } from "./lib/search-history-store";
 import { btn } from "./lib/ui";
@@ -52,11 +56,7 @@ export default function App(): JSX.Element {
   const [tvGenres, setTvGenres] = useState<Genre[]>([]);
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [profile, setProfile] = useState<TasteProfile | null>(null);
-  const [filters, setFilters] = useState<DiscoverFilters>(() => {
-    const defaults = defaultFilters();
-    const latestSearch = listSearchHistory()[0];
-    return latestSearch ? applySearchHistory(defaults, latestSearch) : defaults;
-  });
+  const [filters, setFilters] = useState<DiscoverFilters>(defaultFilters);
   const [selected, setSelected] = useState<MovieSummary | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [error, setError] = useState("");
@@ -105,6 +105,12 @@ export default function App(): JSX.Element {
       applyAppearance(next);
     });
     void window.api.catalogStatus().then(setCatalogStatus);
+    void listSearchHistory().then((entries) => {
+      const latest = entries[0];
+      if (latest) {
+        setFilters((current) => applySearchHistory(current, latest));
+      }
+    });
     return window.api.onCatalogStatus(setCatalogStatus);
   }, []);
 
@@ -113,12 +119,14 @@ export default function App(): JSX.Element {
       setBooting(false);
       return;
     }
-    if (catalogStatus?.phase !== "ready") return;
+    if (isCatalogUiBlocked(catalogStatus)) return;
+    const shouldRefresh = booting;
     setBooting(false);
+    if (!shouldRefresh) return;
     setConfigured(true);
     setError("");
     void refresh().catch((err: Error) => setError(err.message));
-  }, [catalogStatus, refresh]);
+  }, [catalogStatus, refresh, booting]);
 
   useEffect(() => {
     if (booting) return;
@@ -192,10 +200,7 @@ export default function App(): JSX.Element {
     setProfile(await window.api.profile().catch(() => profile));
   }
 
-  const catalogBusy =
-    !catalogStatus ||
-    catalogStatus.phase === "starting" ||
-    catalogStatus.phase === "building";
+  const catalogBusy = isCatalogUiBlocked(catalogStatus);
   const catalogFailed = catalogStatus?.phase === "error";
   const showWelcome =
     !booting &&
@@ -312,11 +317,7 @@ export default function App(): JSX.Element {
             <CatalogLoader
               label={catalogStatus?.message ?? "Loading your ranking studio…"}
               download={catalogStatus?.download}
-              detail={
-                catalogStatus?.phase === "building"
-                  ? "IMDb’s non-commercial datasets are several hundred MB. Your ratings, watchlist, and skips are kept."
-                  : undefined
-              }
+              detail={catalogLoaderDetail(catalogStatus)}
             />
           ) : view === "settings" ? (
             <SettingsView

@@ -158,7 +158,7 @@ export default function ForYou({
               }
               onClick={() => onOpen(movie)}
             >
-              <div className="tabular text-center text-xl font-bold tracking-title text-accent">
+              <div className="tabular pt-0.5 text-center text-xl font-bold tracking-title text-accent">
                 {String(index + 1).padStart(2, "0")}
               </div>
               {posterUrl(movie.posterPath, "w185") ? (
@@ -170,7 +170,7 @@ export default function ForYou({
               ) : (
                 <div className={rankedThumb()} />
               )}
-              <div>
+              <div className="min-w-0 overflow-hidden">
                 <h3 className="mt-0 mb-1 text-[15px] font-650 tracking-tightish">
                   {movie.title}
                   <AgeCaption rating={movie.certification} />
@@ -187,10 +187,10 @@ export default function ForYou({
                     .filter(Boolean)
                     .join(" · ")}
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 flex flex-wrap gap-2">
                   {movie.reasons.map((reason) => (
                     <span
-                      className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted"
+                      className="max-w-full break-words rounded-full border border-line px-2.5 py-1 text-[11px] text-muted"
                       key={reason.label}
                     >
                       {reason.label}: {reason.detail}
@@ -198,7 +198,7 @@ export default function ForYou({
                   ))}
                 </div>
               </div>
-              <div className="tabular text-[28px] leading-none font-bold tracking-[-0.06em] text-accent">
+              <div className="shrink-0 pt-0.5 tabular text-[28px] leading-none font-bold tracking-[-0.06em] text-accent">
                 {Math.round(movie.match)}
                 <small className="mt-1.5 block text-[10px] font-semibold tracking-[0.14em] text-faint uppercase">
                   match

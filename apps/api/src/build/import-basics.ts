@@ -7,6 +7,7 @@ import { TITLE_BATCH } from "./types.js";
 export async function importBasics(
   catalog: CatalogDatabase,
   file: string,
+  ratings: Map<string, { rating: number; votes: number }>,
 ): Promise<number> {
   let batch: CatalogTitleRow[] = [];
   let scanned = 0;
@@ -21,7 +22,7 @@ export async function importBasics(
     const kind = mapKind(row[1]);
     if (!kind) continue;
     if (row[4] === "1") continue;
-    const score = catalog.lookupStagingRating(id);
+    const score = ratings.get(id);
     if (!score) continue;
     const title = imdbValue(row[2]);
     if (!title) continue;
@@ -38,11 +39,26 @@ export async function importBasics(
     });
     imported += 1;
     if (batch.length >= TITLE_BATCH) {
-      catalog.insertTitleRows(batch);
+      catalog.upsertTitleRows(batch);
       batch = [];
     }
   }
-  catalog.insertTitleRows(batch);
-  catalog.clearRatingsStaging();
+  catalog.upsertTitleRows(batch);
   return imported;
+}
+
+export async function ingestTitles(
+  catalog: CatalogDatabase,
+  file: string,
+  ratings: Map<string, { rating: number; votes: number }>,
+): Promise<number> {
+  catalog.startTitleIngest();
+  try {
+    const imported = await importBasics(catalog, file, ratings);
+    catalog.finishTitleIngest();
+    return imported;
+  } catch (error) {
+    catalog.abortTitleIngest();
+    throw error;
+  }
 }

@@ -54,7 +54,7 @@ export const TITLE_KIND_OPTIONS = [
 export const SORT_OPTIONS = [
   { value: "match", label: "Most voted" },
   { value: "popularity.desc", label: "Popularity" },
-  { value: "vote_average.desc", label: "IMDb-style rating" },
+  { value: "vote_average.desc", label: "IMDb rating" },
   { value: "primary_release_date.desc", label: "Newest first" },
   { value: "primary_release_date.asc", label: "Oldest first" },
   { value: "vote_count.desc", label: "Most voted" },

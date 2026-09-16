@@ -113,7 +113,7 @@ export class CatalogClient {
     return this.genreCache;
   }
 
-  async forYouPage(limit = 250): Promise<ForYouResponse> {
+  async forYouPage(limit = 80): Promise<ForYouResponse> {
     return this.request<ForYouResponse>("/v1/for-you", { limit });
   }
 
@@ -159,24 +159,13 @@ export class CatalogClient {
     if (!response.ok && response.status !== 404) throw new CatalogError(`Could not remove library entry (${response.status})`, response.status);
   }
 
-  async enrichPosters(
-    ids: string[],
-    filters?: DiscoverFilters,
-    extraPages = 0,
-  ): Promise<void> {
-    if (!ids.length && extraPages <= 0) return;
-    const query = filters ? await this.discoverQuery(filters) : {};
+  async enrichPosters(ids: string[]): Promise<void> {
+    if (!ids.length) return;
     const url = new URL("/v1/catalog/enrich-posters", this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`);
     await fetch(url, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ids,
-        extraPages: extraPages || undefined,
-        ...query,
-        hideWatched: query.hideWatched === "true",
-        hideWatchlist: query.hideWatchlist === "true",
-      }),
+      body: JSON.stringify({ ids }),
       signal: AbortSignal.timeout(4000),
     }).catch(() => undefined);
   }

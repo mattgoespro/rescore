@@ -23,7 +23,25 @@ export class CatalogWorkQueue {
 }
 
 export const catalogWorkQueue = new CatalogWorkQueue();
+export const mediaWorkQueue = new CatalogWorkQueue();
+export const maintenanceWorkQueue = new CatalogWorkQueue();
+
+const ANALYZE_IDLE_MS = 250;
 
 export function yieldEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function queueIdleAnalyze(
+  run: () => void,
+  idleMs = ANALYZE_IDLE_MS,
+): Promise<void> {
+  return maintenanceWorkQueue.enqueue(async () => {
+    await delay(idleMs);
+    run();
+  });
 }
