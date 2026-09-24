@@ -2,7 +2,7 @@ import { useEffect, useState, type JSX } from "react";
 import Suggestions from "./suggestions";
 import ValueChips from "./value-chips";
 
-export { keywordSearch, personSearch } from "./search";
+export { personSearch } from "./search";
 
 export default function SuggestField<T extends { id: number; name: string }>({
   label,

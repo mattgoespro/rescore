@@ -1,4 +1,4 @@
-import type { KeywordRef, PersonRef, TitleKind } from "./movie";
+import type { PersonRef, TitleKind } from "./movie";
 
 export type AppView = "discover" | "foryou" | "library" | "settings";
 
@@ -14,11 +14,8 @@ export interface DiscoverFilters {
   voteCountMin: number;
   runtimeMin: number | null;
   runtimeMax: number | null;
-  language: string;
   cast: PersonRef[];
   directors: PersonRef[];
-  keywords: KeywordRef[];
-  providers: number[];
   sortBy: string;
   hideWatched: boolean;
   hideWatchlist: boolean;
@@ -41,10 +38,6 @@ export interface SearchHistoryEntry {
   ratingMin: number;
   sortBy: string;
 }
-
-export const LANGUAGES = [
-  { code: "", label: "Any language" },
-] as const;
 
 export const TITLE_KIND_OPTIONS = [
   { value: "movie", label: "Movies" },
@@ -87,11 +80,8 @@ export function defaultFilters(): DiscoverFilters {
     voteCountMin: 1000,
     runtimeMin: null,
     runtimeMax: null,
-    language: "",
     cast: [],
     directors: [],
-    keywords: [],
-    providers: [],
     sortBy: "match",
     hideWatched: true,
     hideWatchlist: false,

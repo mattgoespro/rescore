@@ -30,7 +30,6 @@ export type {
   SearchHistoryGenre,
 } from "./filters";
 export {
-  LANGUAGES,
   TITLE_KIND_OPTIONS,
   SORT_OPTIONS,
   defaultFilters,

@@ -5,7 +5,6 @@ import type {
   ForYouResult,
   Genre,
   ImportProgress,
-  KeywordRef,
   LibraryEntry,
   MediaType,
   MovieDetails,
@@ -16,7 +15,6 @@ import type {
   SearchHistoryEntry,
   Settings,
   TasteProfile,
-  WatchProvider,
   WatchStatus,
 } from "../shared/types";
 import type { SearchHistoryInput } from "../shared/search-history";
@@ -40,12 +38,8 @@ const api = {
   },
   genres: (mediaType?: MediaType): Promise<Genre[]> =>
     ipcRenderer.invoke("catalog:genres", mediaType),
-  providers: (): Promise<WatchProvider[]> =>
-    ipcRenderer.invoke("catalog:providers"),
   searchPeople: (query: string): Promise<PersonRef[]> =>
     ipcRenderer.invoke("catalog:searchPeople", query),
-  searchKeywords: (query: string): Promise<KeywordRef[]> =>
-    ipcRenderer.invoke("catalog:searchKeywords", query),
   discover: (filters: DiscoverFilters): Promise<PagedMovies> =>
     ipcRenderer.invoke("catalog:discover", filters),
   movie: (id: string, _mediaType?: MediaType): Promise<MovieDetails | null> =>
