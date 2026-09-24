@@ -85,39 +85,119 @@ export function decodeTitleCursor(value: string): TitleCursor | null {
   }
 }
 
-function cursorSortValue(
+interface SeekColumn {
+  expr: string;
+  direction: "ASC" | "DESC";
+  value: string | number | null;
+  param: string;
+}
+
+/**
+ * Mirrors `orderBy()` exactly: every sort ties on `t.id ASC`, and `rating`
+ * additionally ties on `t.imdb_votes` (same direction as the primary column)
+ * before falling back to `t.id`. Keeping these two in lockstep is required
+ * for keyset paging to be a stable traversal of the declared ORDER BY.
+ */
+function seekColumns(
   sort: TitleQuery["sort"],
-  cursor: Pick<TitleCursor, "title" | "year" | "rating" | "votes" | "updatedAt">,
-): string | number | null {
+  order: "ASC" | "DESC",
+  cursor: TitleCursor,
+): SeekColumn[] {
+  const idColumn: SeekColumn = {
+    expr: "t.id",
+    direction: "ASC",
+    value: cursor.id,
+    param: "cursorId",
+  };
   switch (sort) {
-    case "title":
-      return cursor.title;
-    case "year":
-      return cursor.year;
     case "rating":
-      return cursor.rating;
+      return [
+        { expr: "t.imdb_rating", direction: order, value: cursor.rating, param: "cursorRating" },
+        { expr: "t.imdb_votes", direction: order, value: cursor.votes, param: "cursorVotes" },
+        idColumn,
+      ];
     case "votes":
-      return cursor.votes;
+      return [
+        { expr: "t.imdb_votes", direction: order, value: cursor.votes, param: "cursorVotes" },
+        idColumn,
+      ];
+    case "year":
+      return [
+        { expr: "t.year", direction: order, value: cursor.year, param: "cursorYear" },
+        idColumn,
+      ];
     case "updatedAt":
-      return cursor.updatedAt;
+      return [
+        { expr: "t.updated_at", direction: order, value: cursor.updatedAt, param: "cursorUpdatedAt" },
+        idColumn,
+      ];
+    case "title":
+      return [
+        { expr: "t.title COLLATE NOCASE", direction: order, value: cursor.title, param: "cursorTitle" },
+        idColumn,
+      ];
   }
 }
 
-function seekCondition(
-  sort: TitleQuery["sort"],
-  order: "ASC" | "DESC",
-  id: string,
-  value: string | number | null,
+function rowCursor(row: TitleRow): TitleCursor {
+  return {
+    id: row.id,
+    title: row.title,
+    year: row.year,
+    rating: row.imdb_rating,
+    votes: row.imdb_votes,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * SQLite treats NULL as smaller than any other value, so it sorts first in
+ * ASC and last in DESC. "Strictly after" a non-null value in DESC therefore
+ * includes every NULL row (they come later than any non-null value); "strictly
+ * after" a NULL value in DESC is impossible (NULL is already the last
+ * position) so that branch is dropped entirely. ASC is the mirror image.
+ */
+function afterClause(
+  column: SeekColumn,
+  params: Record<string, string | number>,
+): string | null {
+  if (column.value === null) {
+    return column.direction === "ASC" ? `${column.expr} IS NOT NULL` : null;
+  }
+  params[column.param] = column.value;
+  return column.direction === "DESC"
+    ? `(${column.expr} < @${column.param} OR ${column.expr} IS NULL)`
+    : `${column.expr} > @${column.param}`;
+}
+
+function sameClause(
+  column: SeekColumn,
   params: Record<string, string | number>,
 ): string {
-  params.cursorId = id;
-  if (value === null) {
-    return "t.id > @cursorId";
+  if (column.value === null) return `${column.expr} IS NULL`;
+  params[column.param] = column.value;
+  return `${column.expr} = @${column.param}`;
+}
+
+/**
+ * General multi-column keyset predicate: for each ordering column in turn,
+ * "all earlier columns tie AND this column is strictly after the cursor",
+ * OR'd together. This is the standard way to make a WHERE clause traverse a
+ * multi-column ORDER BY exactly, including NULLs.
+ */
+function buildKeysetCondition(
+  columns: SeekColumn[],
+  params: Record<string, string | number>,
+): string {
+  const branches: string[] = [];
+  for (let i = 0; i < columns.length; i += 1) {
+    const pivot = columns[i]!;
+    const after = afterClause(pivot, params);
+    if (after === null) continue;
+    const equalities = columns.slice(0, i).map((column) => sameClause(column, params));
+    branches.push(equalities.length ? `(${equalities.join(" AND ")} AND ${after})` : after);
   }
-  params.cursorSort = value;
-  const column = orderColumn[sort];
-  const cmp = order === "DESC" ? "<" : ">";
-  return `(${column} ${cmp} @cursorSort OR (${column} = @cursorSort AND t.id > @cursorId))`;
+  return branches.length ? `(${branches.join(" OR ")})` : "0=1";
 }
 
 function buildCursorCondition(
@@ -128,8 +208,7 @@ function buildCursorCondition(
   if (!query.cursor) return null;
   const cursor = decodeTitleCursor(query.cursor);
   if (!cursor) return null;
-  const value = cursorSortValue(query.sort, cursor);
-  return seekCondition(query.sort, order, cursor.id, value, params);
+  return buildKeysetCondition(seekColumns(query.sort, order, cursor), params);
 }
 
 function mergeCondition(condition: string, extra: string | null): string {
@@ -149,17 +228,10 @@ function computeNextCursor(
   if (rows.length < query.pageSize) return null;
   const lastRow = rows[rows.length - 1];
   if (!lastRow) return null;
-  const rowSortValue = cursorSortValue(query.sort, {
-    title: lastRow.title,
-    year: lastRow.year,
-    rating: lastRow.imdb_rating,
-    votes: lastRow.imdb_votes,
-    updatedAt: lastRow.updated_at,
-  });
   const peekParams: Record<string, string | number> = { ...params };
   const peekCondition = mergeCondition(
     condition,
-    seekCondition(query.sort, order, lastRow.id, rowSortValue, peekParams),
+    buildKeysetCondition(seekColumns(query.sort, order, rowCursor(lastRow)), peekParams),
   );
   const hasMore = db
     .prepare(`SELECT 1 AS found FROM ${from} ${peekCondition} LIMIT 1`)

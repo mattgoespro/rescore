@@ -519,6 +519,79 @@ test("votes sort pages with a cursor instead of offset", () => {
   catalog.close();
 });
 
+test("votes sort cursor paging does not skip a title with null votes", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, { id: "tt0000003", title: "High", rating: 7, votes: 30 });
+  seedTitle(catalog, { id: "tt0000002", title: "Mid", rating: 7, votes: 20 });
+  catalog.insertTitleRows([
+    {
+      id: "tt0000001",
+      title: "NoVotes",
+      originalTitle: "NoVotes",
+      kind: "movie",
+      year: 1999,
+      runtimeMinutes: 120,
+      imdbRating: null,
+      imdbVotes: null,
+      genres: ["Action"],
+    },
+  ]);
+  const seen: string[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < 5; i += 1) {
+    const page = catalog.listTitles({
+      page: 1,
+      pageSize: 1,
+      sort: "votes",
+      order: "desc",
+      includeTotal: false,
+      cursor,
+    });
+    if (!page.data.length) break;
+    seen.push(...page.data.map((title) => title.id));
+    if (!page.pagination.nextCursor) break;
+    cursor = page.pagination.nextCursor;
+  }
+  assert.deepEqual(seen, ["tt0000003", "tt0000002", "tt0000001"]);
+  catalog.close();
+});
+
+test("rating sort cursor paging keeps the votes tie-break across pages", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000009",
+    title: "More Votes",
+    rating: 8,
+    votes: 100,
+  });
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Fewer Votes",
+    rating: 8,
+    votes: 50,
+  });
+  const first = catalog.listTitles({
+    page: 1,
+    pageSize: 1,
+    sort: "rating",
+    order: "desc",
+    includeTotal: false,
+  });
+  assert.equal(first.data[0]?.id, "tt0000009");
+  assert.equal(typeof first.pagination.nextCursor, "string");
+  const second = catalog.listTitles({
+    page: 1,
+    pageSize: 1,
+    sort: "rating",
+    order: "desc",
+    includeTotal: false,
+    cursor: first.pagination.nextCursor ?? undefined,
+  });
+  assert.equal(second.data[0]?.id, "tt0000001");
+  assert.equal(second.pagination.nextCursor, null);
+  catalog.close();
+});
+
 test("for-you candidates exclude watched and skipped", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {

@@ -141,7 +141,11 @@ export default function Discover({
       }
       setPage(data.page);
       cursorRef.current = data.nextCursor;
-      lastPageFullRef.current = canLoadMoreFromPage(data.results.length, 40);
+      lastPageFullRef.current = canLoadMoreFromPage(
+        data.results.length,
+        40,
+        data.nextCursor,
+      );
       setItems((prev) => {
         if (replace) return data.results;
         return [...prev, ...data.results];
