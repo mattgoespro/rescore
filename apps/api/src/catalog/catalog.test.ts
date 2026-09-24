@@ -299,7 +299,7 @@ test("exact IMDb id search does not use FTS", () => {
 
 test("includeTotal false still pages when the page is full", () => {
   const catalog = openCatalog();
-  for (let index = 1; index <= 3; index += 1) {
+  for (let index = 1; index <= 5; index += 1) {
     seedTitle(catalog, {
       id: `tt000000${index}`,
       title: `Title ${index}`,
@@ -307,22 +307,18 @@ test("includeTotal false still pages when the page is full", () => {
       votes: 1000 + index,
     });
   }
-  const first = catalog.listTitles({
+  // Cold cache: no prior includeTotal:true warm-up. Full page → short estimate
+  // (offset + rows + 1), not SELECT count(*).
+  const page = catalog.listTitles({
     page: 1,
-    pageSize: 2,
-    sort: "title",
-    order: "asc",
-    includeTotal: true,
-  });
-  assert.equal(first.pagination.total, 3);
-  const next = catalog.listTitles({
-    page: 2,
     pageSize: 2,
     sort: "title",
     order: "asc",
     includeTotal: false,
   });
-  assert.ok(next.pagination.total >= 3);
+  assert.equal(page.data.length, 2);
+  assert.equal(page.pagination.total, 3);
+  assert.ok(page.pagination.totalPages >= 2);
   catalog.close();
 });
 

@@ -276,7 +276,7 @@ export function listTitles(
     }) as TitleRow[];
 
   let total: number;
-  if (includeTotal || cached == null) {
+  if (includeTotal) {
     if (cached != null) {
       total = cached;
     } else {
