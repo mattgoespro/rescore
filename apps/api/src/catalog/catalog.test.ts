@@ -643,3 +643,37 @@ test("for-you candidates exclude watched and skipped", () => {
   );
   catalog.close();
 });
+
+test("excluded genres and people narrow the page", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    {
+      id: "tt0000001",
+      title: "Horror One",
+      kind: "movie",
+      genres: ["Horror"],
+      directors: ["Jane Doe"],
+    },
+    {
+      id: "tt0000002",
+      title: "Comedy Two",
+      kind: "movie",
+      genres: ["Comedy"],
+      cast: ["Jane Doe"],
+    },
+  ]);
+  const base = { page: 1, pageSize: 10, sort: "title" as const, order: "asc" as const, includeTotal: false };
+  assert.deepEqual(
+    catalog.listTitles({ ...base, withoutGenres: ["Horror"] }).data.map((row) => row.id),
+    ["tt0000002"],
+  );
+  assert.deepEqual(
+    catalog.listTitles({ ...base, directors: ["Jane Doe"] }).data.map((row) => row.id),
+    ["tt0000001"],
+  );
+  assert.deepEqual(
+    catalog.listTitles({ ...base, cast: ["Jane Doe"] }).data.map((row) => row.id),
+    ["tt0000002"],
+  );
+  catalog.close();
+});

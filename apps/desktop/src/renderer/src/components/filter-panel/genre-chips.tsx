@@ -3,21 +3,26 @@ import type { Genre } from "../../../../shared/types";
 import { chipClass } from "../../lib/ui";
 
 export default function GenreChips({
+  label = "Genres",
+  hint,
   genres,
   selected,
   onToggle,
 }: {
+  label?: string;
+  hint?: string;
   genres: Genre[];
   selected: number[];
   onToggle: (id: number) => void;
 }): JSX.Element {
   return (
     <div className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
-      Genres
+      {label}
       <p className="m-0 text-[11px] leading-[1.3] text-faint">
-        {selected.length
-          ? "Match any selected genre."
-          : "None selected — all genres included."}
+        {hint ??
+          (selected.length
+            ? "Match any selected genre."
+            : "None selected — all genres included.")}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {genres.map((genre) => (

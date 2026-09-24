@@ -30,6 +30,24 @@ const listQuery = z.object({
     const genres = list.map((item) => String(item).trim()).filter(Boolean);
     return genres.length ? genres : undefined;
   }, z.array(z.string().trim().min(1).max(60)).max(30).optional()),
+  withoutGenre: z.preprocess((value) => {
+    if (value == null || value === "") return undefined;
+    const list = Array.isArray(value) ? value : String(value).split(",");
+    const genres = list.map((item) => String(item).trim()).filter(Boolean);
+    return genres.length ? genres : undefined;
+  }, z.array(z.string().trim().min(1).max(60)).max(8).optional()),
+  director: z.preprocess((value) => {
+    if (value == null || value === "") return undefined;
+    const list = Array.isArray(value) ? value : String(value).split(",");
+    const names = list.map((item) => String(item).trim()).filter(Boolean);
+    return names.length ? names : undefined;
+  }, z.array(z.string().trim().min(1).max(200)).max(8).optional()),
+  cast: z.preprocess((value) => {
+    if (value == null || value === "") return undefined;
+    const list = Array.isArray(value) ? value : String(value).split(",");
+    const names = list.map((item) => String(item).trim()).filter(Boolean);
+    return names.length ? names : undefined;
+  }, z.array(z.string().trim().min(1).max(200)).max(8).optional()),
   kind: z.string().trim().min(1).max(40).optional(),
   yearMin: optionalInteger(1870, 3000),
   yearMax: optionalInteger(1870, 3000),
@@ -41,12 +59,20 @@ const listQuery = z.object({
   hideWatchlist: optionalBoolean,
   includeTotal: optionalBoolean,
   cursor: z.string().trim().min(1).max(500).optional(),
-}).strict().refine((value) => !value.yearMin || !value.yearMax || value.yearMin <= value.yearMax, { message: "yearMin must be less than or equal to yearMax" }).transform(({ limit, genre, ...query }) => ({
+}).strict().refine((value) => !value.yearMin || !value.yearMax || value.yearMin <= value.yearMax, { message: "yearMin must be less than or equal to yearMax" }).transform(({ limit, genre, withoutGenre, director, cast, ...query }) => ({
   ...query,
   pageSize: limit ?? query.pageSize,
   genres: genre,
+  withoutGenres: withoutGenre,
+  directors: director,
+  cast,
   includeTotal: query.includeTotal ?? true,
 }));
+
+const peopleQuery = z.object({
+  q: z.string().trim().min(1).max(200),
+  role: z.enum(["director", "cast"]),
+}).strict();
 
 const manifestTitle = z.object({
   id: titleId,
@@ -83,6 +109,10 @@ const libraryBody = z.object({
 export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
   const router = Router();
   router.get("/titles", (req, res) => res.json(db.listTitles(listQuery.parse(req.query))));
+  router.get("/people", (req, res) => {
+    const { q, role } = peopleQuery.parse(req.query);
+    return res.json({ data: db.searchPeople(q, role) });
+  });
   router.get("/titles/:id", async (req, res) => {
     const id = titleId.parse(req.params.id);
     let title = db.title(id);

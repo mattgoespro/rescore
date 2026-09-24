@@ -5,6 +5,7 @@ import type {
   SearchHistoryEntry,
 } from "../../../../shared/types";
 import { defaultFilters, mediaTypeOf } from "../../../../shared/types";
+import SuggestField from "../suggest-field";
 import GenreChips from "./genre-chips";
 import Header from "./header";
 import QueryField from "./query-field";
@@ -40,11 +41,26 @@ export default function FilterPanel({
   }
 
   function toggleGenre(id: number): void {
+    const selected = filters.genres.includes(id);
     patch({
-      genres: filters.genres.includes(id)
+      genres: selected
         ? filters.genres.filter((genreId) => genreId !== id)
         : [...filters.genres, id],
-      withoutGenres: [],
+      withoutGenres: selected
+        ? filters.withoutGenres
+        : filters.withoutGenres.filter((genreId) => genreId !== id),
+    });
+  }
+
+  function toggleWithoutGenre(id: number): void {
+    const selected = filters.withoutGenres.includes(id);
+    patch({
+      withoutGenres: selected
+        ? filters.withoutGenres.filter((genreId) => genreId !== id)
+        : [...filters.withoutGenres, id],
+      genres: selected
+        ? filters.genres
+        : filters.genres.filter((genreId) => genreId !== id),
     });
   }
 
@@ -67,6 +83,7 @@ export default function FilterPanel({
           patch({
             titleKind,
             genres: [],
+            withoutGenres: [],
             sortBy:
               titleKind !== "movie" && filters.sortBy === "revenue.desc"
                 ? "popularity.desc"
@@ -84,6 +101,31 @@ export default function FilterPanel({
         genres={genres}
         selected={filters.genres}
         onToggle={toggleGenre}
+      />
+      <GenreChips
+        label="Exclude"
+        hint={
+          filters.withoutGenres.length
+            ? "Hide titles with any of these genres."
+            : "None selected — no genres excluded."
+        }
+        genres={genres}
+        selected={filters.withoutGenres}
+        onToggle={toggleWithoutGenre}
+      />
+      <SuggestField
+        label="Directors"
+        placeholder="Add a director…"
+        values={filters.directors}
+        onChange={(directors) => patch({ directors })}
+        search={(query) => window.api.searchPeople(query, "director")}
+      />
+      <SuggestField
+        label="Cast"
+        placeholder="Add a cast member…"
+        values={filters.cast}
+        onChange={(cast) => patch({ cast })}
+        search={(query) => window.api.searchPeople(query, "cast")}
       />
       <YearRange
         yearMin={filters.yearMin}

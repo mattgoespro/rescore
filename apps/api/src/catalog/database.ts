@@ -165,6 +165,26 @@ export class CatalogDatabase {
     return listTitles(this.db, query);
   }
 
+  searchPeople(
+    query: string,
+    role: "director" | "cast",
+    limit = 8,
+  ): Array<{ nconst: string; name: string }> {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    return this.db
+      .prepare(
+        `SELECT p.nconst, p.name
+FROM people p
+JOIN title_people tp ON tp.nconst = p.nconst
+WHERE tp.role = ? AND p.name LIKE ? || '%'
+GROUP BY p.nconst
+ORDER BY p.name
+LIMIT ?`,
+      )
+      .all(role, trimmed, limit) as Array<{ nconst: string; name: string }>;
+  }
+
   title(id: string): TitleDto | null {
     return titleById(this.db, id);
   }

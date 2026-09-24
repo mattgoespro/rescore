@@ -63,7 +63,9 @@ export function registerIpc(
   ipcMain.handle("catalog:genres", () =>
     withCatalog([], () => getClient().genres()),
   );
-  ipcMain.handle("catalog:searchPeople", () => []);
+  ipcMain.handle("catalog:searchPeople", (_event, query: string, role: "director" | "cast") =>
+    withCatalog([], () => getClient().searchPeople(query, role)),
+  );
   ipcMain.handle("catalog:discover", (_event, filters: DiscoverFilters) =>
     withCatalog(
       { page: 1, totalPages: 0, totalResults: 0, results: [], nextCursor: null },

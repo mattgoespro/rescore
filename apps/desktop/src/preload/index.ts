@@ -38,8 +38,11 @@ const api = {
   },
   genres: (mediaType?: MediaType): Promise<Genre[]> =>
     ipcRenderer.invoke("catalog:genres", mediaType),
-  searchPeople: (query: string): Promise<PersonRef[]> =>
-    ipcRenderer.invoke("catalog:searchPeople", query),
+  searchPeople: (
+    query: string,
+    role: "director" | "cast",
+  ): Promise<PersonRef[]> =>
+    ipcRenderer.invoke("catalog:searchPeople", query, role),
   discover: (filters: DiscoverFilters): Promise<PagedMovies> =>
     ipcRenderer.invoke("catalog:discover", filters),
   movie: (id: string, _mediaType?: MediaType): Promise<MovieDetails | null> =>

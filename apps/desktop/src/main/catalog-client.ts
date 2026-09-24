@@ -213,7 +213,10 @@ export class CatalogClient {
   private async discoverQuery(
     filters: DiscoverFilters,
   ): Promise<Record<string, string | number | undefined>> {
-    const genreNames = await this.genreNames(filters.genres);
+    const [genreNames, withoutGenreNames] = await Promise.all([
+      this.genreNames(filters.genres),
+      this.genreNames(filters.withoutGenres),
+    ]);
     return {
       page: filters.page,
       pageSize: 40,
@@ -227,6 +230,13 @@ export class CatalogClient {
       runtimeMin: filters.runtimeMin ?? undefined,
       runtimeMax: filters.runtimeMax ?? undefined,
       genre: genreNames.length ? genreNames.join(",") : undefined,
+      withoutGenre: withoutGenreNames.length ? withoutGenreNames.join(",") : undefined,
+      director: filters.directors.length
+        ? filters.directors.map((person) => person.name).join(",")
+        : undefined,
+      cast: filters.cast.length
+        ? filters.cast.map((person) => person.name).join(",")
+        : undefined,
       hideWatched: filters.hideWatched ? "true" : undefined,
       hideWatchlist: filters.hideWatchlist ? "true" : undefined,
       sort: sortFor(filters.sortBy),
@@ -234,6 +244,19 @@ export class CatalogClient {
       includeTotal: "false",
       cursor: filters.cursor ?? undefined,
     };
+  }
+
+  async searchPeople(
+    query: string,
+    role: "director" | "cast",
+  ): Promise<Array<{ id: number; name: string }>> {
+    const response = await this.request<{
+      data: Array<{ nconst: string; name: string }>;
+    }>("/v1/people", { q: query, role });
+    return response.data.map((person) => ({
+      id: genreId(person.name),
+      name: person.name,
+    }));
   }
 }
 
