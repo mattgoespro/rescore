@@ -36,7 +36,11 @@ import {
 } from "./components/icons";
 import Inspector from "./components/inspector";
 import { applyAppearance } from "./lib/appearance";
-import { catalogLoaderDetail, isCatalogUiBlocked } from "./lib/catalog-busy";
+import {
+  catalogLoaderDetail,
+  catalogRebuildFeedback,
+  isCatalogUiBlocked,
+} from "./lib/catalog-busy";
 import { cn } from "./lib/cn";
 import { listSearchHistory } from "./lib/search-history-store";
 import { btn } from "./lib/ui";
@@ -198,6 +202,7 @@ export default function App(): JSX.Element {
   }
 
   const catalogBusy = isCatalogUiBlocked(catalogStatus);
+  const rebuildFeedback = catalogRebuildFeedback(catalogStatus);
   const catalogFailed = catalogStatus?.phase === "error";
   const showWelcome =
     !booting &&
@@ -308,6 +313,23 @@ export default function App(): JSX.Element {
               )}
             >
               {error}
+            </div>
+          ) : null}
+          {!catalogBusy && rebuildFeedback ? (
+            <div
+              className={cn(
+                "mb-3",
+                (discoverLayout || forYouLayout) && "shrink-0",
+                discoverLayout && "mx-4 mt-3 mb-0",
+              )}
+              role="status"
+              aria-live="polite"
+            >
+              <CatalogLoader
+                layout="inline"
+                label={rebuildFeedback.label}
+                download={catalogStatus?.download}
+              />
             </div>
           ) : null}
           {booting || catalogBusy ? (

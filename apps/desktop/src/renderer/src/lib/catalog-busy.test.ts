@@ -84,6 +84,20 @@ test("a forced rebuild reports visible in-progress feedback", () => {
   );
 });
 
+test("rebuild feedback stays available when existing titles keep the app unlocked", () => {
+  const status = {
+    phase: "building",
+    message: "Rebuilding catalog from IMDb datasets…",
+    titlesReady: true,
+    titleCount: 482_500,
+  };
+  assert.equal(isCatalogUiBlocked(status), false);
+  assert.equal(
+    catalogRebuildFeedback(status)?.label,
+    "Rebuilding catalog from IMDb datasets…",
+  );
+});
+
 test("loader detail distinguishes first build from a background check", () => {
   assert.equal(
     catalogLoaderDetail({
