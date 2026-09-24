@@ -483,6 +483,42 @@ test("GET title returns immediately with a null poster", async () => {
   }
 });
 
+test("votes sort pages with a cursor instead of offset", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, { id: "tt0000001", title: "Low", rating: 7, votes: 10 });
+  seedTitle(catalog, { id: "tt0000002", title: "Mid", rating: 7, votes: 20 });
+  seedTitle(catalog, { id: "tt0000003", title: "High", rating: 7, votes: 30 });
+  const first = catalog.listTitles({
+    page: 1,
+    pageSize: 1,
+    sort: "votes",
+    order: "desc",
+    includeTotal: false,
+  });
+  assert.equal(first.data[0]?.id, "tt0000003");
+  assert.equal(typeof first.pagination.nextCursor, "string");
+  const second = catalog.listTitles({
+    page: 1,
+    pageSize: 1,
+    sort: "votes",
+    order: "desc",
+    includeTotal: false,
+    cursor: first.pagination.nextCursor ?? undefined,
+  });
+  assert.equal(second.data[0]?.id, "tt0000002");
+  const third = catalog.listTitles({
+    page: 1,
+    pageSize: 1,
+    sort: "votes",
+    order: "desc",
+    includeTotal: false,
+    cursor: second.pagination.nextCursor ?? undefined,
+  });
+  assert.equal(third.data[0]?.id, "tt0000001");
+  assert.equal(third.pagination.nextCursor, null);
+  catalog.close();
+});
+
 test("for-you candidates exclude watched and skipped", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {

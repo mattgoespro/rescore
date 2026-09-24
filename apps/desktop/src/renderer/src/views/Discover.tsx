@@ -76,6 +76,7 @@ export default function Discover({
   const loadingRef = useRef(true);
   const loadingMoreRef = useRef(false);
   const lastPageFullRef = useRef(false);
+  const cursorRef = useRef<string | null>(null);
   const historySession = useRef({ saved: false });
   filtersRef.current = filters;
   genresRef.current = genres;
@@ -103,17 +104,18 @@ export default function Discover({
   useEffect(() => {
     setLoading(true);
     const handle = window.setTimeout(() => {
-      void load(1, true);
+      void load(true);
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
   }, [filterKey]);
 
-  async function load(nextPage: number, replace: boolean): Promise<void> {
+  async function load(replace: boolean): Promise<void> {
     if (!replace && loadingMoreRef.current) return;
     const id = ++requestId.current;
     if (replace) {
       loadingMoreRef.current = false;
       setLoading(true);
+      cursorRef.current = null;
     } else {
       loadingMoreRef.current = true;
     }
@@ -121,7 +123,8 @@ export default function Discover({
     try {
       const data = await window.api.discover({
         ...filtersRef.current,
-        page: nextPage,
+        page: 1,
+        cursor: cursorRef.current,
       });
       if (id !== requestId.current) return;
       pageRef.current = data.page;
@@ -137,6 +140,7 @@ export default function Discover({
         setTotalPages(pageRef.current + 1);
       }
       setPage(data.page);
+      cursorRef.current = data.nextCursor;
       lastPageFullRef.current = canLoadMoreFromPage(data.results.length, 40);
       setItems((prev) => {
         if (replace) return data.results;
@@ -194,7 +198,7 @@ export default function Discover({
 
   function loadMore(): void {
     if (!canLoadMore()) return;
-    void load(pageRef.current + 1, false);
+    void load(false);
   }
 
   function handleCardOpen(movie: MovieSummary): void {

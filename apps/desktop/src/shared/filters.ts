@@ -23,6 +23,7 @@ export interface DiscoverFilters {
   hideWatched: boolean;
   hideWatchlist: boolean;
   page: number;
+  cursor?: string | null;
 }
 
 export interface SearchHistoryGenre {

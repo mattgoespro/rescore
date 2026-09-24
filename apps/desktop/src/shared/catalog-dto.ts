@@ -17,7 +17,13 @@ export interface TitleDto {
 
 export interface TitleListResponse {
   data: TitleDto[];
-  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    nextCursor: string | null;
+  };
 }
 
 export interface FacetsResponse {

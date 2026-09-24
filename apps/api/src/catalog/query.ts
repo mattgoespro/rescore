@@ -36,13 +36,145 @@ export function invalidateCountCache(): void {
   countCache.clear();
 }
 
+interface TitleCursor {
+  id: string;
+  votes: number | null;
+  rating: number | null;
+  year: number | null;
+  title: string;
+  updatedAt: string | null;
+}
+
+export function encodeTitleCursor(row: {
+  id: string;
+  imdb_votes: number | null;
+  imdb_rating: number | null;
+  year: number | null;
+  title: string;
+  updated_at?: string;
+}): string {
+  const payload: TitleCursor = {
+    id: row.id,
+    votes: row.imdb_votes,
+    rating: row.imdb_rating,
+    year: row.year,
+    title: row.title,
+    updatedAt: row.updated_at ?? null,
+  };
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+export function decodeTitleCursor(value: string): TitleCursor | null {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<TitleCursor>;
+    if (typeof parsed.id !== "string" || typeof parsed.title !== "string") {
+      return null;
+    }
+    return {
+      id: parsed.id,
+      votes: typeof parsed.votes === "number" ? parsed.votes : null,
+      rating: typeof parsed.rating === "number" ? parsed.rating : null,
+      year: typeof parsed.year === "number" ? parsed.year : null,
+      title: parsed.title,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cursorSortValue(
+  sort: TitleQuery["sort"],
+  cursor: Pick<TitleCursor, "title" | "year" | "rating" | "votes" | "updatedAt">,
+): string | number | null {
+  switch (sort) {
+    case "title":
+      return cursor.title;
+    case "year":
+      return cursor.year;
+    case "rating":
+      return cursor.rating;
+    case "votes":
+      return cursor.votes;
+    case "updatedAt":
+      return cursor.updatedAt;
+  }
+}
+
+function seekCondition(
+  sort: TitleQuery["sort"],
+  order: "ASC" | "DESC",
+  id: string,
+  value: string | number | null,
+  params: Record<string, string | number>,
+): string {
+  params.cursorId = id;
+  if (value === null) {
+    return "t.id > @cursorId";
+  }
+  params.cursorSort = value;
+  const column = orderColumn[sort];
+  const cmp = order === "DESC" ? "<" : ">";
+  return `(${column} ${cmp} @cursorSort OR (${column} = @cursorSort AND t.id > @cursorId))`;
+}
+
+function buildCursorCondition(
+  query: TitleQuery,
+  order: "ASC" | "DESC",
+  params: Record<string, string | number>,
+): string | null {
+  if (!query.cursor) return null;
+  const cursor = decodeTitleCursor(query.cursor);
+  if (!cursor) return null;
+  const value = cursorSortValue(query.sort, cursor);
+  return seekCondition(query.sort, order, cursor.id, value, params);
+}
+
+function mergeCondition(condition: string, extra: string | null): string {
+  if (!extra) return condition;
+  return condition ? `${condition} AND ${extra}` : `WHERE ${extra}`;
+}
+
+function computeNextCursor(
+  db: Database.Database,
+  query: TitleQuery,
+  order: "ASC" | "DESC",
+  condition: string,
+  params: Record<string, string | number>,
+  from: string,
+  rows: TitleRow[],
+): string | null {
+  if (rows.length < query.pageSize) return null;
+  const lastRow = rows[rows.length - 1];
+  if (!lastRow) return null;
+  const rowSortValue = cursorSortValue(query.sort, {
+    title: lastRow.title,
+    year: lastRow.year,
+    rating: lastRow.imdb_rating,
+    votes: lastRow.imdb_votes,
+    updatedAt: lastRow.updated_at,
+  });
+  const peekParams: Record<string, string | number> = { ...params };
+  const peekCondition = mergeCondition(
+    condition,
+    seekCondition(query.sort, order, lastRow.id, rowSortValue, peekParams),
+  );
+  const hasMore = db
+    .prepare(`SELECT 1 AS found FROM ${from} ${peekCondition} LIMIT 1`)
+    .get(peekParams);
+  return hasMore ? encodeTitleCursor(lastRow) : null;
+}
+
 export function listTitles(
   db: Database.Database,
   query: TitleQuery,
 ): TitleListResponse {
   const { condition, params, fts } = buildWhere(query, db);
   const order = query.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
-  const offset = (query.page - 1) * query.pageSize;
+  const useCursor = Boolean(query.cursor);
+  const offset = useCursor ? 0 : (query.page - 1) * query.pageSize;
   const cacheKey = JSON.stringify({
     revision: getMetaValue(db, "revision") ?? "",
     skipRev: getMetaValue(db, "librarySkipRev") ?? "0",
@@ -56,11 +188,20 @@ export function listTitles(
   const from = fts
     ? "titles t JOIN titles_fts f ON f.rowid = t.rowid"
     : "titles t";
+  const rowParams: Record<string, string | number> = { ...params };
+  const cursorCondition = useCursor
+    ? buildCursorCondition(query, order, rowParams)
+    : null;
+  const rowCondition = mergeCondition(condition, cursorCondition);
   const rows = db
     .prepare(
-      `SELECT t.* FROM ${from} ${condition} ORDER BY ${orderBy(query.sort, order)} LIMIT @limit OFFSET @offset`,
+      `SELECT t.* FROM ${from} ${rowCondition} ORDER BY ${orderBy(query.sort, order)} LIMIT @limit${useCursor ? "" : " OFFSET @offset"}`,
     )
-    .all({ ...params, limit: query.pageSize, offset }) as TitleRow[];
+    .all({
+      ...rowParams,
+      limit: query.pageSize,
+      ...(useCursor ? {} : { offset }),
+    }) as TitleRow[];
 
   let total: number;
   if (includeTotal || cached == null) {
@@ -82,13 +223,16 @@ export function listTitles(
     total = offset + rows.length + 1;
   }
 
+  const nextCursor = computeNextCursor(db, query, order, condition, params, from, rows);
+
   return {
     data: hydrateTitles(db, rows),
     pagination: {
-      page: query.page,
+      page: useCursor ? 1 : query.page,
       pageSize: query.pageSize,
       total,
       totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      nextCursor,
     },
   };
 }

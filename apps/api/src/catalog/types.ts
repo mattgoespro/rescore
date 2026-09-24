@@ -32,6 +32,7 @@ export interface TitleQuery {
   runtimeMin?: number;
   runtimeMax?: number;
   includeTotal?: boolean;
+  cursor?: string;
 }
 
 export interface CatalogMeta {
@@ -85,6 +86,7 @@ export interface TitleRow {
   certification: string | null;
   imdb_rating: number | null;
   imdb_votes: number | null;
+  updated_at: string;
 }
 
 export const IMDB_ID = /^tt\d+$/i;

@@ -67,8 +67,9 @@ export function registerIpc(
   ipcMain.handle("catalog:searchPeople", () => []);
   ipcMain.handle("catalog:searchKeywords", () => []);
   ipcMain.handle("catalog:discover", (_event, filters: DiscoverFilters) =>
-    withCatalog({ page: 1, totalPages: 0, totalResults: 0, results: [] }, () =>
-      discover(filters),
+    withCatalog(
+      { page: 1, totalPages: 0, totalResults: 0, results: [], nextCursor: null },
+      () => discover(filters),
     ),
   );
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>

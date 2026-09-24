@@ -40,6 +40,7 @@ const listQuery = z.object({
   hideWatched: optionalBoolean,
   hideWatchlist: optionalBoolean,
   includeTotal: optionalBoolean,
+  cursor: z.string().trim().min(1).max(500).optional(),
 }).strict().refine((value) => !value.yearMin || !value.yearMax || value.yearMin <= value.yearMax, { message: "yearMin must be less than or equal to yearMax" }).transform(({ limit, genre, ...query }) => ({
   ...query,
   pageSize: limit ?? query.pageSize,

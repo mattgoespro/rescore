@@ -92,6 +92,7 @@ export class CatalogClient {
       totalPages: response.pagination.totalPages,
       totalResults: response.pagination.total,
       results: results.map((movie) => ({ ...movie, match: 0, reasons: [] })),
+      nextCursor: response.pagination.nextCursor ?? null,
     };
   }
 
@@ -231,6 +232,7 @@ export class CatalogClient {
       sort: sortFor(filters.sortBy),
       order: orderFor(filters.sortBy),
       includeTotal: "false",
+      cursor: filters.cursor ?? undefined,
     };
   }
 }

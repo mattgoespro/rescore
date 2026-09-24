@@ -7,6 +7,7 @@ export interface PagedMovies {
   totalPages: number;
   totalResults: number;
   results: RankedMovie[];
+  nextCursor: string | null;
 }
 
 export interface RankReason {
