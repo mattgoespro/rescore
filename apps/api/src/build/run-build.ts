@@ -80,6 +80,16 @@ function titleDumpKey(files: { ratings: string; basics: string }): string {
 
 type RemoteProbe = Awaited<ReturnType<typeof probeRemote>>;
 
+interface TitleRemoteProbes {
+  ratings: RemoteProbe;
+  basics: RemoteProbe;
+}
+
+/**
+ * A component only counts once the probe actually resolved something; a
+ * failed HEAD request must never be treated as an empty-but-known value, or
+ * it would look identical to a dump that genuinely has no etag/last-modified.
+ */
 function remoteProbeFingerprint(probe: RemoteProbe): string | null {
   return (
     probe.etag ??
@@ -88,15 +98,25 @@ function remoteProbeFingerprint(probe: RemoteProbe): string | null {
   );
 }
 
-async function remoteTitleDumpFingerprint(): Promise<string | null> {
+/**
+ * The overall fingerprint is only meaningful when BOTH dumps resolved a
+ * component. A partial probe failure must not be comparable at all — it must
+ * never present as a confirmed match or a confirmed mismatch.
+ */
+function remoteTitleDumpFingerprint(probes: TitleRemoteProbes): string | null {
+  const ratingsPart = remoteProbeFingerprint(probes.ratings);
+  const basicsPart = remoteProbeFingerprint(probes.basics);
+  if (ratingsPart == null || basicsPart == null) return null;
+  return [ratingsPart, basicsPart].join("\n");
+}
+
+async function probeTitleDumps(): Promise<TitleRemoteProbes> {
   const urls = titleDumpUrls();
   const [ratings, basics] = await Promise.all([
     probeRemote(urls.ratings),
     probeRemote(urls.basics),
   ]);
-  const parts = [remoteProbeFingerprint(ratings), remoteProbeFingerprint(basics)];
-  if (parts.every((part) => part == null)) return null;
-  return parts.join("\n");
+  return { ratings, basics };
 }
 
 async function runBuildTitles(
@@ -105,30 +125,46 @@ async function runBuildTitles(
 ): Promise<CatalogBuildResult> {
   const existing = catalog.catalogMeta();
 
-  if (!force) {
-    const remoteFingerprint = await remoteTitleDumpFingerprint();
-    const deferred = shouldDeferTitleIngest({
-      force,
-      titleCount: catalog.titleCount(),
-      builtAt: existing.builtAt,
-      storedFingerprint: catalog.titleDumpFingerprint(),
-      remoteFingerprint,
-    });
-    if (deferred && existing.builtAt) {
-      log(
-        "Title dumps changed remotely; keeping existing catalogue searchable",
-      );
-      catalog.setTitlesUpdateAvailable(true);
-      return {
-        titleCount: catalog.titleCount(),
-        builtAt: existing.builtAt,
-        revision: existing.revision ?? existing.builtAt,
-        unchanged: true,
-      };
-    }
+  if (force) {
+    return reconcileTitles(catalog, existing, await downloadTitleDumps(force), force);
   }
 
-  const files = await downloadTitleDumps(force);
+  // Probe once and thread the exact same result into both the defer
+  // decision and the downloader's reuse decision, so a dump cannot change
+  // between an initial check and a second, independent probe.
+  const probes = await probeTitleDumps();
+  const deferred = shouldDeferTitleIngest({
+    force,
+    titleCount: catalog.titleCount(),
+    builtAt: existing.builtAt,
+    storedFingerprint: catalog.titleDumpFingerprint(),
+    remoteFingerprint: remoteTitleDumpFingerprint(probes),
+  });
+  if (deferred && existing.builtAt) {
+    log("Title dumps changed remotely; keeping existing catalogue searchable");
+    catalog.setTitlesUpdateAvailable(true);
+    return {
+      titleCount: catalog.titleCount(),
+      builtAt: existing.builtAt,
+      revision: existing.revision ?? existing.builtAt,
+      unchanged: true,
+    };
+  }
+
+  return reconcileTitles(
+    catalog,
+    existing,
+    await downloadTitleDumps(force, probes),
+    force,
+  );
+}
+
+async function reconcileTitles(
+  catalog: CatalogDatabase,
+  existing: { builtAt: string | null; revision: string | null },
+  files: { ratings: string; basics: string },
+  force: boolean,
+): Promise<CatalogBuildResult> {
   const fingerprint = titleDumpKey(files);
   if (
     !force &&

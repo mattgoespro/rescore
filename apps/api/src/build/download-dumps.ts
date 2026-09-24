@@ -5,7 +5,7 @@ import {
   DATASET_URL,
   IMDB_DATASETS_BASE,
 } from "../config.js";
-import { ensureGzipFile } from "../services/gzip-tsv.js";
+import { ensureGzipFile, type RemoteProbe } from "../services/gzip-tsv.js";
 import { reportDownload } from "./progress.js";
 
 const TITLE_FILES = {
@@ -35,14 +35,21 @@ export function titleDumpUrls(): { ratings: string; basics: string } {
 
 export async function downloadTitleDumps(
   force = false,
+  probes?: { ratings: RemoteProbe; basics: RemoteProbe },
 ): Promise<TitleDumpFiles> {
   const urls = titleDumpUrls();
   const dumps = [
-    { key: "ratings" as const, name: DATASET_FILE, url: urls.ratings },
+    {
+      key: "ratings" as const,
+      name: DATASET_FILE,
+      url: urls.ratings,
+      probe: probes?.ratings,
+    },
     {
       key: "basics" as const,
       name: TITLE_FILES.basics,
       url: urls.basics,
+      probe: probes?.basics,
     },
   ];
   return downloadWave(dumps, force);
@@ -62,7 +69,7 @@ export async function downloadCreditDumps(
 }
 
 async function downloadWave<K extends string>(
-  dumps: Array<{ key: K; name: string; url: string }>,
+  dumps: Array<{ key: K; name: string; url: string; probe?: RemoteProbe }>,
   force = false,
 ): Promise<Record<K, string>> {
   const files = {} as Record<K, string>;
@@ -73,18 +80,24 @@ async function downloadWave<K extends string>(
       reportDownload({
         message: `Checking ${dump.name} (${fileIndex} of ${dumps.length})`,
       });
-      files[dump.key] = await ensureGzipFile(dump.url, dest, force, (bytes) => {
-        reportDownload({
-          message: `Downloading ${dump.name} (${fileIndex} of ${dumps.length})`,
-          download: {
-            file: dump.name,
-            fileIndex,
-            fileCount: dumps.length,
-            receivedBytes: bytes.receivedBytes,
-            totalBytes: bytes.totalBytes,
-          },
-        });
-      });
+      files[dump.key] = await ensureGzipFile(
+        dump.url,
+        dest,
+        force,
+        (bytes) => {
+          reportDownload({
+            message: `Downloading ${dump.name} (${fileIndex} of ${dumps.length})`,
+            download: {
+              file: dump.name,
+              fileIndex,
+              fileCount: dumps.length,
+              receivedBytes: bytes.receivedBytes,
+              totalBytes: bytes.totalBytes,
+            },
+          });
+        },
+        dump.probe,
+      );
     }),
   );
   return files;

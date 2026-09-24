@@ -28,7 +28,7 @@ export interface DownloadProgress {
   totalBytes: number | null;
 }
 
-interface RemoteProbe {
+export interface RemoteProbe {
   etag: string | null;
   lastModified: string | null;
   contentLength: number | null;
@@ -59,9 +59,10 @@ export async function ensureGzipFile(
   file: string,
   force = false,
   onProgress?: (progress: DownloadProgress) => void,
+  probeOverride?: RemoteProbe,
 ): Promise<string> {
   mkdirSync(dirname(file), { recursive: true });
-  const probe = await probeRemote(url);
+  const probe = probeOverride ?? (await probeRemote(url));
   if (!force && canReuseLocalFile(file, probe)) {
     if (!readMeta(file) && (probe.etag || probe.lastModified || probe.contentLength)) {
       writeMeta(file, {

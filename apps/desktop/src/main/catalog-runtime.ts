@@ -47,6 +47,7 @@ export function createCatalogRuntime(
     builtAt: null,
     error: null,
     download: null,
+    titlesUpdateAvailable: false,
   };
   let generation = 0;
   let spawned: ChildProcess | null = null;
@@ -89,6 +90,7 @@ export function createCatalogRuntime(
       builtAt: null,
       error: null,
       download: null,
+      titlesUpdateAvailable: false,
     });
 
     const baseUrl = catalogUrl(store);
@@ -106,6 +108,7 @@ export function createCatalogRuntime(
               builtAt: null,
               error: started.message,
               download: null,
+              titlesUpdateAvailable: false,
             });
             return;
           }
@@ -119,6 +122,7 @@ export function createCatalogRuntime(
           builtAt: null,
           error: null,
           download: null,
+          titlesUpdateAvailable: false,
         });
       } else if (isLocalUrl(baseUrl) && !spawned) {
         adoptedPid = await listeningPid(portFromUrl(baseUrl));
@@ -134,6 +138,7 @@ export function createCatalogRuntime(
           builtAt: null,
           error: "Catalog API did not become reachable.",
           download: null,
+          titlesUpdateAvailable: false,
         });
         return;
       }
@@ -178,6 +183,7 @@ export function createCatalogRuntime(
           builtAt: current.builtAt,
           error: null,
           download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
         });
         await sleep(POLL_MS);
         continue;
@@ -222,6 +228,7 @@ export function createCatalogRuntime(
           builtAt: current.builtAt,
           error: "Catalog API did not stay running.",
           download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
         });
         return;
       }
@@ -233,6 +240,7 @@ export function createCatalogRuntime(
         builtAt: current.builtAt,
         error: null,
         download: null,
+        titlesUpdateAvailable: current.titlesUpdateAvailable,
       });
       await sleep(Math.min(800 * 2 ** (restartAttempts - 1), 8000));
       if (generation !== gen || quitting) return;
@@ -253,6 +261,7 @@ export function createCatalogRuntime(
           builtAt: current.builtAt,
           error: "Catalog API did not become reachable.",
           download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
         });
         return;
       }
@@ -316,6 +325,7 @@ export function createCatalogRuntime(
       builtAt: current.builtAt,
       error: null,
       download: null,
+      titlesUpdateAvailable: current.titlesUpdateAvailable,
     });
     void runRebuild(generation);
     return current;
@@ -333,6 +343,7 @@ export function createCatalogRuntime(
           builtAt: current.builtAt,
           error: "Catalog API did not become reachable.",
           download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
         });
         return;
       }
@@ -357,6 +368,7 @@ export function createCatalogRuntime(
           builtAt: current.builtAt,
           error: body?.error ?? `Catalog rebuild failed (${response.status})`,
           download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
         });
         return;
       }
@@ -372,6 +384,7 @@ export function createCatalogRuntime(
         builtAt: current.builtAt,
         error: message,
         download: null,
+        titlesUpdateAvailable: current.titlesUpdateAvailable,
       });
     }
   }

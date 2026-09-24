@@ -17,5 +17,5 @@ export interface CatalogStatus {
   download: CatalogDownloadProgress | null;
   titlesReady?: boolean;
   creditsReady?: boolean;
-  titlesUpdateAvailable?: boolean;
+  titlesUpdateAvailable: boolean;
 }
