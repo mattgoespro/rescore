@@ -4,7 +4,17 @@ import { syncDataset } from "./services/dataset.js";
 import { CatalogDatabase } from "./services/catalog-db.js";
 import { ensureCatalog, refreshCatalogStatus } from "./services/ensure-catalog.js";
 import { cleanupIncompleteDownloads } from "./services/gzip-tsv.js";
+import { emit } from "./log/write.js";
 import { RatingsStore } from "./services/ratings-store.js";
+
+function failureText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack =
+    process.env.LOG_LEVEL === "debug" && error instanceof Error && error.stack
+      ? ` ${error.stack}`
+      : "";
+  return `${message}${stack}`;
+}
 
 cleanupIncompleteDownloads(DATA_DIR);
 
@@ -12,13 +22,28 @@ const catalog = new CatalogDatabase(CATALOG_DB_PATH);
 const store = new RatingsStore(catalog);
 const app = createApp(store, catalog);
 const server = app.listen(PORT, () => {
-  console.log(`IMDb catalog API listening on http://127.0.0.1:${PORT}`);
+  emit({
+    channel: "api",
+    phase: "startup",
+    level: "info",
+    message: `IMDb catalog API listening on http://127.0.0.1:${PORT}`,
+  });
 });
 server.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EADDRINUSE") {
-    console.error(`Catalog API port ${PORT} is already in use.`);
+    emit({
+      channel: "api",
+      phase: "startup",
+      level: "error",
+      message: `Catalog API port ${PORT} is already in use.`,
+    });
   } else {
-    console.error("Catalog API failed to listen.", error);
+    emit({
+      channel: "api",
+      phase: "startup",
+      level: "error",
+      message: `Catalog API failed to listen. ${failureText(error)}`,
+    });
   }
   process.exit(1);
 });
@@ -28,32 +53,58 @@ refreshCatalogStatus(catalog);
 void ensureCatalog(catalog)
   .then((built) => {
     if (built) {
-      console.log(
-        `Built ${built.titleCount.toLocaleString()} titles at ${built.builtAt}`,
-      );
+      emit({
+        channel: "catalog",
+        phase: "startup",
+        level: "info",
+        message: `Built ${built.titleCount.toLocaleString()} titles at ${built.builtAt}`,
+      });
     }
     void syncDataset(store)
       .then(() => {
-        console.log(
-          `Ratings ready (${store.titleCount().toLocaleString()} titles, synced ${store.lastSyncedAt()})`,
-        );
+        emit({
+          channel: "ratings",
+          phase: "startup",
+          level: "info",
+          message: `Ratings ready (${store.titleCount().toLocaleString()} titles, synced ${store.lastSyncedAt()})`,
+        });
       })
       .catch((error: unknown) => {
-        console.warn("Ratings sync failed.", error);
+        emit({
+          channel: "ratings",
+          phase: "startup",
+          level: "warn",
+          message: `Ratings sync failed. ${failureText(error)}`,
+        });
       });
   })
   .catch((error: unknown) => {
-    console.error("Catalog startup failed.", error);
+    emit({
+      channel: "catalog",
+      phase: "startup",
+      level: "error",
+      message: `Catalog startup failed. ${failureText(error)}`,
+    });
   });
 
 setInterval(() => {
   void syncDataset(store).catch((error: unknown) => {
-    console.warn("Scheduled IMDb ratings refresh failed.", error);
+    emit({
+      channel: "ratings",
+      phase: "startup",
+      level: "warn",
+      message: `Scheduled IMDb ratings refresh failed. ${failureText(error)}`,
+    });
   });
 }, SYNC_INTERVAL_MS).unref();
 
 function shutdown(signal: string): void {
-  console.log(`Catalog API stopping (${signal})`);
+  emit({
+    channel: "api",
+    phase: "shutdown",
+    level: "info",
+    message: `Catalog API stopping (${signal})`,
+  });
   server.close(() => {
     try {
       catalog.close();

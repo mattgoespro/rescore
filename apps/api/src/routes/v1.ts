@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { CatalogDatabase } from "../services/catalog-db.js";
 import { catalogStatus, ensureCatalog, isCatalogBuilding } from "../services/ensure-catalog.js";
+import { emit } from "../log/write.js";
 import { syncDataset } from "../services/dataset.js";
 import type { RatingsStore } from "../services/ratings-store.js";
 import { mediaHandler } from "./media.js";
@@ -141,11 +142,21 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     void ensureCatalog(db, { force: true })
       .then(async () => {
         await syncDataset(ratings).catch((error: unknown) => {
-          console.warn("Ratings sync after catalog rebuild failed.", error);
+          emit({
+            channel: "ratings",
+            phase: "reconcile",
+            level: "warn",
+            message: `Ratings sync after catalog rebuild failed. ${error instanceof Error ? error.message : String(error)}`,
+          });
         });
       })
       .catch((error: unknown) => {
-        console.error("Catalog rebuild failed.", error);
+        emit({
+          channel: "catalog",
+          phase: "reconcile",
+          level: "error",
+          message: `Catalog rebuild failed. ${error instanceof Error ? error.message : String(error)}`,
+        });
       });
     return res.status(202).json({ ok: true, ...catalogStatus() });
   });

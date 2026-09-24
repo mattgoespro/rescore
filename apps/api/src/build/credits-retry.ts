@@ -1,3 +1,5 @@
+import { emit } from "../log/write.js";
+
 export function shouldRetryCredits(
   attempt: number,
   creditsReady: boolean,
@@ -22,7 +24,16 @@ export async function recoverCreditsFailure(
   error: unknown,
   deps: CreditsFailureDeps,
 ): Promise<void> {
-  const warn = deps.warn ?? ((message, detail) => console.warn(message, detail));
+  const warn =
+    deps.warn ??
+    ((message, detail) => {
+      emit({
+        channel: "catalog",
+        phase: "credits",
+        level: "warn",
+        message: `${message} ${detail instanceof Error ? detail.message : String(detail)}`,
+      });
+    });
   warn(
     "Credits import failed.",
     error instanceof Error ? error.message : error,

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { DATA_DIR, DATASET_FILE, DATASET_URL } from "../config.js";
 import type { ImdbRating } from "../types.js";
 import type { RatingsStore } from "./ratings-store.js";
+import { emit } from "../log/write.js";
 import { ensureGzipFile, imdbValue, isStale, readTsvRows } from "./gzip-tsv.js";
 
 const IMDB_ID = /^tt\d+$/i;
@@ -40,10 +41,12 @@ async function ensureDataset(
     await loadFromFile(store, file, true);
   } catch (error) {
     if (store.ready()) {
-      console.warn(
-        "IMDb ratings refresh failed; keeping the last loaded dataset.",
-        error,
-      );
+      emit({
+        channel: "ratings",
+        phase: "startup",
+        level: "warn",
+        message: `IMDb ratings refresh failed; keeping the last loaded dataset. ${error instanceof Error ? error.message : String(error)}`,
+      });
       return;
     }
     throw error;

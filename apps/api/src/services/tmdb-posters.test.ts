@@ -54,23 +54,26 @@ test("age rating prefers the configured region, then the US theatrical certifica
   );
 });
 
-test("missing TMDB key is logged once and does not claim posters stay empty", async () => {
+test("missing TMDB key is logged once on the posters channel", async () => {
   delete process.env.TMDB_API_KEY;
   delete process.env.APPDATA;
   const lines: string[] = [];
-  const original = console.log;
-  console.log = (...args: unknown[]) => {
-    lines.push(args.map(String).join(" "));
-  };
+  const original = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    lines.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
   try {
     const catalog = {} as CatalogDatabase;
     await startPosterEnrichment(catalog);
     await startPosterEnrichment(catalog);
   } finally {
-    console.log = original;
+    process.stdout.write = original;
   }
-  const posterLines = lines.filter((line) => line.includes("[posters]"));
+  const posterLines = lines.filter(
+    (line) => line.includes("posters") && line.includes(MISSING_TMDB_KEY_MESSAGE),
+  );
   assert.equal(posterLines.length, 1);
-  assert.match(posterLines[0] ?? "", new RegExp(MISSING_TMDB_KEY_MESSAGE));
+  assert.match(posterLines[0] ?? "", /  posters  posters    info   /);
   assert.doesNotMatch(posterLines[0] ?? "", /stay empty/);
 });

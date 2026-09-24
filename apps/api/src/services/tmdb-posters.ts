@@ -8,6 +8,7 @@ import {
   TMDB_POSTER_PAGE_SIZE,
 } from "../config.js";
 import { delay } from "../catalog/work-queue.js";
+import { emit } from "../log/write.js";
 import type { CatalogDatabase } from "./catalog-db.js";
 
 interface FindHit {
@@ -390,7 +391,7 @@ function drainPriorityIds(): string[] {
 }
 
 function log(message: string): void {
-  console.log(`[posters] ${message}`);
+  emit({ channel: "posters", phase: "posters", level: "info", message });
 }
 
 let posterInflight: Promise<PosterEnrichmentResult | null> | null = null;
@@ -431,9 +432,12 @@ export function startPosterEnrichment(
     handleSignals: false,
   })
     .catch((error: unknown) => {
-      log(
-        `Poster lookup failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      emit({
+        channel: "posters",
+        phase: "posters",
+        level: "warn",
+        message: `Poster lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
       return null;
     })
     .finally(() => {
