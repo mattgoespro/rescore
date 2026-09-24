@@ -19,6 +19,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { SYNC_INTERVAL_MS } from "../config.js";
+import { emit } from "../log/write.js";
 
 const PROGRESS_INTERVAL_MS = 200;
 const MIN_GZIP_BYTES = 64;
@@ -72,10 +73,20 @@ export async function ensureGzipFile(
         size: statSync(file).size,
       });
     }
-    console.log(`[catalog] Reusing ${file}`);
+    emit({
+      channel: "catalog",
+      phase: "download",
+      level: "info",
+      message: `Reusing ${file}`,
+    });
     return file;
   }
-  console.log(`[catalog] Downloading ${url}`);
+  emit({
+    channel: "catalog",
+    phase: "download",
+    level: "info",
+    message: `Downloading ${url}`,
+  });
   await downloadGzip(url, file, onProgress, probe);
   if (!isValidGzipFile(file)) {
     await unlink(file).catch(() => undefined);

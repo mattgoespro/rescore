@@ -148,7 +148,7 @@ async function runBuildTitles(
     remoteFingerprint: remoteTitleDumpFingerprint(probes),
   });
   if (deferred && existing.builtAt) {
-    log("Title dumps changed remotely; keeping existing catalogue searchable");
+    log("Title dumps changed remotely; keeping existing catalogue searchable", "download");
     catalog.setTitlesUpdateAvailable(true);
     return {
       titleCount: catalog.titleCount(),
@@ -179,7 +179,7 @@ async function reconcileTitles(
     existing.builtAt &&
     catalog.titleDumpFingerprint() === fingerprint
   ) {
-    log("Title dumps unchanged; keeping existing catalogue");
+    log("Title dumps unchanged; keeping existing catalogue", "download");
     catalog.setTitlesUpdateAvailable(false);
     return {
       titleCount: catalog.titleCount(),
@@ -189,15 +189,15 @@ async function reconcileTitles(
     };
   }
 
-  log("Loading IMDb ratings");
+  log("Loading IMDb ratings", "reconcile");
   const ratings = await parseRatingsTsv(files.ratings);
   const firstBuild = catalog.titleCount() === 0;
   catalog.setBuildInProgress(true);
   if (firstBuild) catalog.setCreditsReady(false);
   try {
-    log("Reconciling title.basics");
+    log("Reconciling title.basics", "reconcile");
     const imported = await ingestTitles(catalog, files.basics, ratings);
-    log(`Reconciled ${imported.toLocaleString()} titles`);
+    log(`Reconciled ${imported.toLocaleString()} titles`, "reconcile");
   } catch (error) {
     catalog.setBuildInProgress(false);
     throw error;
@@ -214,7 +214,7 @@ async function reconcileTitles(
   catalog.setBuildInProgress(false);
   catalog.setTitlesUpdateAvailable(false);
   const titleCount = catalog.titleCount();
-  log(`Titles ready: ${titleCount.toLocaleString()} titles`);
+  log(`Titles ready: ${titleCount.toLocaleString()} titles`, "reconcile");
   void catalog.queueAnalyze();
   return { titleCount, builtAt, revision };
 }
@@ -243,7 +243,7 @@ async function runBuildCredits(
     !catalog.isCreditsInProgress() &&
     catalog.creditsDumpFingerprint() === fingerprint
   ) {
-    log("Credit dumps unchanged; keeping existing credits");
+    log("Credit dumps unchanged; keeping existing credits", "credits");
     return;
   }
 
@@ -255,16 +255,16 @@ async function runBuildCredits(
   catalog.setCreditsInProgress(true);
   catalog.startCreditsRebuild();
   try {
-    log("Reading title.crew");
+    log("Reading title.crew", "credits");
     await importCrew(files.crew, kept, directors, neededNames);
-    log("Reading title.principals");
+    log("Reading title.principals", "credits");
     await importPrincipals(files.principals, kept, cast, neededNames);
     const known = catalog.peopleNames(neededNames);
     for (const nconst of known.keys()) neededNames.delete(nconst);
-    log(`Resolving ${neededNames.size.toLocaleString()} names`);
+    log(`Resolving ${neededNames.size.toLocaleString()} names`, "credits");
     const names = await importNames(files.names, neededNames);
     for (const [nconst, name] of known) names.set(nconst, name);
-    log("Writing credits");
+    log("Writing credits", "credits");
     insertCredits(catalog, directors, cast, names, kept);
   } catch (error) {
     catalog.finishCreditsRebuild();
@@ -277,7 +277,7 @@ async function runBuildCredits(
   catalog.setCreditsFailed(false);
   catalog.setCreditsDumpFingerprint(fingerprint);
   catalog.setCreditsInProgress(false);
-  log("Credits ready");
+  log("Credits ready", "credits");
   void catalog.queueAnalyze("title_people");
 }
 

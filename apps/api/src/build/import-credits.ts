@@ -18,7 +18,7 @@ export async function importCrew(
   for await (const row of readTsvRows(file)) {
     scanned += 1;
     if (scanned % 1_000_000 === 0) {
-      log(`  scanned ${scanned.toLocaleString()} crew`);
+      log(`  scanned ${scanned.toLocaleString()} crew`, "credits");
     }
     const id = imdbValue(row[0])?.toLowerCase();
     if (!id || !kept.has(id)) continue;
@@ -46,7 +46,7 @@ export async function importPrincipals(
   for await (const row of readTsvRows(file)) {
     scanned += 1;
     if (scanned % 5_000_000 === 0) {
-      log(`  scanned ${scanned.toLocaleString()} principals`);
+      log(`  scanned ${scanned.toLocaleString()} principals`, "credits");
     }
     const id = imdbValue(row[0])?.toLowerCase();
     if (!id || !kept.has(id)) continue;
@@ -83,7 +83,7 @@ export async function importNames(
   for await (const row of readTsvRows(file)) {
     scanned += 1;
     if (scanned % 1_000_000 === 0) {
-      log(`  scanned ${scanned.toLocaleString()} names`);
+      log(`  scanned ${scanned.toLocaleString()} names`, "credits");
     }
     const nconst = imdbValue(row[0])?.toLowerCase();
     if (!nconst || !neededNames.has(nconst)) continue;

@@ -16,7 +16,7 @@ export async function importBasics(
   for await (const row of readTsvRows(file)) {
     scanned += 1;
     if (scanned % 1_000_000 === 0) {
-      log(`  scanned ${scanned.toLocaleString()} basics`);
+      log(`  scanned ${scanned.toLocaleString()} basics`, "reconcile");
     }
     const id = imdbValue(row[0])?.toLowerCase();
     if (!id) continue;
