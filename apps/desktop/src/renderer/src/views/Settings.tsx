@@ -344,8 +344,11 @@ function catalogSummary(status: CatalogStatus | null): string {
     status.titleCount > 0
       ? `${status.titleCount.toLocaleString()} titles`
       : "no titles yet";
-  if (!status.builtAt) return `Local catalog: ${count}.`;
+  const updateNotice = status.titlesUpdateAvailable
+    ? " A newer IMDb dump is available. Rebuild when you want it."
+    : "";
+  if (!status.builtAt) return `Local catalog: ${count}.${updateNotice}`;
   const built = new Date(status.builtAt);
-  if (Number.isNaN(built.getTime())) return `Local catalog: ${count}.`;
-  return `Local catalog: ${count}, last built ${built.toLocaleString()}.`;
+  if (Number.isNaN(built.getTime())) return `Local catalog: ${count}.${updateNotice}`;
+  return `Local catalog: ${count}, last built ${built.toLocaleString()}.${updateNotice}`;
 }

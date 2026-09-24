@@ -1,8 +1,13 @@
 import { CATALOG_DB_PATH } from "../config.js";
 import type { CatalogDatabase } from "../catalog/index.js";
-import { dumpFingerprint } from "../services/gzip-tsv.js";
+import { dumpFingerprint, probeRemote } from "../services/gzip-tsv.js";
 import { parseRatingsTsv } from "../services/dataset.js";
-import { downloadCreditDumps, downloadTitleDumps } from "./download-dumps.js";
+import {
+  downloadCreditDumps,
+  downloadTitleDumps,
+  titleDumpUrls,
+} from "./download-dumps.js";
+import { shouldDeferTitleIngest } from "./defer-ingest.js";
 import { ingestTitles } from "./import-basics.js";
 import {
   importCrew,
@@ -73,13 +78,58 @@ function titleDumpKey(files: { ratings: string; basics: string }): string {
   );
 }
 
+type RemoteProbe = Awaited<ReturnType<typeof probeRemote>>;
+
+function remoteProbeFingerprint(probe: RemoteProbe): string | null {
+  return (
+    probe.etag ??
+    probe.lastModified ??
+    (probe.contentLength != null ? String(probe.contentLength) : null)
+  );
+}
+
+async function remoteTitleDumpFingerprint(): Promise<string | null> {
+  const urls = titleDumpUrls();
+  const [ratings, basics] = await Promise.all([
+    probeRemote(urls.ratings),
+    probeRemote(urls.basics),
+  ]);
+  const parts = [remoteProbeFingerprint(ratings), remoteProbeFingerprint(basics)];
+  if (parts.every((part) => part == null)) return null;
+  return parts.join("\n");
+}
+
 async function runBuildTitles(
   catalog: CatalogDatabase,
   force: boolean,
 ): Promise<CatalogBuildResult> {
+  const existing = catalog.catalogMeta();
+
+  if (!force) {
+    const remoteFingerprint = await remoteTitleDumpFingerprint();
+    const deferred = shouldDeferTitleIngest({
+      force,
+      titleCount: catalog.titleCount(),
+      builtAt: existing.builtAt,
+      storedFingerprint: catalog.titleDumpFingerprint(),
+      remoteFingerprint,
+    });
+    if (deferred && existing.builtAt) {
+      log(
+        "Title dumps changed remotely; keeping existing catalogue searchable",
+      );
+      catalog.setTitlesUpdateAvailable(true);
+      return {
+        titleCount: catalog.titleCount(),
+        builtAt: existing.builtAt,
+        revision: existing.revision ?? existing.builtAt,
+        unchanged: true,
+      };
+    }
+  }
+
   const files = await downloadTitleDumps(force);
   const fingerprint = titleDumpKey(files);
-  const existing = catalog.catalogMeta();
   if (
     !force &&
     catalog.titleCount() > 0 &&
@@ -87,6 +137,7 @@ async function runBuildTitles(
     catalog.titleDumpFingerprint() === fingerprint
   ) {
     log("Title dumps unchanged; keeping existing catalogue");
+    catalog.setTitlesUpdateAvailable(false);
     return {
       titleCount: catalog.titleCount(),
       builtAt: existing.builtAt,
@@ -118,6 +169,7 @@ async function runBuildTitles(
   });
   catalog.setTitleDumpFingerprint(fingerprint);
   catalog.setBuildInProgress(false);
+  catalog.setTitlesUpdateAvailable(false);
   const titleCount = catalog.titleCount();
   log(`Titles ready: ${titleCount.toLocaleString()} titles`);
   void catalog.queueAnalyze();

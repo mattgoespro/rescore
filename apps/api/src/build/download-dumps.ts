@@ -26,15 +26,23 @@ export interface CreditDumpFiles {
   names: string;
 }
 
+export function titleDumpUrls(): { ratings: string; basics: string } {
+  return {
+    ratings: DATASET_URL,
+    basics: `${IMDB_DATASETS_BASE}/${TITLE_FILES.basics}`,
+  };
+}
+
 export async function downloadTitleDumps(
   force = false,
 ): Promise<TitleDumpFiles> {
+  const urls = titleDumpUrls();
   const dumps = [
-    { key: "ratings" as const, name: DATASET_FILE, url: DATASET_URL },
+    { key: "ratings" as const, name: DATASET_FILE, url: urls.ratings },
     {
       key: "basics" as const,
       name: TITLE_FILES.basics,
-      url: `${IMDB_DATASETS_BASE}/${TITLE_FILES.basics}`,
+      url: urls.basics,
     },
   ];
   return downloadWave(dumps, force);

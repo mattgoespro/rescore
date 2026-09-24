@@ -229,7 +229,7 @@ function writeMeta(file: string, meta: FileMeta): void {
   writeFileSync(metaPath(file), JSON.stringify(meta), "utf8");
 }
 
-async function probeRemote(url: string): Promise<RemoteProbe> {
+export async function probeRemote(url: string): Promise<RemoteProbe> {
   const empty: RemoteProbe = { etag: null, lastModified: null, contentLength: null };
   try {
     const response = await fetch(url, {

@@ -497,6 +497,14 @@ export class CatalogDatabase {
     setMetaValue(this.db, "creditsDumpFingerprint", value);
   }
 
+  setTitlesUpdateAvailable(ready: boolean): void {
+    setFlag(this.db, "titlesUpdateAvailable", ready);
+  }
+
+  titlesUpdateAvailable(): boolean {
+    return flagIsSet(this.db, "titlesUpdateAvailable");
+  }
+
   insertPeople(rows: CatalogPersonRow[]): void {
     insertPeople(this.db, rows);
   }

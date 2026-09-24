@@ -25,6 +25,7 @@ interface HealthPayload {
   catalogBuiltAt?: string | null;
   titlesReady?: boolean;
   creditsReady?: boolean;
+  titlesUpdateAvailable?: boolean;
 }
 
 export interface CatalogRuntime {
@@ -463,6 +464,7 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
     download: health.catalogDownload ?? null,
     titlesReady: health.titlesReady,
     creditsReady: health.creditsReady,
+    titlesUpdateAvailable: health.titlesUpdateAvailable === true,
   };
 }
 
