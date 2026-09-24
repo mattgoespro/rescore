@@ -18,4 +18,5 @@ export interface CatalogStatus {
   titlesReady?: boolean;
   creditsReady?: boolean;
   titlesUpdateAvailable: boolean;
+  creditsFailed: boolean;
 }

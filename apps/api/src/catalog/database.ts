@@ -428,6 +428,14 @@ export class CatalogDatabase {
     setFlag(this.db, "creditsReady", ready);
   }
 
+  setCreditsFailed(failed: boolean): void {
+    setFlag(this.db, "creditsFailed", failed);
+  }
+
+  creditsFailed(): boolean {
+    return flagIsSet(this.db, "creditsFailed");
+  }
+
   readiness(): CatalogReadiness {
     return readiness(this.db);
   }

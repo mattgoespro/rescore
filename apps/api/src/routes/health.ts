@@ -37,6 +37,7 @@ export function healthRouter(store: RatingsStore, catalog: CatalogDatabase): Rou
       titlesReady: ready.titlesReady,
       creditsReady: ready.creditsReady,
       titlesUpdateAvailable: catalog.titlesUpdateAvailable(),
+      creditsFailed: catalog.creditsFailed(),
     };
     res.status(200).json(body);
   });

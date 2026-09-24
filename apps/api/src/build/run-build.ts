@@ -8,6 +8,7 @@ import {
   titleDumpUrls,
 } from "./download-dumps.js";
 import { shouldDeferTitleIngest } from "./defer-ingest.js";
+import { shouldRetryCredits } from "./credits-retry.js";
 import { ingestTitles } from "./import-basics.js";
 import {
   importCrew,
@@ -52,17 +53,26 @@ export async function buildCatalogCredits(
   if (creditsInflight) return creditsInflight;
   setProgressSink(options.onProgress);
   creditsInflight = runBuildCredits(catalog, options.force === true)
-    .catch((error: unknown) => {
+    .catch(async (error: unknown) => {
       console.warn(
         "Credits import failed.",
         error instanceof Error ? error.message : error,
       );
+      catalog.setCreditsFailed(true);
+      if (shouldRetryCredits(0, catalog.creditsReady())) {
+        await delay(60_000);
+        await runBuildCredits(catalog, false);
+      }
     })
     .finally(() => {
       creditsInflight = null;
       setProgressSink(undefined);
     });
   return creditsInflight;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function startCreditsBuild(
@@ -267,6 +277,7 @@ async function runBuildCredits(
 
   catalog.finishCreditsRebuild();
   catalog.setCreditsReady(true);
+  catalog.setCreditsFailed(false);
   catalog.setCreditsDumpFingerprint(fingerprint);
   catalog.setCreditsInProgress(false);
   log("Credits ready");

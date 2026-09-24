@@ -228,6 +228,7 @@ export default function App(): JSX.Element {
       docked={!discoverLayout}
       genreMap={genreMap}
       creditsReady={catalogStatus?.creditsReady !== false}
+      creditsFailed={catalogStatus?.creditsFailed === true}
       onUpsert={upsert}
       onRemove={async (id, mediaType) => {
         setLibrary(await window.api.removeLibrary(id, mediaType));

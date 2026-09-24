@@ -19,6 +19,7 @@ export interface HealthResponse {
   titlesReady?: boolean;
   creditsReady?: boolean;
   titlesUpdateAvailable: boolean;
+  creditsFailed: boolean;
 }
 
 export interface CatalogDownloadProgress {

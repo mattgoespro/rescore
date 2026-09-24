@@ -31,6 +31,7 @@ export default function Inspector({
   match,
   genreMap,
   creditsReady,
+  creditsFailed,
   docked,
   onUpsert,
   onRemove,
@@ -41,6 +42,7 @@ export default function Inspector({
   match?: number | null;
   genreMap: Map<number, string>;
   creditsReady?: boolean;
+  creditsFailed?: boolean;
   docked?: boolean;
   onUpsert: (
     movie: MovieSummary,
@@ -121,8 +123,14 @@ export default function Inspector({
           onRemove={onRemove}
         />
         {entry?.status ? <LibraryStatus status={entry.status} /> : null}
-        {creditsReady === false &&
+        {creditsFailed &&
         !(details?.directors?.length || details?.cast?.length) ? (
+          <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
+            Credits could not be loaded. They will be tried again next launch.
+          </p>
+        ) : creditsReady === false &&
+          !creditsFailed &&
+          !(details?.directors?.length || details?.cast?.length) ? (
           <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
             Loading credits…
           </p>
