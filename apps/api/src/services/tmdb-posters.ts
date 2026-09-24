@@ -4,8 +4,10 @@ import {
   TMDB_API_BASE,
   TMDB_IMAGE_BASE,
   TMDB_POSTER_CONCURRENCY,
+  TMDB_POSTER_GAP_MS,
   TMDB_POSTER_PAGE_SIZE,
 } from "../config.js";
+import { delay } from "../catalog/work-queue.js";
 import type { CatalogDatabase } from "./catalog-db.js";
 
 interface FindHit {
@@ -73,6 +75,7 @@ export async function enrichPosters(
     const pending = catalog.listTitlesNeedingPosters(
       pageSize,
       drainPriorityIds(),
+      false,
     );
     if (!pending.length) break;
     await enrichPage(
@@ -205,6 +208,7 @@ async function findTitleMedia(
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
     });
+    await delay(TMDB_POSTER_GAP_MS);
     if (response.status === 429) {
       const retryAfter = Number(response.headers.get("retry-after"));
       await sleep(

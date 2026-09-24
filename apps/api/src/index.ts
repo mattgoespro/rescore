@@ -5,7 +5,6 @@ import { CatalogDatabase } from "./services/catalog-db.js";
 import { ensureCatalog, refreshCatalogStatus } from "./services/ensure-catalog.js";
 import { cleanupIncompleteDownloads } from "./services/gzip-tsv.js";
 import { RatingsStore } from "./services/ratings-store.js";
-import { startPosterEnrichment } from "./services/tmdb-posters.js";
 
 cleanupIncompleteDownloads(DATA_DIR);
 
@@ -33,7 +32,6 @@ void ensureCatalog(catalog)
         `Built ${built.titleCount.toLocaleString()} titles at ${built.builtAt}`,
       );
     }
-    void startPosterEnrichment(catalog);
     void syncDataset(store)
       .then(() => {
         console.log(

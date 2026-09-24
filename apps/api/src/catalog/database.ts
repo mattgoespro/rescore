@@ -328,6 +328,7 @@ export class CatalogDatabase {
   listTitlesNeedingPosters(
     limit = 400,
     priorityIds: string[] = [],
+    fillRest = false,
   ): Array<{ id: string; kind: string }> {
     const needsEnrichment =
       "(poster_url IS NULL OR synopsis IS NULL)";
@@ -341,7 +342,7 @@ export class CatalogDatabase {
           )
           .all(...wanted) as Array<{ id: string; kind: string }>)
       : [];
-    if (prioritized.length >= limit) return prioritized.slice(0, limit);
+    if (!fillRest || prioritized.length >= limit) return prioritized.slice(0, limit);
     const exclude = new Set(prioritized.map((row) => row.id));
     const rest = this.db
       .prepare(

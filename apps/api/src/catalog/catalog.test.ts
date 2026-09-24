@@ -592,6 +592,15 @@ test("rating sort cursor paging keeps the votes tie-break across pages", () => {
   catalog.close();
 });
 
+test("poster candidates stay limited to the requested ids", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, { id: "tt0000001", title: "Shown", rating: 8, votes: 100 });
+  seedTitle(catalog, { id: "tt0000002", title: "Hidden", rating: 8, votes: 90 });
+  const rows = catalog.listTitlesNeedingPosters(50, ["tt0000001"], false);
+  assert.deepEqual(rows.map((row) => row.id), ["tt0000001"]);
+  catalog.close();
+});
+
 test("for-you candidates exclude watched and skipped", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {

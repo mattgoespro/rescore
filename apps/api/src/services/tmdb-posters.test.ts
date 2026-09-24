@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { CatalogDatabase } from "../catalog/index.js";
+import { TMDB_POSTER_CONCURRENCY, TMDB_POSTER_GAP_MS } from "../config.js";
 import {
   MISSING_TMDB_KEY_MESSAGE,
   pickMovieCertification,
@@ -10,6 +11,11 @@ import {
 
 afterEach(() => {
   delete process.env.TMDB_API_KEY;
+});
+
+test("poster lookups stay at two workers with a gap", () => {
+  assert.equal(TMDB_POSTER_CONCURRENCY, 2);
+  assert.equal(TMDB_POSTER_GAP_MS, 300);
 });
 
 test("age rating prefers the configured region, then the US theatrical certificate", () => {

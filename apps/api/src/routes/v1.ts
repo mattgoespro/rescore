@@ -113,7 +113,6 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
         await syncDataset(ratings).catch((error: unknown) => {
           console.warn("Ratings sync after catalog rebuild failed.", error);
         });
-        void startPosterEnrichment(db);
       })
       .catch((error: unknown) => {
         console.error("Catalog rebuild failed.", error);

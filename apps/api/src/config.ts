@@ -20,7 +20,11 @@ export const TMDB_IMAGE_BASE =
   process.env.TMDB_IMAGE_BASE ?? "https://image.tmdb.org/t/p/w342";
 export const TMDB_POSTER_CONCURRENCY = Math.max(
   1,
-  Number(process.env.TMDB_CONCURRENCY) || 12,
+  Number(process.env.TMDB_CONCURRENCY) || 2,
+);
+export const TMDB_POSTER_GAP_MS = Math.max(
+  0,
+  Number(process.env.TMDB_POSTER_GAP_MS) || 300,
 );
 export const TMDB_POSTER_PAGE_SIZE = Math.max(
   50,
