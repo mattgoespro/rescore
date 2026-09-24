@@ -34,6 +34,7 @@ import { IconGrid, IconList } from "../components/icons";
 import { enterDelayMs, gridColumnCount } from "../motion";
 import { cn } from "../lib/cn";
 import { segmentedCell, segmentedGroup } from "../lib/ui";
+import { canLoadMoreFromPage } from "../../../main/discover-paging";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
@@ -74,6 +75,7 @@ export default function Discover({
   const totalPagesRef = useRef(1);
   const loadingRef = useRef(true);
   const loadingMoreRef = useRef(false);
+  const lastPageFullRef = useRef(false);
   const historySession = useRef({ saved: false });
   filtersRef.current = filters;
   genresRef.current = genres;
@@ -135,6 +137,7 @@ export default function Discover({
         setTotalPages(pageRef.current + 1);
       }
       setPage(data.page);
+      lastPageFullRef.current = canLoadMoreFromPage(data.results.length, 40);
       setItems((prev) => {
         if (replace) return data.results;
         return [...prev, ...data.results];
@@ -185,7 +188,7 @@ export default function Discover({
     return (
       !loadingRef.current &&
       !loadingMoreRef.current &&
-      pageRef.current < totalPagesRef.current
+      lastPageFullRef.current
     );
   }
 
@@ -244,7 +247,10 @@ export default function Discover({
   }, [layout, items.length, entering]);
 
   const refreshing = loading && hasResults;
-  const countLabel = titleCount(totalResults, loading && !items.length);
+  const countLabel = titleCount(
+    totalResults > 0 ? totalResults : items.length,
+    loading && !items.length,
+  );
   const activeHistoryId =
     history.find((entry) => matchesSearchHistory(filters, entry))?.id ?? null;
 

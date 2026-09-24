@@ -85,10 +85,7 @@ export class CatalogClient {
 
   async discover(filters: DiscoverFilters): Promise<PagedMovies> {
     const query = await this.discoverQuery(filters);
-    const response = await this.request<TitleListResponse>("/v1/titles", {
-      ...query,
-      includeTotal: filters.page > 1 ? "false" : "true",
-    });
+    const response = await this.request<TitleListResponse>("/v1/titles", query);
     const results = response.data.map(toSummary);
     return {
       page: response.pagination.page,
@@ -233,6 +230,7 @@ export class CatalogClient {
       hideWatchlist: filters.hideWatchlist ? "true" : undefined,
       sort: sortFor(filters.sortBy),
       order: orderFor(filters.sortBy),
+      includeTotal: "false",
     };
   }
 }
