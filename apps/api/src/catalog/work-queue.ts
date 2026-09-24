@@ -26,7 +26,7 @@ export const catalogWorkQueue = new CatalogWorkQueue();
 export const mediaWorkQueue = new CatalogWorkQueue();
 export const maintenanceWorkQueue = new CatalogWorkQueue();
 
-const ANALYZE_IDLE_MS = 250;
+export const ANALYZE_IDLE_MS = 60_000;
 
 export function yieldEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));

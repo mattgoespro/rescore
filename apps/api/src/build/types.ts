@@ -28,4 +28,4 @@ export interface Credit {
 
 export const MAX_DIRECTORS = 4;
 export const MAX_CAST = 8;
-export const TITLE_BATCH = 10_000;
+export const TITLE_BATCH = 500;

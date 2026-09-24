@@ -70,7 +70,7 @@ export class CatalogDatabase {
     this.db = new Database(path);
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("journal_mode = WAL");
-    this.db.pragma("busy_timeout = 5000");
+    this.db.pragma("busy_timeout = 15000");
     applyMigrations(this.db);
   }
 

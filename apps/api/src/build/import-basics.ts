@@ -2,6 +2,7 @@ import type { CatalogDatabase, CatalogTitleRow } from "../catalog/index.js";
 import { imdbValue, readTsvRows } from "../services/gzip-tsv.js";
 import { mapKind, parseGenres, parseRuntime, parseYear } from "./parse-helpers.js";
 import { log } from "./progress.js";
+import { yieldEventLoop } from "../catalog/work-queue.js";
 import { TITLE_BATCH } from "./types.js";
 
 export async function importBasics(
@@ -41,6 +42,7 @@ export async function importBasics(
     if (batch.length >= TITLE_BATCH) {
       catalog.upsertTitleRows(batch);
       batch = [];
+      await yieldEventLoop();
     }
   }
   catalog.upsertTitleRows(batch);
