@@ -12,8 +12,10 @@ import type {
   Settings,
   ThemeMode,
 } from "../../../shared/types";
+import CatalogLoader from "../components/catalog-loader";
 import Select from "../components/select";
 import { applyAppearance } from "../lib/appearance";
+import { catalogRebuildFeedback } from "../lib/catalog-busy";
 import { cn } from "../lib/cn";
 import {
   btn,
@@ -52,6 +54,7 @@ export default function SettingsView({
   const [accentDraft, setAccentDraft] = useState(settings.accentColor);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [busy, setBusy] = useState(false);
+  const rebuild = catalogRebuildFeedback(catalogStatus);
 
   useEffect(() => {
     setCatalogApiUrl(settings.catalogApiUrl);
@@ -211,11 +214,21 @@ export default function SettingsView({
           </p>
           <button
             className={cn(btn(), "mb-3")}
-            disabled={catalogStatus?.phase === "building"}
+            disabled={rebuild != null}
+            aria-busy={rebuild != null}
             onClick={() => void rebuildCatalog()}
           >
-            Rebuild catalog
+            {rebuild?.button ?? "Rebuild catalog"}
           </button>
+          {rebuild ? (
+            <div className="mb-3" role="status" aria-live="polite">
+              <CatalogLoader
+                layout="inline"
+                label={rebuild.label}
+                download={catalogStatus?.download}
+              />
+            </div>
+          ) : null}
           <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
             TMDB API key
             <input

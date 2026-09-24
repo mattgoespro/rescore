@@ -139,6 +139,7 @@ export default function Discover({
         if (replace) return data.results;
         return [...prev, ...data.results];
       });
+      void applyAgeRatings(id, data.results);
       if (replace) {
         scrollerRef.current?.scrollTo({ top: 0 });
         const first = data.results[0];
@@ -154,6 +155,29 @@ export default function Discover({
         loadingMoreRef.current = false;
         setLoading(false);
       }
+    }
+  }
+
+  async function applyAgeRatings(
+    request: number,
+    movies: MovieSummary[],
+  ): Promise<void> {
+    const ids = movies.filter((movie) => !movie.certification).map((movie) => movie.imdbId);
+    if (!ids.length) return;
+    try {
+      const rows = await window.api.fillMedia(ids);
+      if (request !== requestId.current) return;
+      const ratings = new Map(
+        rows.map((row) => [row.id, row.certification || undefined]),
+      );
+      setItems((prev) =>
+        prev.map((movie) => {
+          const certification = ratings.get(movie.imdbId);
+          return certification ? { ...movie, certification } : movie;
+        }),
+      );
+    } catch {
+      /* age badges stay empty until the next search */
     }
   }
 

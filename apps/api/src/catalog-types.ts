@@ -9,6 +9,7 @@ export interface TitleDto {
   runtimeMinutes: number | null;
   synopsis: string | null;
   posterUrl: string | null;
+  certification: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
   genres: string[];

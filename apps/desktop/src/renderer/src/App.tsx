@@ -36,10 +36,7 @@ import {
 } from "./components/icons";
 import Inspector from "./components/inspector";
 import { applyAppearance } from "./lib/appearance";
-import {
-  catalogLoaderDetail,
-  isCatalogUiBlocked,
-} from "./lib/catalog-busy";
+import { catalogLoaderDetail, isCatalogUiBlocked } from "./lib/catalog-busy";
 import { cn } from "./lib/cn";
 import { listSearchHistory } from "./lib/search-history-store";
 import { btn } from "./lib/ui";
@@ -163,7 +160,7 @@ export default function App(): JSX.Element {
           if (!cancelled) setDetails(null);
           return;
         }
-        detailsCache.current.set(key, movie);
+        if (movie.overview) detailsCache.current.set(key, movie);
         if (!cancelled) setDetails(movie);
       })
       .catch(() => {
@@ -255,7 +252,7 @@ export default function App(): JSX.Element {
           aria-label="Primary"
         >
           <div className="mb-2 grid size-9.5 place-items-center rounded-xl bg-linear-to-b from-accent-2 to-accent text-xs font-bold tracking-[-0.06em] text-accent-ink shadow-accent">
-            IB
+            R
           </div>
           <NavBtn
             id="discover"

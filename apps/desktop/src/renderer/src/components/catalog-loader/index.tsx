@@ -7,20 +7,35 @@ export default function CatalogLoader({
   label,
   detail,
   download,
+  layout = "page",
 }: {
   label: string;
   detail?: string;
   download?: CatalogDownloadProgress | null;
+  layout?: "page" | "inline";
 }): JSX.Element {
   const percent = download ? overallPercent(download) : null;
   const caption = download ? downloadCaption(download) : null;
+  const inline = layout === "inline";
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-[13px] text-muted">
+    <div
+      className={
+        inline
+          ? "flex w-full flex-col items-start gap-2 text-[13px] text-muted"
+          : "flex flex-col items-center justify-center gap-3 px-4 py-12 text-[13px] text-muted"
+      }
+    >
       <Spinner />
-      <p className="m-0 text-center">{label}</p>
+      <p className={inline ? "m-0" : "m-0 text-center"}>{label}</p>
       {download ? (
-        <div className="flex w-72 max-w-full flex-col items-stretch gap-1.5">
+        <div
+          className={
+            inline
+              ? "flex w-full max-w-md flex-col items-stretch gap-1.5"
+              : "flex w-72 max-w-full flex-col items-stretch gap-1.5"
+          }
+        >
           <div
             className={progressBarClass}
             role="progressbar"
@@ -35,14 +50,26 @@ export default function CatalogLoader({
             />
           </div>
           {caption ? (
-            <p className="m-0 text-center text-xs leading-[1.45] text-muted tabular">
+            <p
+              className={
+                inline
+                  ? "m-0 text-xs leading-[1.45] text-muted tabular"
+                  : "m-0 text-center text-xs leading-[1.45] text-muted tabular"
+              }
+            >
               {caption}
             </p>
           ) : null}
         </div>
       ) : null}
       {detail ? (
-        <p className="m-0 max-w-160 text-center text-xs leading-[1.45] text-muted">
+        <p
+          className={
+            inline
+              ? "m-0 max-w-160 text-xs leading-[1.45] text-muted"
+              : "m-0 max-w-160 text-center text-xs leading-[1.45] text-muted"
+          }
+        >
           {detail}
         </p>
       ) : null}

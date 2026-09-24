@@ -74,6 +74,9 @@ export function registerIpc(
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>
     withCatalog(null, () => getClient().title(imdbId)),
   );
+  ipcMain.handle("catalog:fillMedia", (_event, ids: string[]) =>
+    withCatalog([], () => getClient().fillMedia(ids)),
+  );
   ipcMain.handle("catalog:movieMeta", (_event, movies: MovieSummary[]) =>
     withCatalog({}, () => enrichMovies(movies)),
   );
@@ -252,6 +255,7 @@ function toSummaryFromDto(title: {
   runtimeMinutes: number | null;
   synopsis: string | null;
   posterUrl: string | null;
+  certification: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
   genres: string[];
@@ -281,6 +285,7 @@ function toSummaryFromDto(title: {
     voteAverage: title.imdbRating ?? 0,
     voteCount: title.imdbVotes ?? 0,
     adult: false,
+    certification: title.certification || undefined,
     runtime: title.runtimeMinutes ?? undefined,
     directorIds: title.directors.map(genreId),
     directorNames: title.directors,

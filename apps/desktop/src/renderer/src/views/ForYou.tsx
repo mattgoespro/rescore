@@ -50,12 +50,42 @@ export default function ForYou({
       if (id !== requestId.current) return;
       setResult(next);
       setEntering(true);
+      void applyAgeRatings(id, next.movies);
     } catch (error) {
       onError(
         error instanceof Error ? error.message : "Could not build rankings",
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function applyAgeRatings(
+    request: number,
+    movies: MovieSummary[],
+  ): Promise<void> {
+    const ids = movies
+      .filter((movie) => !movie.certification)
+      .map((movie) => movie.imdbId);
+    if (!ids.length) return;
+    try {
+      const rows = await window.api.fillMedia(ids);
+      if (request !== requestId.current) return;
+      const ratings = new Map(
+        rows.map((row) => [row.id, row.certification || undefined]),
+      );
+      setResult((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          movies: current.movies.map((movie) => {
+            const certification = ratings.get(movie.imdbId);
+            return certification ? { ...movie, certification } : movie;
+          }),
+        };
+      });
+    } catch {
+      /* age badges stay empty until the next refresh */
     }
   }
 

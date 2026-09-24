@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   catalogLoaderDetail,
+  catalogRebuildFeedback,
   isCatalogUiBlocked,
 } from "./catalog-busy";
 
@@ -53,6 +54,33 @@ test("catalog errors do not keep the loader up", () => {
       titleCount: 0,
     }),
     false,
+  );
+});
+
+test("a forced rebuild reports visible in-progress feedback", () => {
+  assert.deepEqual(
+    catalogRebuildFeedback({
+      phase: "building",
+      message: "Rebuilding catalog from IMDb datasets…",
+    }),
+    {
+      label: "Rebuilding catalog from IMDb datasets…",
+      button: "Rebuilding…",
+    },
+  );
+  assert.equal(
+    catalogRebuildFeedback({
+      phase: "building",
+      message: "   ",
+    })?.label,
+    "Rebuilding catalog…",
+  );
+  assert.equal(
+    catalogRebuildFeedback({
+      phase: "ready",
+      message: "Using existing catalog (482,500 titles).",
+    }),
+    null,
   );
 });
 

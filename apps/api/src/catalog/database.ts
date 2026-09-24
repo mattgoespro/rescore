@@ -180,6 +180,30 @@ export class CatalogDatabase {
     return Boolean(row && (row.poster_url == null || row.synopsis == null));
   }
 
+  mediaFor(ids: string[]): Array<{
+    id: string;
+    kind: string;
+    posterUrl: string | null;
+    synopsis: string | null;
+    certification: string | null;
+  }> {
+    const wanted = [...new Set(ids.map((id) => id.toLowerCase()))].filter(Boolean);
+    if (!wanted.length) return [];
+    const placeholders = wanted.map(() => "?").join(",");
+    return this.db
+      .prepare(
+        `SELECT id, kind, poster_url AS posterUrl, synopsis, certification
+         FROM titles WHERE id IN (${placeholders})`,
+      )
+      .all(...wanted) as Array<{
+      id: string;
+      kind: string;
+      posterUrl: string | null;
+      synopsis: string | null;
+      certification: string | null;
+    }>;
+  }
+
   facets(): FacetsResponse {
     return facets(this.db);
   }
@@ -337,13 +361,15 @@ export class CatalogDatabase {
       id: string;
       posterUrl?: string | null;
       synopsis?: string | null;
+      certification?: string | null;
     }>,
   ): void {
     if (!rows.length) return;
     const update = this.db.prepare(
       `UPDATE titles SET
         poster_url = CASE WHEN poster_url IS NULL THEN @posterUrl ELSE poster_url END,
-        synopsis = CASE WHEN synopsis IS NULL THEN @synopsis ELSE synopsis END
+        synopsis = CASE WHEN synopsis IS NULL THEN @synopsis ELSE synopsis END,
+        certification = CASE WHEN certification IS NULL THEN @certification ELSE certification END
        WHERE id = @id`,
     );
     this.db.transaction(() => {
@@ -352,6 +378,7 @@ export class CatalogDatabase {
           id: row.id,
           posterUrl: row.posterUrl ?? "",
           synopsis: row.synopsis ?? "",
+          certification: row.certification ?? null,
         });
       }
     })();
@@ -362,6 +389,7 @@ export class CatalogDatabase {
       id: string;
       posterUrl?: string | null;
       synopsis?: string | null;
+      certification?: string | null;
     }>,
   ): Promise<void> {
     return mediaWorkQueue.enqueue(() => this.updatePosterUrls(rows));

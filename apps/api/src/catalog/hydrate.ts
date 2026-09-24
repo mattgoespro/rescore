@@ -17,6 +17,7 @@ export function toTitleDto(
     runtimeMinutes: row.runtime_minutes,
     synopsis: row.synopsis,
     posterUrl: row.poster_url || null,
+    certification: row.certification || null,
     imdbRating: row.imdb_rating,
     imdbVotes: row.imdb_votes,
     genres,

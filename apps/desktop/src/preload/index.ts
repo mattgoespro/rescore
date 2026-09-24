@@ -50,6 +50,16 @@ const api = {
     ipcRenderer.invoke("catalog:discover", filters),
   movie: (id: string, _mediaType?: MediaType): Promise<MovieDetails | null> =>
     ipcRenderer.invoke("catalog:title", id),
+  fillMedia: (
+    ids: string[],
+  ): Promise<
+    Array<{
+      id: string;
+      synopsis: string | null;
+      posterUrl: string | null;
+      certification: string | null;
+    }>
+  > => ipcRenderer.invoke("catalog:fillMedia", ids),
   movieMeta: (
     movies: MovieSummary[],
   ): Promise<Record<string, MovieEnrichment>> =>

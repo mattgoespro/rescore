@@ -8,6 +8,8 @@ import type { RatingsStore } from "../services/ratings-store.js";
 import { mediaHandler } from "./media.js";
 import { forYouHandler } from "./for-you.js";
 import {
+  enrichOneTitle,
+  fillTitles,
   isPosterEnrichmentRunning,
   startPosterEnrichment,
 } from "../services/tmdb-posters.js";
@@ -80,12 +82,17 @@ const libraryBody = z.object({
 export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
   const router = Router();
   router.get("/titles", (req, res) => res.json(db.listTitles(listQuery.parse(req.query))));
-  router.get("/titles/:id", (req, res) => {
+  router.get("/titles/:id", async (req, res) => {
     const id = titleId.parse(req.params.id);
-    const title = db.title(id);
+    let title = db.title(id);
     if (!title) return res.status(404).json({ error: "Title not found" });
-    if (db.titleNeedsMedia(id)) {
-      void startPosterEnrichment(db, { ids: [id] });
+    if (
+      db.titleNeedsMedia(id) ||
+      title.certification == null ||
+      title.synopsis == null
+    ) {
+      await enrichOneTitle(db, id, title.kind);
+      title = db.title(id) ?? title;
     }
     return res.json({ data: title });
   });
@@ -111,6 +118,15 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
         console.error("Catalog rebuild failed.", error);
       });
     return res.status(202).json({ ok: true, ...catalogStatus() });
+  });
+
+  router.post("/catalog/fill", async (req, res) => {
+    const body = z
+      .object({ ids: z.array(titleId).max(40) })
+      .strict()
+      .parse(req.body && typeof req.body === "object" ? req.body : {});
+    const data = await fillTitles(db, body.ids);
+    return res.json({ data });
   });
 
   router.post("/catalog/enrich-posters", (req, res) => {

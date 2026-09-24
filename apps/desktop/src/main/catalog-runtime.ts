@@ -289,6 +289,7 @@ export function createCatalogRuntime(
         IMDB_DATA_DIR: plan.dataDir,
         CATALOG_DB_PATH: join(plan.dataDir, "catalog.sqlite"),
         ...(tmdbApiKey ? { TMDB_API_KEY: tmdbApiKey } : {}),
+        CATALOG_REGION: store.getSettings().region.trim() || "US",
       },
       stdio: plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
       windowsHide: plan.windowsHide,

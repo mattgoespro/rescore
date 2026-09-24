@@ -3,6 +3,18 @@ const FIRST_BUILD_DETAIL =
 const BACKGROUND_CHECK_DETAIL =
   "Looking for catalogue updates. You can keep using the current titles.";
 
+const REBUILD_FALLBACK = "Rebuilding catalog…";
+
+export function catalogRebuildFeedback(
+  status: { phase: string; message?: string } | null,
+): { label: string; button: string } | null {
+  if (status?.phase !== "building") return null;
+  return {
+    label: status.message?.trim() || REBUILD_FALLBACK,
+    button: "Rebuilding…",
+  };
+}
+
 export function isCatalogUiBlocked(
   status: {
     phase: string;

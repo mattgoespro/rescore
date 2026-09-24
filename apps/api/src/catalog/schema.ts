@@ -86,6 +86,7 @@ export const migrations = [
     CREATE INDEX IF NOT EXISTS title_people_nconst_idx ON title_people(nconst);
     DELETE FROM catalog_meta WHERE key = 'creditsReady';`,
   `CREATE INDEX IF NOT EXISTS titles_kind_votes_desc_idx ON titles(kind, imdb_votes DESC);`,
+  `ALTER TABLE titles ADD COLUMN certification TEXT;`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN

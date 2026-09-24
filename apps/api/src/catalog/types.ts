@@ -82,6 +82,7 @@ export interface TitleRow {
   runtime_minutes: number | null;
   synopsis: string | null;
   poster_url: string | null;
+  certification: string | null;
   imdb_rating: number | null;
   imdb_votes: number | null;
 }

@@ -159,6 +159,48 @@ export class CatalogClient {
     if (!response.ok && response.status !== 404) throw new CatalogError(`Could not remove library entry (${response.status})`, response.status);
   }
 
+  async fillMedia(
+    ids: string[],
+  ): Promise<
+    Array<{
+      id: string;
+      synopsis: string | null;
+      posterUrl: string | null;
+      certification: string | null;
+    }>
+  > {
+    const unique = [...new Set(ids.map((id) => id.toLowerCase()))].slice(0, 40);
+    if (!unique.length) return [];
+    const url = new URL(
+      "/v1/catalog/fill",
+      this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
+    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ids: unique }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) {
+      throw new CatalogError(
+        `Could not fill title media (${response.status})`,
+        response.status,
+      );
+    }
+    const body = (await response.json()) as {
+      data: Array<{
+        id: string;
+        synopsis: string | null;
+        posterUrl: string | null;
+        certification: string | null;
+      }>;
+    };
+    return body.data;
+  }
+
   async enrichPosters(ids: string[]): Promise<void> {
     if (!ids.length) return;
     const url = new URL("/v1/catalog/enrich-posters", this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`);
@@ -208,6 +250,7 @@ function toSummary(title: TitleDto): MovieSummary {
     posterPath: title.posterUrl, backdropPath: null, releaseDate: title.year ? `${title.year}-01-01` : "",
     year: title.year ?? undefined, genreIds: title.genres.map(genreId), originalLanguage: "", popularity: 0,
     voteAverage: title.imdbRating ?? 0, voteCount: title.imdbVotes ?? 0, adult: false,
+    certification: title.certification || undefined,
     runtime: title.runtimeMinutes ?? undefined, directorIds: title.directors.map(genreId),
     directorNames: title.directors, castIds: title.cast.map(genreId), castNames: title.cast,
   };
