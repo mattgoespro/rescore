@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { requestLog } from "./log/http.js";
 import { errorHandler } from "./middleware/error.js";
 import { healthRouter } from "./routes/health.js";
 import { ratingsRouter } from "./routes/ratings.js";
@@ -25,6 +26,7 @@ export function createApp(store: RatingsStore, catalog: CatalogDatabase): expres
     }),
   );
   app.use(express.json({ limit: "15mb" }));
+  app.use(requestLog);
 
   app.use("/health", healthRouter(store, catalog));
   app.use("/ratings", ratingsRouter(store));
