@@ -8,6 +8,7 @@ import {
   type CatalogPhase,
   type CatalogStatus,
 } from "../shared/types";
+import { shouldRestartHungChild } from "./api-watch";
 import { planApiLaunch } from "./api-launch";
 import type { AppStore } from "./store";
 
@@ -198,14 +199,23 @@ export function createCatalogRuntime(
   }
 
   async function watchApi(baseUrl: string, gen: number): Promise<void> {
+    let misses = 0;
     while (generation === gen && !quitting) {
       await sleep(3000);
       if (generation !== gen || quitting) return;
       if (await canReach(baseUrl)) {
+        misses = 0;
         restartAttempts = 0;
         continue;
       }
-      if (spawned && spawned.exitCode == null) continue;
+      misses += 1;
+      const childAlive = spawned != null && spawned.exitCode == null;
+      if (childAlive && !shouldRestartHungChild(misses)) continue;
+      if (childAlive) {
+        await killProcessTree(spawned);
+        spawned = null;
+        misses = 0;
+      }
       await recoverApi(baseUrl, gen);
     }
   }
