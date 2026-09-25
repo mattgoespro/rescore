@@ -4,11 +4,175 @@ import {
   TMDB_API_BASE,
   TMDB_IMAGE_BASE,
   TMDB_POSTER_CONCURRENCY,
-  TMDB_POSTER_GAP_MS,
   TMDB_POSTER_PAGE_SIZE,
+  TMDB_REQUESTS_PER_SECOND,
 } from "../config.js";
-import { delay } from "../catalog/work-queue.js";
 import type { CatalogDatabase } from "./catalog-db.js";
+
+const RATE_LIMIT_BACKOFF_CAP_MS = 30_000;
+const RATE_LIMIT_JITTER = 0.25;
+const RATE_RECOVERY_SUCCESSES = 4;
+const RATE_RECOVERY_STEP = 0.25;
+
+export interface TmdbSchedulerOptions {
+  requestsPerSecond: number;
+  concurrency: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+}
+
+export class TmdbRequestScheduler {
+  private readonly budgetRps: number;
+  private readonly concurrency: number;
+  private readonly minimumRps: number;
+  private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly random: () => number;
+  private currentRps: number;
+  private inFlight = 0;
+  private nextAllowedAt = 0;
+  private blockedUntil = 0;
+  private successesSincePenalty = 0;
+  private readonly slotWaiters: Array<() => void> = [];
+
+  constructor(options: TmdbSchedulerOptions) {
+    if (
+      !(options.requestsPerSecond > 0) ||
+      !Number.isFinite(options.requestsPerSecond)
+    ) {
+      throw new Error("requestsPerSecond must be a positive number");
+    }
+    if (!(options.concurrency >= 1) || !Number.isFinite(options.concurrency)) {
+      throw new Error("concurrency must be at least 1");
+    }
+    this.budgetRps = options.requestsPerSecond;
+    this.currentRps = options.requestsPerSecond;
+    this.concurrency = Math.max(1, Math.floor(options.concurrency));
+    this.minimumRps = Math.min(1, options.requestsPerSecond);
+    this.now = options.now ?? Date.now;
+    this.sleep =
+      options.sleep ??
+      ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.random = options.random ?? Math.random;
+  }
+
+  get requestsPerSecond(): number {
+    return this.currentRps;
+  }
+
+  get inFlightCount(): number {
+    return this.inFlight;
+  }
+
+  async acquire(): Promise<void> {
+    for (;;) {
+      if (this.inFlight >= this.concurrency) {
+        await this.waitForSlot();
+        continue;
+      }
+      const waitMs =
+        Math.max(this.nextAllowedAt, this.blockedUntil) - this.now();
+      if (waitMs > 0) {
+        await this.sleep(waitMs);
+        continue;
+      }
+      this.inFlight += 1;
+      this.nextAllowedAt = this.now() + this.spacingMs();
+      return;
+    }
+  }
+
+  release(): void {
+    if (this.inFlight === 0) return;
+    this.inFlight -= 1;
+    this.slotWaiters.shift()?.();
+  }
+
+  penalize(retryAfterMs: number | null, attempt = 0): number {
+    const base =
+      retryAfterMs == null
+        ? Math.min(RATE_LIMIT_BACKOFF_CAP_MS, 1_000 * 2 ** Math.max(0, attempt))
+        : Math.max(0, retryAfterMs);
+    const wait =
+      base + Math.floor(base * RATE_LIMIT_JITTER * this.unitRandom());
+    const until = this.now() + wait;
+    const alreadyPenalized = this.now() < this.blockedUntil;
+    this.blockedUntil = Math.max(this.blockedUntil, until);
+    if (!alreadyPenalized) {
+      this.currentRps = Math.max(this.minimumRps, this.currentRps / 2);
+      this.successesSincePenalty = 0;
+      this.nextAllowedAt = Math.max(
+        this.nextAllowedAt,
+        this.blockedUntil,
+        this.now() + this.spacingMs(),
+      );
+    }
+    return wait;
+  }
+
+  recover(): void {
+    if (this.now() < this.blockedUntil) return;
+    if (this.currentRps >= this.budgetRps) {
+      this.currentRps = this.budgetRps;
+      return;
+    }
+    this.successesSincePenalty += 1;
+    if (this.successesSincePenalty < RATE_RECOVERY_SUCCESSES) return;
+    this.successesSincePenalty = 0;
+    this.currentRps = Math.min(
+      this.budgetRps,
+      this.currentRps + this.budgetRps * RATE_RECOVERY_STEP,
+    );
+  }
+
+  private spacingMs(): number {
+    return 1_000 / this.currentRps;
+  }
+
+  private unitRandom(): number {
+    const value = this.random();
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(1, Math.max(0, value));
+  }
+
+  private waitForSlot(): Promise<void> {
+    return new Promise((resolve) => {
+      this.slotWaiters.push(resolve);
+    });
+  }
+}
+
+let schedulerOverride: TmdbRequestScheduler | null = null;
+let sharedScheduler: TmdbRequestScheduler | null = null;
+
+function getTmdbScheduler(): TmdbRequestScheduler {
+  if (schedulerOverride) return schedulerOverride;
+  sharedScheduler ??= new TmdbRequestScheduler({
+    requestsPerSecond: TMDB_REQUESTS_PER_SECOND,
+    concurrency: TMDB_POSTER_CONCURRENCY,
+  });
+  return sharedScheduler;
+}
+
+export function setTmdbSchedulerForTests(
+  scheduler: TmdbRequestScheduler | null,
+): void {
+  schedulerOverride = scheduler;
+}
+
+export function parseRetryAfterMs(
+  header: string | null,
+  nowMs: number,
+): number | null {
+  if (header == null) return null;
+  const trimmed = header.trim();
+  if (!trimmed) return null;
+  if (/^\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed) * 1000;
+  const dated = Date.parse(trimmed);
+  if (Number.isNaN(dated)) return null;
+  return Math.max(0, dated - nowMs);
+}
 
 interface FindHit {
   id?: number;
@@ -59,7 +223,7 @@ export async function enrichPosters(
   }
 
   log(
-    `Looking up TMDB posters for ${pendingTotal.toLocaleString()} titles (${concurrency} workers, background)`,
+    `Looking up TMDB posters for ${pendingTotal.toLocaleString()} titles (${concurrency} workers, ${TMDB_REQUESTS_PER_SECOND} req/s, background)`,
   );
 
   let stop = false;
@@ -167,7 +331,9 @@ export async function fillTitles(
   const rows = catalog.mediaFor(ids).slice(0, 40);
   const pending = rows.filter(
     (row) =>
-      row.posterUrl == null || row.synopsis == null || row.certification == null,
+      row.posterUrl == null ||
+      row.synopsis == null ||
+      row.certification == null,
   );
   const apiKey = tryReadTmdbApiKey();
   if (apiKey && pending.length) {
@@ -205,15 +371,9 @@ async function findTitleMedia(
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const response = await fetch(url, {
-      headers: { Accept: "application/json" },
-    });
-    await delay(TMDB_POSTER_GAP_MS);
+    const response = await scheduledTmdbFetch(url);
     if (response.status === 429) {
-      const retryAfter = Number(response.headers.get("retry-after"));
-      await sleep(
-        (Number.isFinite(retryAfter) ? retryAfter : 1 + attempt) * 1000,
-      );
+      noteTmdbRateLimit(response, attempt);
       continue;
     }
     if (response.status === 401 || response.status === 403) {
@@ -224,6 +384,7 @@ async function findTitleMedia(
       await sleep(300 * (attempt + 1));
       continue;
     }
+    noteTmdbSuccess();
     const data = (await response.json()) as FindResponse;
     const preferred =
       kind === "tv" || kind === "miniseries"
@@ -274,13 +435,22 @@ async function readCertification(
     `${TMDB_API_BASE}${tv ? `/tv/${tmdbId}/content_ratings` : `/movie/${tmdbId}/release_dates`}`,
   );
   url.searchParams.set("api_key", apiKey);
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) return null;
-  const data = (await response.json()) as ReleaseDates | ContentRatings;
-  const region = (process.env.CATALOG_REGION || "US").toUpperCase();
-  return tv
-    ? pickTvCertification(data as ContentRatings, region)
-    : pickMovieCertification(data as ReleaseDates, region);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const response = await scheduledTmdbFetch(url);
+    if (response.status === 429) {
+      noteTmdbRateLimit(response, attempt);
+      continue;
+    }
+    if (response.status === 401 || response.status === 403) return null;
+    if (!response.ok) return null;
+    noteTmdbSuccess();
+    const data = (await response.json()) as ReleaseDates | ContentRatings;
+    const region = (process.env.CATALOG_REGION || "US").toUpperCase();
+    return tv
+      ? pickTvCertification(data as ContentRatings, region)
+      : pickMovieCertification(data as ReleaseDates, region);
+  }
+  return null;
 }
 
 interface ReleaseDate {
@@ -313,7 +483,8 @@ export function pickMovieCertification(
     const dates = group.release_dates ?? [];
     const theatrical = dates.find(
       (entry) =>
-        (entry.type === 2 || entry.type === 3) && cleanCert(entry.certification),
+        (entry.type === 2 || entry.type === 3) &&
+        cleanCert(entry.certification),
     );
     const any = dates.find((entry) => cleanCert(entry.certification));
     const value =
@@ -374,6 +545,39 @@ export function readTmdbApiKey(): string {
   throw new Error(
     "Set TMDB_API_KEY, or keep a TMDB key in the desktop app settings file.",
   );
+}
+
+async function scheduledTmdbFetch(url: URL): Promise<Response> {
+  const scheduler = getTmdbScheduler();
+  await scheduler.acquire();
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) await discardBody(response);
+    return response;
+  } finally {
+    scheduler.release();
+  }
+}
+
+async function discardBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Status and headers were already read.
+  }
+}
+
+function noteTmdbRateLimit(response: Response, attempt: number): void {
+  getTmdbScheduler().penalize(
+    parseRetryAfterMs(response.headers.get("retry-after"), Date.now()),
+    attempt,
+  );
+}
+
+function noteTmdbSuccess(): void {
+  getTmdbScheduler().recover();
 }
 
 function sleep(ms: number): Promise<void> {

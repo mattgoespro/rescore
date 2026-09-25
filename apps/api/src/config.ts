@@ -18,14 +18,20 @@ export const TMDB_API_BASE =
   process.env.TMDB_API_BASE ?? "https://api.themoviedb.org/3";
 export const TMDB_IMAGE_BASE =
   process.env.TMDB_IMAGE_BASE ?? "https://image.tmdb.org/t/p/w342";
-export const TMDB_POSTER_CONCURRENCY = Math.max(
-  1,
-  Number(process.env.TMDB_CONCURRENCY) || 2,
-);
-export const TMDB_POSTER_GAP_MS = Math.max(
-  0,
-  Number(process.env.TMDB_POSTER_GAP_MS) || 300,
-);
+export function tmdbPosterConcurrency(
+  raw: string | undefined = process.env.TMDB_CONCURRENCY,
+): number {
+  return Math.max(1, Math.floor(Number(raw) || 8));
+}
+
+export function tmdbRequestsPerSecond(
+  raw: string | undefined = process.env.TMDB_REQUESTS_PER_SECOND,
+): number {
+  return Math.max(0.1, Number(raw) || 20);
+}
+
+export const TMDB_POSTER_CONCURRENCY = tmdbPosterConcurrency();
+export const TMDB_REQUESTS_PER_SECOND = tmdbRequestsPerSecond();
 export const TMDB_POSTER_PAGE_SIZE = Math.max(
   50,
   Number(process.env.TMDB_POSTER_PAGE) || 400,
