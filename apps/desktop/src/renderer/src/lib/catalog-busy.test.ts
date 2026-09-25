@@ -1,28 +1,41 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  catalogHydrationLabel,
   catalogLoaderDetail,
   catalogRebuildFeedback,
   isCatalogUiBlocked,
+  tmdbHydrationCaption,
+  visibleTmdbHydration,
 } from "./catalog-busy";
+import { normalizeTmdbHydration } from "../../../shared/catalog-status";
 
-test("ready catalog with titles is not blocked", () => {
+const durable = normalizeTmdbHydration({
+  processed: 482_500,
+  total: 482_500,
+  complete: true,
+  message: "",
+});
+
+test("ready catalog with titles is not blocked once TMDb hydration is durable", () => {
   assert.equal(
     isCatalogUiBlocked({
       phase: "ready",
       titlesReady: true,
       titleCount: 482_500,
+      tmdbHydration: durable,
     }),
     false,
   );
 });
 
-test("building catalog with existing titles is not blocked", () => {
+test("building catalog with existing titles stays open after TMDb hydration is durable", () => {
   assert.equal(
     isCatalogUiBlocked({
       phase: "building",
       titlesReady: true,
       titleCount: 482_500,
+      tmdbHydration: durable,
     }),
     false,
   );
@@ -90,6 +103,7 @@ test("rebuild feedback stays available when existing titles keep the app unlocke
     message: "Rebuilding catalog from IMDb datasets…",
     titlesReady: true,
     titleCount: 482_500,
+    tmdbHydration: durable,
   };
   assert.equal(isCatalogUiBlocked(status), false);
   assert.equal(
@@ -112,6 +126,7 @@ test("loader detail distinguishes first build from a background check", () => {
       phase: "building",
       titlesReady: true,
       titleCount: 482_500,
+      tmdbHydration: durable,
     }),
     "Looking for catalogue updates. You can keep using the current titles.",
   );
@@ -120,8 +135,70 @@ test("loader detail distinguishes first build from a background check", () => {
       phase: "building",
       titlesReady: true,
       titleCount: 482_500,
+      tmdbHydration: durable,
       download: { receivedBytes: 12_000 },
     }),
     undefined,
+  );
+});
+
+test("titles stay blocked until TMDb hydration is durably complete", () => {
+  const inFlight = normalizeTmdbHydration({
+    processed: 1_000,
+    total: 1_000,
+    complete: false,
+    message: "Flushing durable TMDb writes…",
+  });
+  assert.equal(inFlight.percent, 99);
+  assert.equal(
+    isCatalogUiBlocked({
+      phase: "ready",
+      titlesReady: true,
+      titleCount: 482_500,
+      tmdbHydration: inFlight,
+    }),
+    true,
+  );
+  assert.equal(
+    catalogHydrationLabel({
+      phase: "ready",
+      titlesReady: true,
+      titleCount: 482_500,
+      tmdbHydration: inFlight,
+    }),
+    "Hydrating TMDb records…",
+  );
+  assert.equal(
+    catalogLoaderDetail({
+      phase: "ready",
+      titlesReady: true,
+      titleCount: 482_500,
+      tmdbHydration: inFlight,
+    }),
+    "Flushing durable TMDb writes…",
+  );
+});
+
+test("hydration caption shows percent, processed, and total", () => {
+  const progress = normalizeTmdbHydration({
+    processed: 250,
+    total: 1_000,
+    complete: false,
+    message: "40 requests/s",
+  });
+  assert.equal(progress.percent, 25);
+  assert.equal(tmdbHydrationCaption(progress), "25% · 250 / 1,000");
+  assert.equal(visibleTmdbHydration(progress)?.message, "40 requests/s");
+  assert.equal(visibleTmdbHydration(durable), null);
+  assert.equal(
+    visibleTmdbHydration(
+      normalizeTmdbHydration({
+        processed: 0,
+        total: 0,
+        complete: false,
+        message: "",
+      }),
+    ),
+    null,
   );
 });

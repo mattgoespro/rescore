@@ -37,6 +37,7 @@ import {
 import Inspector from "./components/inspector";
 import { applyAppearance } from "./lib/appearance";
 import {
+  catalogHydrationLabel,
   catalogLoaderDetail,
   catalogRebuildFeedback,
   isCatalogUiBlocked,
@@ -335,8 +336,13 @@ export default function App(): JSX.Element {
           ) : null}
           {booting || catalogBusy ? (
             <CatalogLoader
-              label={catalogStatus?.message ?? "Loading your ranking studio…"}
+              label={
+                catalogHydrationLabel(catalogStatus) ??
+                catalogStatus?.message ??
+                "Loading your ranking studio…"
+              }
               download={catalogStatus?.download}
+              hydration={catalogStatus?.tmdbHydration}
               detail={catalogLoaderDetail(catalogStatus)}
             />
           ) : view === "settings" ? (

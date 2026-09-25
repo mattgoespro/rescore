@@ -3,6 +3,14 @@ export interface ImdbRating {
   votes: number;
 }
 
+export interface TmdbHydrationProgress {
+  processed: number;
+  total: number;
+  percent: number;
+  message: string;
+  complete: boolean;
+}
+
 export interface HealthResponse {
   ok: boolean;
   ready: boolean;
@@ -20,6 +28,7 @@ export interface HealthResponse {
   creditsReady?: boolean;
   titlesUpdateAvailable: boolean;
   creditsFailed: boolean;
+  tmdbHydration: TmdbHydrationProgress;
 }
 
 export interface CatalogDownloadProgress {

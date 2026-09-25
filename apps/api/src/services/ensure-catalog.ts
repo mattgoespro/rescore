@@ -4,7 +4,10 @@ import {
   type CatalogBuildResult,
 } from "./catalog-builder.js";
 import type { CatalogDatabase } from "./catalog-db.js";
-import type { CatalogDownloadProgress } from "../types.js";
+import type {
+  CatalogDownloadProgress,
+  TmdbHydrationProgress,
+} from "../types.js";
 
 export type CatalogPhase = "idle" | "building" | "ready" | "error";
 
@@ -33,7 +36,70 @@ let status: CatalogStatusDto = {
 let inflight: Promise<CatalogBuildResult | null> | null = null;
 
 export function catalogStatus(): CatalogStatusDto {
-  return { ...status, download: status.download ? { ...status.download } : null };
+  return {
+    ...status,
+    download: status.download ? { ...status.download } : null,
+  };
+}
+
+const EMPTY_TMDB_HYDRATION: TmdbHydrationProgress = {
+  processed: 0,
+  total: 0,
+  percent: 0,
+  message: "",
+  complete: false,
+};
+
+let tmdbHydration: TmdbHydrationProgress = { ...EMPTY_TMDB_HYDRATION };
+
+export function resetTmdbHydrationForTests(): void {
+  tmdbHydration = { ...EMPTY_TMDB_HYDRATION };
+}
+
+export function tmdbHydrationPercent(
+  processed: number,
+  total: number,
+  complete: boolean,
+): number {
+  if (complete) return 100;
+  if (
+    !Number.isFinite(processed) ||
+    !Number.isFinite(total) ||
+    total <= 0 ||
+    processed <= 0
+  ) {
+    return 0;
+  }
+  return Math.min(99, Math.floor((Math.min(processed, total) / total) * 100));
+}
+
+function nonNegativeInt(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.floor(value);
+}
+
+/** Publish the scheduler's latest counters. Health reads this snapshot and does not scan titles. */
+export function publishTmdbHydration(update: {
+  processed: number;
+  total: number;
+  message: string;
+  complete: boolean;
+}): TmdbHydrationProgress {
+  const processed = nonNegativeInt(update.processed);
+  const total = nonNegativeInt(update.total);
+  const complete = update.complete === true;
+  tmdbHydration = {
+    processed,
+    total,
+    percent: tmdbHydrationPercent(processed, total, complete),
+    message: typeof update.message === "string" ? update.message.trim() : "",
+    complete,
+  };
+  return readTmdbHydration();
+}
+
+export function readTmdbHydration(): TmdbHydrationProgress {
+  return { ...tmdbHydration };
 }
 
 export function isCatalogBuilding(): boolean {
@@ -66,10 +132,16 @@ function withReadiness(
   next: Omit<CatalogStatusDto, "titlesReady" | "creditsReady">,
 ): CatalogStatusDto {
   const ready = catalog.readiness();
-  return { ...next, titlesReady: ready.titlesReady, creditsReady: ready.creditsReady };
+  return {
+    ...next,
+    titlesReady: ready.titlesReady,
+    creditsReady: ready.creditsReady,
+  };
 }
 
-export function refreshCatalogStatus(catalog: CatalogDatabase): CatalogStatusDto {
+export function refreshCatalogStatus(
+  catalog: CatalogDatabase,
+): CatalogStatusDto {
   if (status.phase === "building") {
     status = withReadiness(catalog, {
       ...status,
