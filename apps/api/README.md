@@ -34,17 +34,25 @@ still skipped when ETag, size, and gzip checks match.
 
 ## TMDB posters
 
-`npm run enrich:posters` looks up catalog titles on TMDB by IMDb ID and
-writes `https://image.tmdb.org/t/p/original/...` into `poster_url`. Discover
-and For You can prioritize the titles currently on screen. Remaining titles
-are processed from most-voted to least. The job is resumable: rows that
-already have a poster URL (or an empty string after a confirmed miss) are
-skipped. `GET /v1/media` caches image bytes under `data/posters/`.
+Interactive hydration blocks on TMDb. `GET /v1/titles/:id` and
+`POST /v1/catalog/fill` await a lookup when `poster_url`, `synopsis`, or
+`certification` is still NULL, then return the title. A completed miss is
+stored as `''` and those paths do not request it again. A failed lookup leaves
+the column NULL and returns `error`: `TMDb details could not be loaded. Try
+again.` The title payload is still returned, so the failure can be retried and
+does not block the rest of the response. Discover skips certification ids that
+already came back as `''`, shows that error, and will try NULL rows again.
+
+Poster URLs use `TMDB_IMAGE_BASE` (default `https://image.tmdb.org/t/p/w342`).
+`POST /v1/catalog/enrich-posters` returns 202 and only queues explicit ids
+whose poster or synopsis is still NULL. It does not walk the rest of the
+catalogue, and the API does not start a poster sweep when the catalog becomes
+ready. `npm run enrich:posters` uses that same id-scoped lookup.
+`GET /v1/media` caches image bytes under `data/posters/`.
 
 Set `TMDB_API_KEY`, add a key in desktop Settings, or keep it in the desktop
-settings file. The API starts poster lookup automatically after the catalog is
-ready when a key is present. Optional `TMDB_CONCURRENCY` (default 10) controls
-parallel lookups.
+settings file. Optional `TMDB_CONCURRENCY` (default 2) and
+`TMDB_POSTER_GAP_MS` (default 300) pace lookups.
 
 ## Licensed overlay
 

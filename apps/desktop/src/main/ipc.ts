@@ -17,6 +17,7 @@ import {
 import { CatalogClient, CatalogError, genreId } from "./catalog-client";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
+import type { TitleDto } from "../shared/catalog-dto";
 import type { SearchHistoryInput } from "../shared/search-history";
 import {
   buildProfile,
@@ -73,10 +74,10 @@ export function registerIpc(
     ),
   );
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>
-    withCatalog(null, () => getClient().title(imdbId)),
+    withCatalog(null, () => fetchTitleDetails(imdbId)),
   );
   ipcMain.handle("catalog:fillMedia", (_event, ids: string[]) =>
-    withCatalog([], () => getClient().fillMedia(ids)),
+    getClient().fillMedia(ids),
   );
   ipcMain.handle("catalog:movieMeta", (_event, movies: MovieSummary[]) =>
     withCatalog({}, () => enrichMovies(movies)),
@@ -144,6 +145,65 @@ async function matchContext(): Promise<{
   ]);
   matchCache = { library, genres };
   return matchCache;
+}
+
+const TITLE_HYDRATION_TIMEOUT_MS = 60_000;
+
+export function attachMediaHydrationError<T extends object>(
+  details: T,
+  error: string | undefined,
+): T & { mediaError?: string } {
+  const message = error?.trim();
+  if (!message) return details;
+  return { ...details, mediaError: message };
+}
+
+function toDetailsFromDto(title: Parameters<typeof toSummaryFromDto>[0]): MovieDetails {
+  const summary = toSummaryFromDto(title);
+  return {
+    ...summary,
+    genres: title.genres.map((name) => ({ id: genreId(name), name })),
+    directors: title.directors.map((name) => ({ id: genreId(name), name })),
+    cast: title.cast.map((name, order) => ({
+      id: genreId(name),
+      name,
+      character: "",
+      order,
+      profilePath: null,
+    })),
+    keywords: [],
+  };
+}
+
+async function fetchTitleDetails(
+  imdbId: string,
+): Promise<MovieDetails & { mediaError?: string }> {
+  const baseUrl = store.getSettings().catalogApiUrl.trim();
+  if (!baseUrl) throw new CatalogError("Cannot reach the local catalog API.", 0);
+  const url = new URL(
+    `/v1/titles/${encodeURIComponent(imdbId)}`,
+    baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`,
+  );
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(TITLE_HYDRATION_TIMEOUT_MS),
+    });
+  } catch {
+    throw new CatalogError("Cannot reach the local catalog API.", 0);
+  }
+  const body = (await response.json().catch(() => null)) as {
+    data?: TitleDto;
+    error?: string;
+  } | null;
+  if (!response.ok || !body?.data) {
+    throw new CatalogError(
+      body?.error ?? `Catalog request failed (${response.status})`,
+      response.status || 500,
+    );
+  }
+  return attachMediaHydrationError(toDetailsFromDto(body.data), body.error);
 }
 
 function getClient(): CatalogClient {

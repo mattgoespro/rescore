@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import type {
   LibraryEntry,
   MovieDetails,
@@ -23,6 +23,14 @@ import LibraryStatus from "./library-status";
 import MetaCaption from "./meta-caption";
 import RatingScale from "./rating-scale";
 import Stats from "./stats";
+
+export function readMediaHydrationError(
+  value: object | null | undefined,
+): string | null {
+  if (!value || !("mediaError" in value)) return null;
+  const message = (value as { mediaError?: unknown }).mediaError;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
 
 export default function Inspector({
   movie,
@@ -51,6 +59,43 @@ export default function Inspector({
   ) => Promise<void>;
   onRemove: (imdbId: string, mediaType: MediaType) => Promise<void>;
 }): JSX.Element {
+  const [hydrated, setHydrated] = useState<MovieDetails | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const movieIdRef = useRef(movie?.imdbId ?? null);
+  movieIdRef.current = movie?.imdbId ?? null;
+
+  useEffect(() => {
+    setHydrated(null);
+    setRetryError(null);
+    setRetrying(false);
+  }, [movie?.imdbId]);
+
+  async function retryHydration(): Promise<void> {
+    if (!movie || retrying) return;
+    const imdbId = movie.imdbId;
+    setRetrying(true);
+    try {
+      const next = await window.api.movie(imdbId, movie.mediaType);
+      if (movieIdRef.current !== imdbId) return;
+      if (!next) {
+        setRetryError("TMDb details could not be loaded. Try again.");
+        return;
+      }
+      setHydrated(next);
+      setRetryError(readMediaHydrationError(next));
+    } catch (error) {
+      if (movieIdRef.current !== imdbId) return;
+      setRetryError(
+        error instanceof Error
+          ? error.message
+          : "TMDb details could not be loaded. Try again.",
+      );
+    } finally {
+      if (movieIdRef.current === imdbId) setRetrying(false);
+    }
+  }
+
   if (!movie) {
     return (
       <aside className={inspectorClass(docked)}>
@@ -59,24 +104,27 @@ export default function Inspector({
     );
   }
 
-  const data =
-    details?.imdbId === movie.imdbId &&
-    (details.mediaType ?? "movie") === (movie.mediaType ?? "movie")
-      ? details
-      : movie;
-  const imdb = imdbUrl(details?.imdbId ?? movie.imdbId ?? entry?.imdbId);
+  const resolved = hydrated ?? details;
+  const detailsMatch =
+    resolved != null &&
+    resolved.imdbId === movie.imdbId &&
+    (resolved.mediaType ?? "movie") === (movie.mediaType ?? "movie");
+  const hydrationError =
+    retryError ?? (detailsMatch ? readMediaHydrationError(resolved) : null);
+  const data = detailsMatch && resolved ? resolved : movie;
+  const imdb = imdbUrl(resolved?.imdbId ?? movie.imdbId ?? entry?.imdbId);
   const genres = (
-    details?.genres?.map((g) => g.name) ??
+    resolved?.genres?.map((g) => g.name) ??
     data.genreIds.map((id) => genreMap.get(id)).filter(Boolean)
   )
     .filter(Boolean)
     .slice(0, 4)
     .join(" · ");
-  const runtime = formatRuntime(details?.runtime ?? movie.runtime);
-  const seasons = formatSeasons(details?.seasonCount ?? movie.seasonCount);
+  const runtime = formatRuntime(resolved?.runtime ?? movie.runtime);
+  const seasons = formatSeasons(resolved?.seasonCount ?? movie.seasonCount);
   const matchValue =
     match ?? ("match" in movie ? (movie as { match?: number }).match : null);
-  const subject = details ?? movie;
+  const subject = resolved ?? movie;
 
   return (
     <aside className={inspectorClass(docked)}>
@@ -87,7 +135,7 @@ export default function Inspector({
       <div className="animate-fade px-4 pt-4 pb-[18px]" key={movie.imdbId}>
         <Heading
           title={data.title}
-          rating={details?.certification ?? data.certification}
+          rating={resolved?.certification ?? data.certification}
         />
         <MetaCaption
           parts={[
@@ -98,14 +146,27 @@ export default function Inspector({
             genres,
           ]}
         />
-        {details?.tagline ? (
+        {resolved?.tagline ? (
           <div className="mb-2.5 text-[13px] text-accent-2 italic">
-            {details.tagline}
+            {resolved.tagline}
           </div>
         ) : null}
         <p className="mb-3.5 text-[13px] leading-[1.55] text-muted">
           {data.overview || "No synopsis available."}
         </p>
+        {hydrationError ? (
+          <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
+            {hydrationError}{" "}
+            <button
+              type="button"
+              className="text-ink underline decoration-line underline-offset-2 disabled:opacity-60"
+              onClick={() => void retryHydration()}
+              disabled={retrying}
+            >
+              {retrying ? "Trying again…" : "Try again"}
+            </button>
+          </p>
+        ) : null}
         <Stats
           voteAverage={data.voteAverage}
           match={matchValue}
@@ -124,21 +185,21 @@ export default function Inspector({
         />
         {entry?.status ? <LibraryStatus status={entry.status} /> : null}
         {creditsFailed &&
-        !(details?.directors?.length || details?.cast?.length) ? (
+        !(resolved?.directors?.length || resolved?.cast?.length) ? (
           <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
             Credits could not be loaded. They will be tried again next launch.
           </p>
         ) : creditsReady === false &&
           !creditsFailed &&
-          !(details?.directors?.length || details?.cast?.length) ? (
+          !(resolved?.directors?.length || resolved?.cast?.length) ? (
           <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
             Loading credits…
           </p>
         ) : null}
-        {details?.directors ? (
-          <Directors directors={details.directors} />
+        {resolved?.directors ? (
+          <Directors directors={resolved.directors} />
         ) : null}
-        {details?.cast ? <CastList cast={details.cast} /> : null}
+        {resolved?.cast ? <CastList cast={resolved.cast} /> : null}
       </div>
     </aside>
   );

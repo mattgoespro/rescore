@@ -12,7 +12,40 @@ import {
   fillTitles,
   isPosterEnrichmentRunning,
   startPosterEnrichment,
+  tryReadTmdbApiKey,
 } from "../services/tmdb-posters.js";
+
+export const TMDB_HYDRATION_ERROR =
+  "TMDb details could not be loaded. Try again.";
+
+interface MediaColumns {
+  posterUrl: string | null;
+  synopsis: string | null;
+  certification: string | null;
+}
+
+/** SQL NULL is pending. Empty string is a completed miss and must not be requested again. */
+export function interactiveMediaPending(row: MediaColumns | undefined): boolean {
+  if (!row) return false;
+  return row.posterUrl == null || row.synopsis == null || row.certification == null;
+}
+
+function hydrationFailure(
+  rows: MediaColumns[],
+): { error?: string } {
+  if (!tryReadTmdbApiKey() || !rows.some((row) => interactiveMediaPending(row))) return {};
+  return { error: TMDB_HYDRATION_ERROR };
+}
+
+function stampHydrationFailure<T extends MediaColumns>(
+  rows: T[],
+): Array<T & { error?: string }> {
+  const failure = hydrationFailure(rows).error;
+  if (!failure) return rows;
+  return rows.map((row) =>
+    interactiveMediaPending(row) ? { ...row, error: failure } : row,
+  );
+}
 
 const titleId = z.string().regex(/^tt\d+$/i, "Must be an IMDb title id").transform((id) => id.toLowerCase());
 const optionalInteger = (min: number, max: number) => z.coerce.number().int().min(min).max(max).optional();
@@ -117,15 +150,12 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     const id = titleId.parse(req.params.id);
     let title = db.title(id);
     if (!title) return res.status(404).json({ error: "Title not found" });
-    if (
-      db.titleNeedsMedia(id) ||
-      title.certification == null ||
-      title.synopsis == null
-    ) {
+    if (interactiveMediaPending(db.mediaFor([id])[0])) {
       await enrichOneTitle(db, id, title.kind);
       title = db.title(id) ?? title;
     }
-    return res.json({ data: title });
+    const failure = hydrationFailure(db.mediaFor([id]));
+    return res.json({ data: title, ...failure });
   });
   router.get("/facets", (_req, res) => res.json(db.facets()));
   router.get("/for-you", forYouHandler(db));
@@ -156,7 +186,8 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
       .strict()
       .parse(req.body && typeof req.body === "object" ? req.body : {});
     const data = await fillTitles(db, body.ids);
-    return res.json({ data });
+    const failure = hydrationFailure(data);
+    return res.json({ data: stampHydrationFailure(data), ...failure });
   });
 
   router.post("/catalog/enrich-posters", (req, res) => {
