@@ -2,6 +2,11 @@ import type Database from "better-sqlite3";
 import { BAYESIAN_PRIOR_VOTES } from "./bayesian.js";
 import { now } from "./now.js";
 
+export const TMDB_HYDRATION_PENDING_INDEX = "titles_tmdb_pending_idx";
+
+export const TMDB_HYDRATION_PENDING_SQL =
+  "poster_url IS NULL OR synopsis IS NULL OR certification IS NULL";
+
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS titles (
@@ -88,6 +93,10 @@ export const migrations = [
   `CREATE INDEX IF NOT EXISTS titles_kind_votes_desc_idx ON titles(kind, imdb_votes DESC);`,
   `ALTER TABLE titles ADD COLUMN certification TEXT;`,
   `CREATE INDEX IF NOT EXISTS people_name_idx ON people(name)`,
+  `DROP INDEX IF EXISTS titles_enrich_pending_idx;
+   CREATE INDEX IF NOT EXISTS ${TMDB_HYDRATION_PENDING_INDEX}
+     ON titles(imdb_votes DESC, id)
+     WHERE ${TMDB_HYDRATION_PENDING_SQL};`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN
