@@ -1,5 +1,12 @@
 import type { JSX } from "react";
-import type { CatalogDownloadProgress } from "../../../../shared/types";
+import type {
+  CatalogDownloadProgress,
+  TmdbHydrationProgress,
+} from "../../../../shared/types";
+import {
+  tmdbHydrationCaption,
+  visibleTmdbHydration,
+} from "../../lib/catalog-busy";
 import { progressBarClass, progressFillClass } from "../../lib/ui";
 import Spinner from "./spinner";
 
@@ -7,13 +14,16 @@ export default function CatalogLoader({
   label,
   detail,
   download,
+  hydration,
   layout = "page",
 }: {
   label: string;
   detail?: string;
   download?: CatalogDownloadProgress | null;
+  hydration?: TmdbHydrationProgress | null;
   layout?: "page" | "inline";
 }): JSX.Element {
+  const hydrationView = visibleTmdbHydration(hydration);
   const percent = download ? overallPercent(download) : null;
   const caption = download ? downloadCaption(download) : null;
   const inline = layout === "inline";
@@ -60,6 +70,40 @@ export default function CatalogLoader({
               {caption}
             </p>
           ) : null}
+        </div>
+      ) : null}
+      {hydrationView ? (
+        <div
+          className={
+            inline
+              ? "flex w-full max-w-md flex-col items-stretch gap-1.5"
+              : "flex w-72 max-w-full flex-col items-stretch gap-1.5"
+          }
+        >
+          <div
+            className={progressBarClass}
+            role="progressbar"
+            aria-label="TMDb hydration progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={hydrationView.percent}
+            aria-valuetext={tmdbHydrationCaption(hydrationView)}
+          >
+            <div
+              className={`${progressFillClass} transition-[width] duration-200`}
+              style={{ width: `${hydrationView.percent}%` }}
+            />
+          </div>
+          <p
+            className={
+              inline
+                ? "m-0 text-xs leading-[1.45] text-muted tabular"
+                : "m-0 text-center text-xs leading-[1.45] text-muted tabular"
+            }
+            aria-live="polite"
+          >
+            {tmdbHydrationCaption(hydrationView)}
+          </p>
         </div>
       ) : null}
       {detail ? (

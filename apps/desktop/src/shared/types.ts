@@ -41,6 +41,7 @@ export type {
   CatalogDownloadProgress,
   CatalogPhase,
   CatalogStatus,
+  TmdbHydrationProgress,
 } from "./catalog-status";
 export type {
   Affinity,

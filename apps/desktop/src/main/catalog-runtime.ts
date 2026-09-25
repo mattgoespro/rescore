@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { app, type BrowserWindow } from "electron";
 import { is } from "@electron-toolkit/utils";
 import {
+  isCatalogPollSettled,
+  normalizeTmdbHydration,
+} from "../shared/catalog-status";
+import {
   DEFAULT_CATALOG_API_URL,
   type CatalogPhase,
   type CatalogStatus,
@@ -28,6 +32,7 @@ interface HealthPayload {
   creditsReady?: boolean;
   titlesUpdateAvailable?: boolean;
   creditsFailed?: boolean;
+  tmdbHydration?: CatalogStatus["tmdbHydration"] | null;
 }
 
 export interface CatalogRuntime {
@@ -51,6 +56,7 @@ export function createCatalogRuntime(
     download: null,
     titlesUpdateAvailable: false,
     creditsFailed: false,
+    tmdbHydration: normalizeTmdbHydration(null),
   };
   let generation = 0;
   let spawned: ChildProcess | null = null;
@@ -63,6 +69,11 @@ export function createCatalogRuntime(
     current = next;
     getWindow()?.webContents.send("catalog:status", next);
   };
+
+  const fillStatus = (
+    fields: Omit<CatalogStatus, "tmdbHydration">,
+    hydration: CatalogStatus["tmdbHydration"] = current.tmdbHydration,
+  ): CatalogStatus => ({ ...fields, tmdbHydration: hydration });
 
   const run = (gen: number): void => {
     void bootstrap(gen);
@@ -86,16 +97,21 @@ export function createCatalogRuntime(
   }
 
   async function bootstrap(gen: number): Promise<void> {
-    publish({
-      phase: "starting",
-      message: "Starting the local catalog…",
-      titleCount: 0,
-      builtAt: null,
-      error: null,
-      download: null,
-      titlesUpdateAvailable: false,
-      creditsFailed: false,
-    });
+    publish(
+      fillStatus(
+        {
+          phase: "starting",
+          message: "Starting the local catalog…",
+          titleCount: 0,
+          builtAt: null,
+          error: null,
+          download: null,
+          titlesUpdateAvailable: false,
+          creditsFailed: false,
+        },
+        normalizeTmdbHydration(null),
+      ),
+    );
 
     const baseUrl = catalogUrl(store);
     try {
@@ -105,31 +121,35 @@ export function createCatalogRuntime(
           spawned = null;
           const started = spawnApi(baseUrl);
           if (!started.ok) {
-            publish({
-              phase: "error",
-              message: started.message,
-              titleCount: 0,
-              builtAt: null,
-              error: started.message,
-              download: null,
-              titlesUpdateAvailable: false,
-              creditsFailed: false,
-            });
+            publish(
+              fillStatus({
+                phase: "error",
+                message: started.message,
+                titleCount: 0,
+                builtAt: null,
+                error: started.message,
+                download: null,
+                titlesUpdateAvailable: false,
+                creditsFailed: false,
+              }),
+            );
             return;
           }
           spawned = started.child;
           adoptedPid = null;
         }
-        publish({
-          phase: "starting",
-          message: "Waiting for the catalog API…",
-          titleCount: 0,
-          builtAt: null,
-          error: null,
-          download: null,
-          titlesUpdateAvailable: false,
-          creditsFailed: false,
-        });
+        publish(
+          fillStatus({
+            phase: "starting",
+            message: "Waiting for the catalog API…",
+            titleCount: 0,
+            builtAt: null,
+            error: null,
+            download: null,
+            titlesUpdateAvailable: false,
+            creditsFailed: false,
+          }),
+        );
       } else if (isLocalUrl(baseUrl) && !spawned) {
         adoptedPid = await listeningPid(portFromUrl(baseUrl));
       }
@@ -137,16 +157,18 @@ export function createCatalogRuntime(
       const reached = await waitForReachable(baseUrl, gen);
       if (generation !== gen) return;
       if (!reached) {
-        publish({
-          phase: "error",
-          message: unreachableMessage(),
-          titleCount: 0,
-          builtAt: null,
-          error: "Catalog API did not become reachable.",
-          download: null,
-          titlesUpdateAvailable: false,
-          creditsFailed: false,
-        });
+        publish(
+          fillStatus({
+            phase: "error",
+            message: unreachableMessage(),
+            titleCount: 0,
+            builtAt: null,
+            error: "Catalog API did not become reachable.",
+            download: null,
+            titlesUpdateAvailable: false,
+            creditsFailed: false,
+          }),
+        );
         return;
       }
 
@@ -163,7 +185,10 @@ export function createCatalogRuntime(
     }
   }
 
-  async function waitForReachable(baseUrl: string, gen: number): Promise<boolean> {
+  async function waitForReachable(
+    baseUrl: string,
+    gen: number,
+  ): Promise<boolean> {
     const deadline = Date.now() + START_TIMEOUT_MS;
     while (Date.now() < deadline && generation === gen) {
       if (await canReach(baseUrl)) return true;
@@ -183,16 +208,18 @@ export function createCatalogRuntime(
         if (!childAlive && missed >= 8) {
           throw new Error("Catalog API became unreachable.");
         }
-        publish({
-          phase: "starting",
-          message: "Waiting for the catalog API…",
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
-          error: null,
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-        });
+        publish(
+          fillStatus({
+            phase: "starting",
+            message: "Waiting for the catalog API…",
+            titleCount: current.titleCount,
+            builtAt: current.builtAt,
+            error: null,
+            download: null,
+            titlesUpdateAvailable: current.titlesUpdateAvailable,
+            creditsFailed: current.creditsFailed,
+          }),
+        );
         await sleep(POLL_MS);
         continue;
       }
@@ -200,7 +227,7 @@ export function createCatalogRuntime(
       restartAttempts = 0;
       const next = statusFromHealth(health);
       publish(next);
-      if (next.phase === "ready" || next.phase === "error") return;
+      if (isCatalogPollSettled(next)) return;
       await sleep(next.download ? 200 : POLL_MS);
     }
   }
@@ -238,29 +265,34 @@ export function createCatalogRuntime(
         return;
       }
       if (restartAttempts >= 5) {
-        publish({
-          phase: "error",
-          message: "The catalog API stopped repeatedly. Use Retry on the loader.",
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
-          error: "Catalog API did not stay running.",
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-        });
+        publish(
+          fillStatus({
+            phase: "error",
+            message:
+              "The catalog API stopped repeatedly. Use Retry on the loader.",
+            titleCount: current.titleCount,
+            builtAt: current.builtAt,
+            error: "Catalog API did not stay running.",
+            download: null,
+            titlesUpdateAvailable: current.titlesUpdateAvailable,
+            creditsFailed: current.creditsFailed,
+          }),
+        );
         return;
       }
       restartAttempts += 1;
-      publish({
-        phase: "starting",
-        message: "Catalog API stopped; restarting…",
-        titleCount: current.titleCount,
-        builtAt: current.builtAt,
-        error: null,
-        download: null,
-        titlesUpdateAvailable: current.titlesUpdateAvailable,
-        creditsFailed: current.creditsFailed,
-      });
+      publish(
+        fillStatus({
+          phase: "starting",
+          message: "Catalog API stopped; restarting…",
+          titleCount: current.titleCount,
+          builtAt: current.builtAt,
+          error: null,
+          download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
+          creditsFailed: current.creditsFailed,
+        }),
+      );
       await sleep(Math.min(800 * 2 ** (restartAttempts - 1), 8000));
       if (generation !== gen || quitting) return;
       if (await canReach(baseUrl)) {
@@ -273,16 +305,18 @@ export function createCatalogRuntime(
       const reached = await waitForReachable(baseUrl, gen);
       if (generation !== gen || quitting) return;
       if (!reached) {
-        publish({
-          phase: "error",
-          message: unreachableMessage(),
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
-          error: "Catalog API did not become reachable.",
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-        });
+        publish(
+          fillStatus({
+            phase: "error",
+            message: unreachableMessage(),
+            titleCount: current.titleCount,
+            builtAt: current.builtAt,
+            error: "Catalog API did not become reachable.",
+            download: null,
+            titlesUpdateAvailable: current.titlesUpdateAvailable,
+            creditsFailed: current.creditsFailed,
+          }),
+        );
         return;
       }
       await pollUntilSettled(baseUrl, gen);
@@ -291,9 +325,9 @@ export function createCatalogRuntime(
     }
   }
 
-  function spawnApi(baseUrl: string):
-    | { ok: true; child: ChildProcess }
-    | { ok: false; message: string } {
+  function spawnApi(
+    baseUrl: string,
+  ): { ok: true; child: ChildProcess } | { ok: false; message: string } {
     const plan = planApiLaunch(
       {
         dev: is.dev,
@@ -321,7 +355,8 @@ export function createCatalogRuntime(
         ...(tmdbApiKey ? { TMDB_API_KEY: tmdbApiKey } : {}),
         CATALOG_REGION: store.getSettings().region.trim() || "US",
       },
-      stdio: plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
+      stdio:
+        plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
       windowsHide: plan.windowsHide,
     });
     child.on("error", (error) => {
@@ -338,16 +373,21 @@ export function createCatalogRuntime(
 
   function rebuild(): CatalogStatus {
     generation += 1;
-    publish({
-      phase: "building",
-      message: "Rebuilding catalog from IMDb datasets…",
-      titleCount: current.titleCount,
-      builtAt: current.builtAt,
-      error: null,
-      download: null,
-      titlesUpdateAvailable: current.titlesUpdateAvailable,
-      creditsFailed: current.creditsFailed,
-    });
+    publish(
+      fillStatus(
+        {
+          phase: "building",
+          message: "Rebuilding catalog from IMDb datasets…",
+          titleCount: current.titleCount,
+          builtAt: current.builtAt,
+          error: null,
+          download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
+          creditsFailed: current.creditsFailed,
+        },
+        normalizeTmdbHydration(null),
+      ),
+    );
     void runRebuild(generation);
     return current;
   }
@@ -357,42 +397,49 @@ export function createCatalogRuntime(
     try {
       if (!(await canReach(baseUrl))) {
         if (generation !== gen) return;
-        publish({
-          phase: "error",
-          message: unreachableMessage(),
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
-          error: "Catalog API did not become reachable.",
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-        });
+        publish(
+          fillStatus({
+            phase: "error",
+            message: unreachableMessage(),
+            titleCount: current.titleCount,
+            builtAt: current.builtAt,
+            error: "Catalog API did not become reachable.",
+            download: null,
+            titlesUpdateAvailable: current.titlesUpdateAvailable,
+            creditsFailed: current.creditsFailed,
+          }),
+        );
         return;
       }
-      const response = await fetch(new URL("/v1/catalog/rebuild", `${baseUrl}/`), {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
+      const response = await fetch(
+        new URL("/v1/catalog/rebuild", `${baseUrl}/`),
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ force: true }),
+          signal: AbortSignal.timeout(8000),
         },
-        body: JSON.stringify({ force: true }),
-        signal: AbortSignal.timeout(8000),
-      });
+      );
       if (generation !== gen) return;
       if (!response.ok && response.status !== 409) {
         const body = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        publish({
-          phase: "error",
-          message: body?.error ?? "Could not start a catalog rebuild.",
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
-          error: body?.error ?? `Catalog rebuild failed (${response.status})`,
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-        });
+        publish(
+          fillStatus({
+            phase: "error",
+            message: body?.error ?? "Could not start a catalog rebuild.",
+            titleCount: current.titleCount,
+            builtAt: current.builtAt,
+            error: body?.error ?? `Catalog rebuild failed (${response.status})`,
+            download: null,
+            titlesUpdateAvailable: current.titlesUpdateAvailable,
+            creditsFailed: current.creditsFailed,
+          }),
+        );
         return;
       }
       await pollUntilSettled(baseUrl, gen);
@@ -400,16 +447,18 @@ export function createCatalogRuntime(
     } catch (error) {
       if (generation !== gen) return;
       const message = error instanceof Error ? error.message : String(error);
-      publish({
-        phase: "error",
-        message: "Catalog rebuild failed.",
-        titleCount: current.titleCount,
-        builtAt: current.builtAt,
-        error: message,
-        download: null,
-        titlesUpdateAvailable: current.titlesUpdateAvailable,
-        creditsFailed: current.creditsFailed,
-      });
+      publish(
+        fillStatus({
+          phase: "error",
+          message: "Catalog rebuild failed.",
+          titleCount: current.titleCount,
+          builtAt: current.builtAt,
+          error: message,
+          download: null,
+          titlesUpdateAvailable: current.titlesUpdateAvailable,
+          creditsFailed: current.creditsFailed,
+        }),
+      );
     }
   }
 
@@ -490,7 +539,8 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
         : "Starting the local catalog…");
   let phase: CatalogPhase = "starting";
   if (health.catalogPhase === "error" || error) phase = "error";
-  else if (health.catalogPhase === "building" || health.building) phase = "building";
+  else if (health.catalogPhase === "building" || health.building)
+    phase = "building";
   else if (health.ready || health.catalogPhase === "ready") phase = "ready";
   return {
     phase,
@@ -503,6 +553,7 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
     creditsReady: health.creditsReady,
     titlesUpdateAvailable: health.titlesUpdateAvailable === true,
     creditsFailed: health.creditsFailed === true,
+    tmdbHydration: normalizeTmdbHydration(health.tmdbHydration),
   };
 }
 
@@ -558,8 +609,13 @@ async function listeningPid(port: string): Promise<number | null> {
 
 function execFileNoThrow(file: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
-    execFile(file, args, { windowsHide: true, timeout: 8000 }, (error, stdout) => {
-      resolve(error ? "" : String(stdout ?? ""));
-    });
+    execFile(
+      file,
+      args,
+      { windowsHide: true, timeout: 8000 },
+      (error, stdout) => {
+        resolve(error ? "" : String(stdout ?? ""));
+      },
+    );
   });
 }
