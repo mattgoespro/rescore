@@ -49,7 +49,10 @@ import {
   upsertRatingsSync,
   upsertTitleRows,
 } from "./rebuild.js";
-import { applyMigrations } from "./schema.js";
+import {
+  applyMigrations,
+  TMDB_HYDRATION_PENDING_SQL,
+} from "./schema.js";
 import {
   personKey,
   type CatalogMeta,
@@ -77,7 +80,21 @@ export class CatalogDatabase {
   upsertTitles(titles: CatalogTitleInput[]): number {
     const upsert = this.db.prepare(`INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at)
       VALUES (@id,@title,@originalTitle,@kind,@year,@runtimeMinutes,@synopsis,@posterUrl,@imdbRating,@imdbVotes,@bayesianScore,@updatedAt)
-      ON CONFLICT(id) DO UPDATE SET title=excluded.title,original_title=excluded.original_title,kind=excluded.kind,year=excluded.year,runtime_minutes=excluded.runtime_minutes,synopsis=excluded.synopsis,poster_url=excluded.poster_url,updated_at=excluded.updated_at`);
+      ON CONFLICT(id) DO UPDATE SET
+        title=excluded.title,
+        original_title=excluded.original_title,
+        kind=excluded.kind,
+        year=excluded.year,
+        runtime_minutes=excluded.runtime_minutes,
+        synopsis=CASE
+          WHEN excluded.synopsis IS NOT NULL AND excluded.synopsis != '' THEN excluded.synopsis
+          ELSE synopsis
+        END,
+        poster_url=CASE
+          WHEN excluded.poster_url IS NOT NULL AND excluded.poster_url != '' THEN excluded.poster_url
+          ELSE poster_url
+        END,
+        updated_at=excluded.updated_at`);
     const clearGenres = this.db.prepare(
       "DELETE FROM title_genres WHERE title_id = ?",
     );
@@ -192,12 +209,10 @@ LIMIT ?`,
   titleNeedsMedia(id: string): boolean {
     const row = this.db
       .prepare(
-        "SELECT poster_url, synopsis FROM titles WHERE id = ?",
+        `SELECT 1 AS pending FROM titles WHERE id = ? AND (${TMDB_HYDRATION_PENDING_SQL})`,
       )
-      .get(id.toLowerCase()) as
-      | { poster_url: string | null; synopsis: string | null }
-      | undefined;
-    return Boolean(row && (row.poster_url == null || row.synopsis == null));
+      .get(id.toLowerCase());
+    return Boolean(row);
   }
 
   mediaFor(ids: string[]): Array<{
@@ -332,9 +347,9 @@ LIMIT ?`,
       .prepare(
         `SELECT
       count(*) AS total,
-      sum(CASE WHEN poster_url IS NULL THEN 1 ELSE 0 END) AS pending,
-      sum(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END) AS found,
-      sum(CASE WHEN poster_url = '' THEN 1 ELSE 0 END) AS missing
+      coalesce(sum(CASE WHEN poster_url IS NULL THEN 1 ELSE 0 END), 0) AS pending,
+      coalesce(sum(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END), 0) AS found,
+      coalesce(sum(CASE WHEN poster_url = '' THEN 1 ELSE 0 END), 0) AS missing
     FROM titles`,
       )
       .get() as {
@@ -345,13 +360,75 @@ LIMIT ?`,
     };
   }
 
+  hydrationStats(): {
+    total: number;
+    processed: number;
+    pending: number;
+    complete: boolean;
+    poster: { pending: number; found: number; missing: number };
+    synopsis: { pending: number; found: number; missing: number };
+    certification: { pending: number; found: number; missing: number };
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+      count(*) AS total,
+      coalesce(sum(CASE WHEN ${TMDB_HYDRATION_PENDING_SQL} THEN 1 ELSE 0 END), 0) AS pending,
+      coalesce(sum(CASE WHEN poster_url IS NULL THEN 1 ELSE 0 END), 0) AS posterPending,
+      coalesce(sum(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END), 0) AS posterFound,
+      coalesce(sum(CASE WHEN poster_url = '' THEN 1 ELSE 0 END), 0) AS posterMissing,
+      coalesce(sum(CASE WHEN synopsis IS NULL THEN 1 ELSE 0 END), 0) AS synopsisPending,
+      coalesce(sum(CASE WHEN synopsis IS NOT NULL AND synopsis != '' THEN 1 ELSE 0 END), 0) AS synopsisFound,
+      coalesce(sum(CASE WHEN synopsis = '' THEN 1 ELSE 0 END), 0) AS synopsisMissing,
+      coalesce(sum(CASE WHEN certification IS NULL THEN 1 ELSE 0 END), 0) AS certificationPending,
+      coalesce(sum(CASE WHEN certification IS NOT NULL AND certification != '' THEN 1 ELSE 0 END), 0) AS certificationFound,
+      coalesce(sum(CASE WHEN certification = '' THEN 1 ELSE 0 END), 0) AS certificationMissing
+    FROM titles`,
+      )
+      .get() as {
+      total: number;
+      pending: number;
+      posterPending: number;
+      posterFound: number;
+      posterMissing: number;
+      synopsisPending: number;
+      synopsisFound: number;
+      synopsisMissing: number;
+      certificationPending: number;
+      certificationFound: number;
+      certificationMissing: number;
+    };
+    const total = Number(row.total);
+    const pending = Number(row.pending);
+    return {
+      total,
+      processed: total - pending,
+      pending,
+      complete: pending === 0,
+      poster: {
+        pending: Number(row.posterPending),
+        found: Number(row.posterFound),
+        missing: Number(row.posterMissing),
+      },
+      synopsis: {
+        pending: Number(row.synopsisPending),
+        found: Number(row.synopsisFound),
+        missing: Number(row.synopsisMissing),
+      },
+      certification: {
+        pending: Number(row.certificationPending),
+        found: Number(row.certificationFound),
+        missing: Number(row.certificationMissing),
+      },
+    };
+  }
+
   listTitlesNeedingPosters(
     limit = 400,
     priorityIds: string[] = [],
     fillRest = false,
   ): Array<{ id: string; kind: string }> {
-    const needsEnrichment =
-      "(poster_url IS NULL OR synopsis IS NULL)";
+    const needsEnrichment = `(${TMDB_HYDRATION_PENDING_SQL})`;
     const wanted = [
       ...new Set(priorityIds.map((id) => id.toLowerCase()).filter(Boolean)),
     ];
@@ -388,18 +465,35 @@ LIMIT ?`,
     if (!rows.length) return;
     const update = this.db.prepare(
       `UPDATE titles SET
-        poster_url = CASE WHEN poster_url IS NULL THEN @posterUrl ELSE poster_url END,
-        synopsis = CASE WHEN synopsis IS NULL THEN @synopsis ELSE synopsis END,
-        certification = CASE WHEN certification IS NULL THEN @certification ELSE certification END
+        poster_url = CASE
+          WHEN @setPoster = 1 AND poster_url IS NULL THEN @posterUrl
+          ELSE poster_url
+        END,
+        synopsis = CASE
+          WHEN @setSynopsis = 1 AND synopsis IS NULL THEN @synopsis
+          ELSE synopsis
+        END,
+        certification = CASE
+          WHEN @setCertification = 1 AND certification IS NULL THEN @certification
+          ELSE certification
+        END
        WHERE id = @id`,
     );
     this.db.transaction(() => {
       for (const row of rows) {
+        const setPoster = row.posterUrl !== undefined;
+        const setSynopsis = row.synopsis !== undefined;
+        // Null certification is an unfinished lookup. Empty string is a completed miss.
+        const setCertification =
+          row.certification !== undefined && row.certification !== null;
         update.run({
           id: row.id,
+          setPoster: setPoster ? 1 : 0,
+          setSynopsis: setSynopsis ? 1 : 0,
+          setCertification: setCertification ? 1 : 0,
           posterUrl: row.posterUrl ?? "",
           synopsis: row.synopsis ?? "",
-          certification: row.certification ?? null,
+          certification: row.certification ?? "",
         });
       }
     })();
