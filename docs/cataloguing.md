@@ -44,14 +44,14 @@ Desktop `CatalogStatus.phase` values: `"starting" | "building" | "ready" | "erro
 
 | Feature | Contract | Owner |
 | --- | --- | --- |
-| Local SQLite catalogue | WAL, `busy_timeout=5000`, `foreign_keys=ON`, migrations 1–9 | `apps/api/src/catalog/schema.ts`, `database.ts` |
+| Local SQLite catalogue | WAL, `busy_timeout=5000`, `foreign_keys=ON`, migrations 1–11 | `apps/api/src/catalog/schema.ts`, `database.ts` |
 | IMDb dump ingest | Parallel download of ratings + basics; keep movie/tv/miniseries, non-adult, rated, non-empty title; reconcile rather than wipe | `apps/api/src/build/`, `apps/api/src/services/gzip-tsv.ts` |
 | Credits import | Background after titles; skip when dump fingerprints match; max 4 directors, max 8 cast; `people(nconst)` + JOIN for display names | `apps/api/src/build/import-credits.ts`, `apps/api/src/build/types.ts` |
 | Ratings sync | Daily `title.ratings.tsv.gz`; gzip streamed into diff-only SQLite UPDATE; no new titles; in-memory Map only during title ingest | `apps/api/src/services/dataset.ts`, `ratings-store.ts` |
 | IMDb rating sort | `sort=rating` → `ORDER BY t.imdb_rating, t.imdb_votes, t.id`; `bayesian_score` still persisted for ranking helpers | `apps/api/src/catalog/query.ts`, `bayesian.ts` |
 | FTS5 search | `titles_fts` on `title`, `original_title`, `id`; prefix AND; exact `tt` id bypasses FTS | `apps/api/src/catalog/query.ts` |
 | SQL hydration | Batch-load genres + people into `TitleDto` | `apps/api/src/catalog/hydrate.ts` |
-| TMDB media overlay | Optional `poster_url` + `synopsis` only; miss stored as `""`; `/v1/media` disk cache | `apps/api/src/services/tmdb-posters.ts`, `apps/api/src/routes/media.ts` |
+| TMDB media overlay | Optional `poster_url`, `synopsis`, and `certification`; NULL pending, `""` completed miss (not retried); interactive GET title and POST fill block; `/v1/media` disk cache | `apps/api/src/services/tmdb-posters.ts`, `apps/api/src/routes/v1.ts`, `apps/api/src/routes/media.ts` |
 | Licensed overlay | `POST /v1/imports/catalog`, version `1`, max 50_000 titles, provider-neutral JSON | `apps/api/src/routes/v1.ts`, `CatalogDatabase.upsertTitles` |
 | Readiness | Titles usable before credits | `apps/api/src/catalog/meta.ts`, `apps/api/src/services/ensure-catalog.ts` |
 | Desktop catalog runtime | Spawn/adopt localhost API, poll `/health`, push `catalog:status` | `apps/desktop/src/main/catalog-runtime.ts` |
@@ -171,7 +171,7 @@ Keep a `title.basics` row only if all of:
 
 Year: integer 1870–3000, else `null`. Runtime: integer 1–2000, else `null`. Genres: comma-split, trimmed, unique, skip `\N`.
 
-### 4.6 SQLite schema (migrations 1–9)
+### 4.6 SQLite schema (migrations 1–11)
 
 Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. During empty-DB first insert (`beginBulkLoad`): `foreign_keys=OFF`, `synchronous=OFF`, `temp_store=MEMORY`, FTS insert/update/delete triggers dropped; `endBulkLoad` rebuilds `titles_fts` once (`delete-all` then `INSERT … SELECT`), restores triggers, `synchronous=NORMAL`, `foreign_keys=ON`. Incremental reconcile keeps FTS triggers on.
 
@@ -187,6 +187,7 @@ Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. Dur
 | `runtime_minutes` | INTEGER | |
 | `synopsis` | TEXT | TMDB/licensed; `NULL` = pending, `''` = confirmed miss |
 | `poster_url` | TEXT | same NULL vs `''` rule |
+| `certification` | TEXT | migration 10; same NULL vs `''` rule. `TitleDto` coerces `''` to `null`; retry checks must use the raw column |
 | `imdb_rating` | REAL | |
 | `imdb_votes` | INTEGER | |
 | `bayesian_score` | REAL | persisted for ranking helpers; Discover `sort=rating` uses `imdb_rating` |
@@ -233,7 +234,8 @@ where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on e
 | `MAX_RATING_IDS` | `200` |
 | `TMDB_API_BASE` | `https://api.themoviedb.org/3` |
 | `TMDB_IMAGE_BASE` | `https://image.tmdb.org/t/p/w342` |
-| `TMDB_POSTER_CONCURRENCY` | `max(1, Number(process.env.TMDB_CONCURRENCY) \|\| 12)` |
+| `TMDB_POSTER_CONCURRENCY` | `max(1, Number(process.env.TMDB_CONCURRENCY) \|\| 2)` |
+| `TMDB_POSTER_GAP_MS` | `max(0, Number(process.env.TMDB_POSTER_GAP_MS) \|\| 300)` |
 | `TMDB_POSTER_PAGE_SIZE` | `max(50, Number(process.env.TMDB_POSTER_PAGE) \|\| 400)` |
 | `MAX_DIRECTORS` | `4` |
 | `MAX_CAST` | `8` |
@@ -252,7 +254,7 @@ where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on e
 | For You candidate `imdb_votes` floor | `5000` |
 | For You default/max | `80` / `120` |
 | Desktop For You slice | `40` after scoring |
-| Desktop HTTP retries | search: 2 / 4000 ms; health: 1 / 1000 ms; long: 4 / 20000 ms |
+| Desktop HTTP retries | search: 2 / 4000 ms; health: 1 / 1000 ms; long: 4 / 20000 ms; title detail IPC waits once up to 60s because TMDb hydration blocks |
 
 On-disk dump files under `DATA_DIR`:
 
@@ -269,7 +271,7 @@ On-disk dump files under `DATA_DIR`:
 “Hydrate” means two different things. Do not conflate them:
 
 1. **SQL hydration** (`hydrateTitles`): after a title-row SELECT, batch-load `title_genres` and `title_people` JOIN `people` into `TitleDto` display names.
-2. **TMDB media fill** (`findTitleMedia` / `updatePosterUrls`): write `poster_url` and `synopsis` onto existing title rows.
+2. **TMDB media fill** (`findTitleMedia` / `updatePosterUrls`): write `poster_url`, `synopsis`, and `certification` onto existing title rows. Interactive title and fill routes await this; they do not request a column that is already `''`.
 
 ```mermaid
 flowchart TD
@@ -283,7 +285,7 @@ flowchart TD
   creditsScan["scan crew/principals; write credit diffs"]
   names["resolve unknown nconsts only"]
   ratingsDiff["ratings UPDATE where values changed"]
-  tmdb["TMDB find: concurrency 12, w342, no request blocking"]
+  tmdb["TMDB find: concurrency 2, gap 300ms, w342; GET title and POST fill block"]
   serve["GET /v1/titles"]
 
   ensure --> dumps
@@ -314,7 +316,7 @@ flowchart TD
 | Meta | `setCatalogMeta` | `builtAt` ISO now, `revision = builtAt`, `source = "imdb-noncommercial-datasets"`, `titlesReady=1`, store `titlesDumpFingerprint`. Clear `buildInProgress`. `queueAnalyze()` on the maintenance queue (250ms idle), not on the ratings/media queues. |
 | Credits (API vs CLI) | `startCreditsBuild` / `buildCatalog` | After titles, `ensureCatalog` (API startup and `POST /v1/catalog/rebuild`) calls `void startCreditsBuild` — credits run in the **background** so search can open. CLI `npm run build:catalog` calls `buildCatalog`, which **awaits** credits before returning. |
 | Credits import | `runBuildCredits` | Skip if `creditsReady && !creditsInProgress` **and** credits dump fingerprint matches. Else scan crew/principals as now. `startCreditsRebuild` does **not** `DELETE FROM title_people`. Keep `MAX_DIRECTORS` / `MAX_CAST`. Upsert `people` only for nconsts not already present; `importNames` skips `neededNames` already in `people`. Replace `title_people` per title only when the nconst list changed. Set `creditsReady` and `creditsDumpFingerprint`. `ANALYZE title_people` on the maintenance queue. Failure logs a warning; titles stay usable. |
-| TMDB overlay | `startPosterEnrichment` | No-op without `TMDB_API_KEY` or desktop settings key; logs that message once per process and leaves existing `poster_url` values alone. Priority ids first (ids that still `titleNeedsMedia`), then `imdb_votes DESC` where `poster_url IS NULL OR synopsis IS NULL`. `GET {TMDB_API_BASE}/find/{imdbId}?external_source=imdb_id&language=en-US`. Prefer `tv_results` for `tv`/`miniseries`, else `movie_results`. Poster URL = `TMDB_IMAGE_BASE + poster_path` (`w342`). Miss writes `""`. Concurrency default 12, page size default 400. 429 retries; 401/403 abort. Poster writes go through `mediaWorkQueue`. |
+| TMDB overlay | `startPosterEnrichment`, `enrichOneTitle`, `fillTitles` | No-op without `TMDB_API_KEY` or a desktop settings key; logs that message once per process and leaves existing poster URLs alone. Background `enrichPosters` only looks up explicit priority ids that still have `poster_url IS NULL OR synopsis IS NULL` (`listTitlesNeedingPosters(..., fillRest: false)`). It does not continue into the rest of the catalogue by votes, and process startup does not call it. `GET {TMDB_API_BASE}/find/{imdbId}?external_source=imdb_id&language=en-US`. Prefer `tv_results` for `tv`/`miniseries`, else `movie_results`. Poster URL = `TMDB_IMAGE_BASE + poster_path` (`w342`). A miss writes `""` for poster and synopsis. A certification miss writes `""`; a failed certification request leaves NULL. Concurrency default 2, gap default 300ms after each find attempt, page size default 400. 429 retries; 401/403 abort. Bulk poster writes go through `mediaWorkQueue`. Interactive `GET /v1/titles/:id` and `POST /v1/catalog/fill` await hydration for raw NULL poster, synopsis, or certification. They must not request `''` again. |
 | Ratings loop | `syncDataset` | On startup after ensure, then every `SYNC_INTERVAL_MS`. Re-download ratings if missing, stale (>24h mtime), or `POST /sync` `force`. If the file is present, not stale, and the store/catalog is already ready, **return without rewriting rows** (title ingest already wrote today’s ratings). `upsertRatingsFromFile` streams gzip and `UPDATE … WHERE imdb_rating IS NOT ? OR imdb_votes IS NOT ?` for ids that exist. `RatingsStore` does not keep the dump Map after persist; `POST /ratings` reads SQLite. Failed refresh keeps last good in-memory set if already ready. |
 | Work queues | split | `catalogWorkQueue`: chunked rating writes. `mediaWorkQueue`: queued poster updates. `maintenanceWorkQueue`: `ANALYZE` after 250ms idle. |
 | Serve | `listTitles` | `buildWhere` + ORDER BY + LIMIT/OFFSET + `hydrateTitles` (JOIN `people` for names). |
@@ -470,8 +472,9 @@ Tie-breaker always: `t.id ASC`. Order is `ASC` only when `query.order` uppercase
 
 After a successful discover:
 
-1. Fire-and-forget `POST /v1/catalog/enrich-posters` with **visible** IMDb ids only (no look-ahead pages). The API keeps only ids that still `titleNeedsMedia`.
+1. Fire-and-forget `POST /v1/catalog/enrich-posters` with **visible** IMDb ids only (no look-ahead pages). The API keeps only ids that still `titleNeedsMedia` (`poster_url` or `synopsis` IS NULL). Completed misses stored as `''` are not queued. This request does not await TMDb.
 2. If `sortBy === "match"` **and** taste profile `ratedCount >= 3`, re-sort the **current page** with `scoreMovie` / `sortMovies("match")` in `apps/desktop/src/main/ranking.ts`. Library and genre facets for match-sort are cached in desktop main until a library upsert/remove/clear. Do not reimplement ranking here. If `ratedCount < 3`, return API vote-desc order unchanged.
+3. Discover then `POST /v1/catalog/fill` (blocking) for visible ids that have no certification and are not already remembered as a confirmed miss (`certification === ""` from an earlier fill). Ids that come back `""` are not requested again. A row that stays NULL and carries `error` is shown in the search error and stays eligible on the next search. A thrown fill error is shown the same way and is not stored as a miss. Search results stay on screen either way.
 
 Network-down (`CatalogError.status === 0`) on discover returns empty `{ page: 1, totalPages: 0, totalResults: 0, results: [] }` instead of throwing.
 
@@ -504,7 +507,7 @@ Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 | --- | --- | --- | --- | --- |
 | `GET` | `/health` | 200 | — | `HealthResponse` below |
 | `GET` | `/v1/titles` | 200 / 400 | `listQuery` | `TitleListResponse` |
-| `GET` | `/v1/titles/:id` | 200 / 404 | `tt` id | `{ data: TitleDto }`; if `titleNeedsMedia` (`poster_url` or `synopsis` IS NULL), `void startPosterEnrichment({ ids: [id] })` — **do not await** TMDB; response may still have `posterUrl: null` |
+| `GET` | `/v1/titles/:id` | 200 / 404 | `tt` id | `{ data: TitleDto, error?: string }`. If raw `poster_url`, `synopsis`, or `certification` IS NULL, **await** `enrichOneTitle` before responding (blocking TMDb hydration). `''` is a completed miss and is not requested. `TitleDto` coerces empty `posterUrl` and `certification` to `null`; the retry decision uses `mediaFor`, not the DTO. When a TMDb key is set and a column is still NULL after the attempt, status stays 200, `data` is the title, and `error` is `TMDb details could not be loaded. Try again.` The failure does not write `''`. |
 | `GET` | `/v1/facets` | 200 | — | `FacetsResponse`. In-memory 10 min TTL. Genres: `GROUP BY genre ORDER BY count DESC, genre`. Kinds: `GROUP BY kind ORDER BY count DESC, kind`. Years: `min(year)`, `max(year)`. |
 | `GET` | `/v1/for-you` | 200 | `limit` 1–120 default 80 | `ForYouResponse` |
 | `GET` | `/v1/media?src=` | 200 / 400 / 404 / 502 | https URL on `image.tmdb.org` \| `media.themoviedb.org` \| `www.themoviedb.org` | stream/pipe image bytes (`createReadStream` / `pipeline`), disk cache under `POSTER_CACHE_DIR/{size}/{sha1}{ext}` |
@@ -512,7 +515,8 @@ Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 | `PUT` | `/v1/library/:id` | 200 / 404 | `{ status, personalRating?, note? }` | `{ data: LibraryEntryDto }`. If `status==="watched"` and `personalRating` is provided it must not be `null`. |
 | `DELETE` | `/v1/library/:id` | 204 / 404 | — | empty |
 | `POST` | `/v1/catalog/rebuild` | 202 / 409 | `{ force?: boolean }` | `{ ok: true, ...catalogStatus() }`. Always starts `ensureCatalog({ force: true })` if not already building. Then ratings sync **without** force (skip persist if the file is fresh) + poster enrichment. |
-| `POST` | `/v1/catalog/enrich-posters` | 202 | optional `ids` (max 400) | `{ ok: true, running }`. Ignores look-ahead/filter fields. Only ids that `titleNeedsMedia` are queued. |
+| `POST` | `/v1/catalog/fill` | 200 | `{ ids: tt[] }` max 40 | `{ data: { id, synopsis, posterUrl, certification, error? }[], error? }`. **Awaits** `fillTitles`. Same raw NULL vs `''` rule for poster, synopsis, and certification. `error` is set only when a TMDb key exists and a returned row is still NULL. Pending rows also get that `error` string so clients can show it without treating the row as a miss. |
+| `POST` | `/v1/catalog/enrich-posters` | 202 | optional `ids` (max 400) | `{ ok: true, running }`. Does not await TMDb. Ignores look-ahead/filter fields. Only ids that `titleNeedsMedia` (`poster_url` or `synopsis` IS NULL) are queued. `''` is not queued. Certification-only gaps are not queued here. |
 | `POST` | `/v1/imports/catalog` | 201 / 400 | manifest below | `{ data: ImportStatusDto }`. Completes synchronously. Duplicate ids rejected. |
 | `GET` | `/v1/imports/:id` | 200 / 404 | UUID | `{ data: ImportStatusDto }` |
 | `POST` | `/ratings` | 200 / 400 / 503 | `{ ids: tt[] }` max 200 | `{ syncedAt, ratings }` from `RatingsStore` |
@@ -598,7 +602,8 @@ Invoke (renderer → main):
 | `catalog:rebuild` | `rebuildCatalog()` | `POST /v1/catalog/rebuild` `{ force: true }` |
 | `catalog:genres` | `genres()` | `GET /v1/facets` → `{ id: genreId(name), name }` |
 | `catalog:discover` | `discover(filters)` | section 6 |
-| `catalog:title` | `movie(id)` | `GET /v1/titles/:id` |
+| `catalog:title` | `movie(id)` | `GET /v1/titles/:id`, waited up to 60s. Copies response `error` onto `mediaError` for the inspector. Network failure still uses `CatalogError.status === 0` and the handler returns null. |
+| `catalog:fillMedia` | `fillMedia(ids)` | `POST /v1/catalog/fill`. Failures throw (they are not turned into `[]`). |
 | `catalog:providers` | `providers()` | **stub `[]`** |
 | `catalog:searchPeople` | `searchPeople()` | **stub `[]`** |
 | `catalog:searchKeywords` | `searchKeywords()` | **stub `[]`** |
@@ -616,7 +621,7 @@ Runtime poll: `POLL_MS = 250`, start timeout `30_000`. Rebuild 409 is treated as
 | --- | --- |
 | `npm run dev:api` | API with `tsx watch` |
 | `npm run build:catalog` | HEAD dumps; skip parse when fingerprints match; otherwise reconcile titles then **wait** for credits. `--force` re-downloads dumps then reconciles (never wipe-rebuild) |
-| `npm run enrich:posters` | TMDB backfill |
+| `npm run enrich:posters` | id-scoped TMDB lookup; does not sweep the catalogue |
 | `npm run migrate -w @imdbrain/api` | apply SQLite migrations |
 | `npm test` | `@imdbrain/api` tests including `catalog.test.ts` |
 
@@ -636,7 +641,7 @@ Behavioral tests in `apps/api/src/catalog/catalog.test.ts` plus live query/build
 8. **Skipped titles never appear in `/v1/titles` search**, even if `hideWatched`/`hideWatchlist` are unset.
 9. **Reconcile preserves library and media** for surviving title ids: upsert-if-changed never overwrites `poster_url`/`synopsis`; `DELETE … NOT IN ingest_seen` drops gone ids (FK CASCADE). Survivors keep the same `rowid`. Wipe-rebuild and JS library/media snapshots are not used.
 10. **Ratings-only sync does not insert titles.** Unchanged rating/votes pairs produce `0` SQLite `changes`.
-11. **TMDB miss vs pending:** `NULL` = not looked up; `''` = looked up, none found; do not retry `''`. `updatePosterUrls` writes only when the column is currently `NULL`.
+11. **TMDB miss vs pending:** `NULL` = not looked up; `''` = looked up, none found; do not retry `''`. `updatePosterUrls` writes only when the column is currently `NULL`. Interactive `GET /v1/titles/:id` and `POST /v1/catalog/fill` apply that rule to poster, synopsis, and certification using the raw columns (not the DTO, which turns `''` certification into `null`). A failed lookup leaves NULL, returns `error`, and stays retryable. It must not be stored as `''`. |
 12. **Dump reuse** skips gzip re-download when HEAD/ETag/size/gzip checks match. Unchanged dump fingerprints skip TSV parse. `--force` re-downloads then reconciles.
 13. **IDs lowercased** at ingest, import, library, and query.
 14. **Genre chips** round-trip only if desktop uses `genreId(name)` as specified.

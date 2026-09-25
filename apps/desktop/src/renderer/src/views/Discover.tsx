@@ -39,6 +39,45 @@ import { canLoadMoreFromPage } from "../../../main/discover-paging";
 const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
 
+export interface AgeRatingFillRow {
+  id: string;
+  certification: string | null;
+  error?: string;
+}
+
+export function idsNeedingAgeRatings(
+  movies: Array<{ imdbId: string; certification?: string }>,
+  confirmedMisses: ReadonlySet<string>,
+): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const movie of movies) {
+    const id = movie.imdbId.toLowerCase();
+    if (!id || movie.certification || confirmedMisses.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+export function ageRatingFillOutcome(rows: AgeRatingFillRow[]): {
+  ratings: Map<string, string>;
+  misses: string[];
+  message: string | null;
+} {
+  const ratings = new Map<string, string>();
+  const misses: string[] = [];
+  let message: string | null = null;
+  for (const row of rows) {
+    const id = row.id.toLowerCase();
+    if (!id) continue;
+    if (row.certification) ratings.set(id, row.certification);
+    else if (row.certification === "") misses.push(id);
+    else if (row.error?.trim()) message = row.error.trim();
+  }
+  return { ratings, misses, message };
+}
+
 export default function Discover({
   filters,
   setFilters,
@@ -77,6 +116,7 @@ export default function Discover({
   const loadingMoreRef = useRef(false);
   const lastPageFullRef = useRef(false);
   const cursorRef = useRef<string | null>(null);
+  const confirmedCertificationMisses = useRef(new Set<string>());
   const historySession = useRef({ saved: false });
   filtersRef.current = filters;
   genresRef.current = genres;
@@ -173,22 +213,30 @@ export default function Discover({
     request: number,
     movies: MovieSummary[],
   ): Promise<void> {
-    const ids = movies.filter((movie) => !movie.certification).map((movie) => movie.imdbId);
+    const ids = idsNeedingAgeRatings(
+      movies,
+      confirmedCertificationMisses.current,
+    );
     if (!ids.length) return;
     try {
       const rows = await window.api.fillMedia(ids);
+      const outcome = ageRatingFillOutcome(rows);
+      for (const id of outcome.misses) confirmedCertificationMisses.current.add(id);
       if (request !== requestId.current) return;
-      const ratings = new Map(
-        rows.map((row) => [row.id, row.certification || undefined]),
-      );
       setItems((prev) =>
         prev.map((movie) => {
-          const certification = ratings.get(movie.imdbId);
+          const certification = outcome.ratings.get(movie.imdbId.toLowerCase());
           return certification ? { ...movie, certification } : movie;
         }),
       );
-    } catch {
-      /* age badges stay empty until the next search */
+      if (outcome.message) onError(outcome.message);
+    } catch (error) {
+      if (request !== requestId.current) return;
+      onError(
+        error instanceof Error
+          ? error.message
+          : "Age ratings could not be loaded. Try again.",
+      );
     }
   }
 
