@@ -412,7 +412,7 @@ test("a finished title receives language details without replacing its poster", 
     },
   ]);
   try {
-    assert.equal(catalog.titleNeedsMedia("tt0000001"), false);
+    assert.equal(catalog.titleNeedsMedia("tt0000001"), true);
     assert.equal(catalog.titleNeedsLanguages("tt0000001"), true);
     await enrichOneTitle(catalog, "tt0000001", "movie");
     const title = catalog.title("tt0000001");

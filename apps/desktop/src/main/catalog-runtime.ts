@@ -15,6 +15,7 @@ import {
 } from "../shared/types";
 import { shouldRestartHungChild, shouldSpawnReplacement } from "./api-watch";
 import { planApiLaunch } from "./api-launch";
+import { shouldFinishCatalogPoll } from "./catalog-poll";
 import { shouldTerminateCatalogApi } from "./catalog-reload";
 import {
   createHydrationEventParser,
@@ -245,7 +246,9 @@ export function createCatalogRuntime(
       restartAttempts = 0;
       const next = statusFromHealth(health);
       publish(next);
-      if (next.phase === "ready" && next.catalogUsable) return;
+      if (shouldFinishCatalogPoll({ phase: next.phase, catalogUsable: next.catalogUsable })) {
+        return;
+      }
       await sleep(next.download ? 200 : POLL_MS);
     }
   }

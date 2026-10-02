@@ -781,6 +781,7 @@ test("tmdb hydration keeps confirmed misses complete and certifications pending"
       posterUrl: null,
       synopsis: null,
       certification: "",
+      languages: [],
     },
     {
       id: "tt0000002",
@@ -801,5 +802,46 @@ test("tmdb hydration keeps confirmed misses complete and certifications pending"
     catalog.listTitlesNeedingPosters(10, [], true).map((title) => title.id),
     ["tt0000002"],
   );
+  catalog.close();
+});
+
+test("complete media still leaves a title pending until languages are checked", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Needs languages", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: "https://image.tmdb.org/t/p/w500/a.jpg",
+      synopsis: "A synopsis.",
+      certification: "PG-13",
+    },
+  ]);
+
+  assert.equal(catalog.titleNeedsMedia("tt0000001"), true);
+  assert.equal(catalog.titleNeedsLanguages("tt0000001"), true);
+  assert.deepEqual(catalog.hydrationStats(), {
+    total: 1,
+    processed: 0,
+    pending: 1,
+    complete: false,
+  });
+  assert.deepEqual(
+    catalog.listTitlesNeedingPosters(10, [], true).map((title) => title.id),
+    ["tt0000001"],
+  );
+
+  catalog.updatePosterUrls([{ id: "tt0000001", languages: [] }]);
+
+  assert.equal(catalog.titleNeedsMedia("tt0000001"), false);
+  assert.equal(catalog.titleNeedsLanguages("tt0000001"), false);
+  assert.deepEqual(catalog.hydrationStats(), {
+    total: 1,
+    processed: 1,
+    pending: 0,
+    complete: true,
+  });
+  assert.deepEqual(catalog.listTitlesNeedingPosters(10, [], true), []);
   catalog.close();
 });

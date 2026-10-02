@@ -3,7 +3,7 @@ import { BAYESIAN_PRIOR_VOTES } from "./bayesian.js";
 import { now } from "./now.js";
 
 export const TMDB_HYDRATION_PENDING_SQL =
-  "poster_url IS NULL OR synopsis IS NULL OR certification IS NULL";
+  "poster_url IS NULL OR synopsis IS NULL OR certification IS NULL OR COALESCE(languages_checked, 0) != 1";
 
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
@@ -94,7 +94,7 @@ export const migrations = [
   `DROP INDEX IF EXISTS titles_enrich_pending_idx;
    CREATE INDEX IF NOT EXISTS titles_tmdb_pending_idx
      ON titles(imdb_votes DESC, id)
-     WHERE ${TMDB_HYDRATION_PENDING_SQL};`,
+     WHERE poster_url IS NULL OR synopsis IS NULL OR certification IS NULL;`,
   `CREATE TABLE IF NOT EXISTS title_languages (
       title_id TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
       language TEXT NOT NULL,
@@ -102,6 +102,10 @@ export const migrations = [
       PRIMARY KEY (title_id, language)
     );
     ALTER TABLE titles ADD COLUMN languages_checked INTEGER NOT NULL DEFAULT 0;`,
+  `DROP INDEX IF EXISTS titles_tmdb_pending_idx;
+   CREATE INDEX IF NOT EXISTS titles_tmdb_pending_idx
+     ON titles(imdb_votes DESC, id)
+     WHERE ${TMDB_HYDRATION_PENDING_SQL};`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN
