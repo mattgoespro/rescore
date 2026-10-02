@@ -8,6 +8,15 @@ export interface CatalogDownloadProgress {
   totalBytes: number | null;
 }
 
+export interface TmdbHydrationProgress {
+  completedIds?: string[];
+  processed: number;
+  total: number;
+  percent: number;
+  complete: boolean;
+  message: string;
+}
+
 export interface CatalogStatus {
   phase: CatalogPhase;
   message: string;
@@ -19,4 +28,6 @@ export interface CatalogStatus {
   creditsReady?: boolean;
   titlesUpdateAvailable: boolean;
   creditsFailed: boolean;
+  catalogUsable: boolean;
+  tmdbHydration?: TmdbHydrationProgress;
 }

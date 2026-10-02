@@ -1,3 +1,4 @@
+import { useVisibleMedia, mergeTitleMedia } from "../lib/use-visible-media";
 import {
   useEffect,
   useMemo,
@@ -43,7 +44,6 @@ export default function Discover({
   filters,
   setFilters,
   genres,
-  profileReady,
   selectedId,
   onOpen,
   onError,
@@ -52,12 +52,12 @@ export default function Discover({
   filters: DiscoverFilters;
   setFilters: (filters: DiscoverFilters) => void;
   genres: Genre[];
-  profileReady?: boolean;
   selectedId: string | null;
   onOpen: (movie: MovieSummary) => void;
   onError: (message: string) => void;
   inspector: ReactNode;
 }): JSX.Element {
+  const { containerRef, media } = useVisibleMedia();
   const [items, setItems] = useState<RankedMovie[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -69,6 +69,7 @@ export default function Discover({
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
+  const openedId = useRef<string | null>(null);
   const filtersRef = useRef(filters);
   const genresRef = useRef(genres);
   const pageRef = useRef(1);
@@ -150,11 +151,13 @@ export default function Discover({
         if (replace) return data.results;
         return [...prev, ...data.results];
       });
-      void applyAgeRatings(id, data.results);
       if (replace) {
         scrollerRef.current?.scrollTo({ top: 0 });
         const first = data.results[0];
-        if (first) onOpen(first);
+        if (first) {
+          openedId.current = first.imdbId;
+          onOpen(first);
+        }
         setEntering(true);
         recordSearchHistory();
       }
@@ -169,28 +172,6 @@ export default function Discover({
     }
   }
 
-  async function applyAgeRatings(
-    request: number,
-    movies: MovieSummary[],
-  ): Promise<void> {
-    const ids = movies.filter((movie) => !movie.certification).map((movie) => movie.imdbId);
-    if (!ids.length) return;
-    try {
-      const rows = await window.api.fillMedia(ids);
-      if (request !== requestId.current) return;
-      const ratings = new Map(
-        rows.map((row) => [row.id, row.certification || undefined]),
-      );
-      setItems((prev) =>
-        prev.map((movie) => {
-          const certification = ratings.get(movie.imdbId);
-          return certification ? { ...movie, certification } : movie;
-        }),
-      );
-    } catch {
-      /* age badges stay empty until the next search */
-    }
-  }
 
   function canLoadMore(): boolean {
     return (
@@ -206,6 +187,7 @@ export default function Discover({
   }
 
   function handleCardOpen(movie: MovieSummary): void {
+    openedId.current = movie.imdbId;
     onOpen(movie);
   }
 
@@ -263,12 +245,11 @@ export default function Discover({
     history.find((entry) => matchesSearchHistory(filters, entry))?.id ?? null;
 
   return (
-    <section className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[280px_minmax(0,1fr)_minmax(280px,400px)] inspect:grid-rows-none">
+    <section ref={containerRef} className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[280px_minmax(0,1fr)_minmax(280px,400px)] inspect:grid-rows-none">
       <FilterPanel
         filters={filters}
         setFilters={setFilters}
         genres={genres}
-        profileReady={profileReady}
         history={history}
         activeHistoryId={activeHistoryId}
         onApplyHistory={(entry) =>
@@ -356,7 +337,7 @@ export default function Discover({
                       : "flex flex-col",
                   )}
                 >
-                  {items.map((movie, index) => (
+                  {items.map((movie) => mergeTitleMedia(movie, media)).map((movie, index) => (
                     <MovieCard
                       key={titleKey(movie)}
                       movie={movie}

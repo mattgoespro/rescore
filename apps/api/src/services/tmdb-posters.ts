@@ -1,20 +1,317 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { publishHydratedTitles } from "./ensure-catalog.js";
+import { shutdownSignal, cancellableDelay, trackWork } from "./runtime-lifecycle.js";
 import {
   TMDB_API_BASE,
+  TMDB_CONCURRENCY,
   TMDB_IMAGE_BASE,
-  TMDB_POSTER_CONCURRENCY,
-  TMDB_POSTER_GAP_MS,
+  TMDB_MAX_CONCURRENCY,
   TMDB_POSTER_PAGE_SIZE,
+  TMDB_REQUESTS_PER_SECOND,
+  tmdbApiKeys,
 } from "../config.js";
-import { delay } from "../catalog/work-queue.js";
+import { languageCodes } from "../catalog/languages.js";
 import { emit } from "../log/write.js";
 import type { CatalogDatabase } from "./catalog-db.js";
+
+const RATE_LIMIT_BACKOFF_CAP_MS = 30_000;
+const RATE_LIMIT_JITTER = 0.25;
+const RATE_RECOVERY_SUCCESSES = 8;
+
+export interface TmdbSchedulerOptions {
+  requestsPerSecond: number;
+  concurrency: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+}
+
+export class TmdbRequestScheduler {
+  private readonly budgetRps: number;
+  private readonly concurrency: number;
+  private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly random: () => number;
+  private currentRps: number;
+  private inFlight = 0;
+  private nextAllowedAt = 0;
+  private blockedUntil = 0;
+  private successesSincePenalty = 0;
+  private readonly slotWaiters: Array<() => void> = [];
+
+  constructor(options: TmdbSchedulerOptions) {
+    if (!(options.requestsPerSecond > 0)) {
+      throw new Error("TMDb requests per second must be positive");
+    }
+    if (!(options.concurrency >= 1)) {
+      throw new Error("TMDb concurrency must be at least one");
+    }
+    this.budgetRps = options.requestsPerSecond;
+    this.currentRps = options.requestsPerSecond;
+    this.concurrency = Math.floor(options.concurrency);
+    this.now = options.now ?? Date.now;
+    this.sleep = options.sleep ?? cancellableDelay;
+    this.random = options.random ?? Math.random;
+  }
+
+  get requestsPerSecond(): number {
+    return this.currentRps;
+  }
+
+  async acquire(): Promise<void> {
+    for (;;) {
+      shutdownSignal.throwIfAborted();
+      if (this.inFlight >= this.concurrency) {
+        await new Promise<void>((resolve, reject) => {
+          const ready = (): void => {
+            shutdownSignal.removeEventListener("abort", abort);
+            resolve();
+          };
+          const abort = (): void => {
+            const index = this.slotWaiters.indexOf(ready);
+            if (index >= 0) this.slotWaiters.splice(index, 1);
+            reject(shutdownSignal.reason);
+          };
+          this.slotWaiters.push(ready);
+          shutdownSignal.addEventListener("abort", abort, { once: true });
+        });
+        continue;
+      }
+      const waitMs =
+        Math.max(this.nextAllowedAt, this.blockedUntil) - this.now();
+      if (waitMs > 0) {
+        await this.sleep(waitMs);
+        continue;
+      }
+      this.inFlight += 1;
+      this.nextAllowedAt = this.now() + 1_000 / this.currentRps;
+      return;
+    }
+  }
+
+  release(): void {
+    if (this.inFlight === 0) return;
+    this.inFlight -= 1;
+    this.slotWaiters.shift()?.();
+  }
+
+  penalize(retryAfterMs: number | null, attempt: number): void {
+    const base =
+      retryAfterMs == null
+        ? Math.min(RATE_LIMIT_BACKOFF_CAP_MS, 1_000 * 2 ** attempt)
+        : retryAfterMs;
+    const jitter =
+      base * RATE_LIMIT_JITTER * Math.max(0, Math.min(1, this.random()));
+    const until = this.now() + base + jitter;
+    const alreadyBlocked = this.now() < this.blockedUntil;
+    this.blockedUntil = Math.max(this.blockedUntil, until);
+    if (!alreadyBlocked) {
+      this.currentRps = Math.max(1, this.currentRps / 2);
+      this.successesSincePenalty = 0;
+    }
+  }
+
+  recover(): void {
+    if (this.now() < this.blockedUntil || this.currentRps >= this.budgetRps)
+      return;
+    this.successesSincePenalty += 1;
+    if (this.successesSincePenalty < RATE_RECOVERY_SUCCESSES) return;
+    this.successesSincePenalty = 0;
+    this.currentRps = Math.min(
+      this.budgetRps,
+      this.currentRps + this.budgetRps / 4,
+    );
+  }
+}
+
+export interface TmdbClient {
+  id: string;
+  key: string;
+  scheduler: TmdbRequestScheduler;
+  disabled: boolean;
+  requests: number;
+  successes: number;
+  rateLimits: number;
+}
+
+export class TmdbClientPool {
+  private readonly clients: TmdbClient[];
+  private cursor = 0;
+
+  constructor(
+    keys: string[],
+    options: Pick<TmdbSchedulerOptions, "requestsPerSecond" | "concurrency">,
+  ) {
+    this.clients = [
+      ...new Set(keys.map((key) => key.trim()).filter(Boolean)),
+    ].map((key, index) => ({
+      id: `key-${index + 1}`,
+      key,
+      scheduler: new TmdbRequestScheduler(options),
+      disabled: false,
+      requests: 0,
+      successes: 0,
+      rateLimits: 0,
+    }));
+  }
+
+  next(): TmdbClient | null {
+    const active = this.clients.filter((client) => !client.disabled);
+    if (!active.length) return null;
+    const client = active[this.cursor % active.length];
+    this.cursor += 1;
+    return client;
+  }
+
+  disable(client: TmdbClient | null | undefined): void {
+    if (client) client.disabled = true;
+  }
+
+  get activeCount(): number {
+    return this.clients.filter((client) => !client.disabled).length;
+  }
+
+  diagnostics(): Array<{
+    id: string;
+    disabled: boolean;
+    requests: number;
+    successes: number;
+    rateLimits: number;
+    requestsPerSecond: number;
+  }> {
+    return this.clients.map((client) => ({
+      id: client.id,
+      disabled: client.disabled,
+      requests: client.requests,
+      successes: client.successes,
+      rateLimits: client.rateLimits,
+      requestsPerSecond: client.scheduler.requestsPerSecond,
+    }));
+  }
+}
+
+interface HydrationJob {
+  catalog: CatalogDatabase;
+  id: string;
+  kind: string;
+  interactive: boolean;
+  promise: Promise<boolean>;
+  finish: (complete: boolean) => void;
+}
+
+export class TmdbHydrationCoordinator {
+  readonly clients: TmdbClientPool;
+  private readonly workersPerKey: number;
+  private readonly maxConcurrency: number;
+
+  constructor(
+    keys: string[],
+    options: Pick<TmdbSchedulerOptions, "requestsPerSecond" | "concurrency"> & {
+      maxConcurrency?: number;
+    },
+  ) {
+    this.clients = new TmdbClientPool(keys, options);
+    this.workersPerKey = options.concurrency;
+    this.maxConcurrency = options.maxConcurrency ?? Number.POSITIVE_INFINITY;
+  }
+
+  get workerCount(): number {
+    return Math.min(
+      this.maxConcurrency,
+      this.workersPerKey * this.clients.activeCount,
+    );
+  }
+
+  private readonly jobs = new WeakMap<CatalogDatabase, Map<string, HydrationJob>>();
+  private readonly retryAfter = new WeakMap<CatalogDatabase, Map<string, number>>();
+  private readonly queue: HydrationJob[] = [];
+  private running = 0;
+  private interactiveStreak = 0;
+
+  hydrate(catalog: CatalogDatabase, id: string, kind: string, interactive: boolean): Promise<boolean> {
+    const needsMedia = catalog.titleNeedsMedia(id);
+    if (!needsMedia && !catalog.titleNeedsLanguages(id)) return Promise.resolve(true);
+    let jobs = this.jobs.get(catalog);
+    if (!jobs) { jobs = new Map(); this.jobs.set(catalog, jobs); }
+    const existing = jobs.get(id);
+    if (existing) {
+      if (interactive) existing.interactive = true;
+      return existing.promise;
+    }
+    if ((this.retryAfter.get(catalog)?.get(id) ?? 0) > Date.now()) return Promise.resolve(false);
+    let finish!: (complete: boolean) => void;
+    const promise = new Promise<boolean>((resolve) => { finish = resolve; });
+    const job = { catalog, id, kind, interactive, promise, finish };
+    jobs.set(id, job);
+    this.queue.push(job);
+    queueMicrotask(() => this.pump());
+    return trackWork(promise);
+  }
+
+  private pump(): void {
+    while (this.running < this.workerCount && this.queue.length) {
+      // Reserve regular opportunities for background work under sustained UI load.
+      const preferred = this.interactiveStreak < 8
+        ? this.queue.findIndex((job) => job.interactive)
+        : this.queue.findIndex((job) => !job.interactive);
+      const job = this.queue.splice(preferred < 0 ? 0 : preferred, 1)[0];
+      this.interactiveStreak = job.interactive ? this.interactiveStreak + 1 : 0;
+      this.running++;
+      void this.execute(job).finally(() => { this.running--; this.pump(); });
+    }
+    if (!this.workerCount || shutdownSignal.aborted) {
+      for (const job of this.queue.splice(0)) {
+        this.jobs.get(job.catalog)?.delete(job.id);
+        job.finish(false);
+      }
+    }
+  }
+
+  private async execute(job: HydrationJob): Promise<void> {
+    let complete = false;
+    try {
+      shutdownSignal.throwIfAborted();
+      if (job.catalog.titleNeedsMedia(job.id)) {
+        const media = await findTitleMedia(this.clients, job.id, job.kind);
+        await job.catalog.updatePosterUrlsQueued([{ id: job.id, ...media }]);
+        publishHydratedTitles([job.id]);
+      } else if (job.catalog.titleNeedsLanguages(job.id)) {
+        const media = await findTitleMedia(this.clients, job.id, job.kind);
+        await job.catalog.updatePosterUrlsQueued([{ id: job.id, languages: media.languages }]);
+        publishHydratedTitles([job.id]);
+      }
+      complete = !job.catalog.titleNeedsMedia(job.id) && !job.catalog.titleNeedsLanguages(job.id);
+      if (complete) this.retryAfter.get(job.catalog)?.delete(job.id);
+    } catch (error) {
+      let retry = this.retryAfter.get(job.catalog);
+      if (!retry) { retry = new Map(); this.retryAfter.set(job.catalog, retry); }
+      retry.set(job.id, Date.now() + 30_000);
+      log(`Failed ${job.id}: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      this.jobs.get(job.catalog)?.delete(job.id);
+      job.finish(complete);
+    }
+  }
+
+  diagnostics(): ReturnType<TmdbClientPool["diagnostics"]> {
+    return this.clients.diagnostics();
+  }
+}
+
+export function parseRetryAfterMs(
+  header: string | null,
+  now = Date.now(),
+): number | null {
+  if (!header?.trim()) return null;
+  if (/^\d+(?:\.\d+)?$/.test(header.trim())) return Number(header) * 1_000;
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, at - now);
+}
 
 interface FindHit {
   id?: number;
   poster_path?: string | null;
   overview?: string | null;
+  original_language?: string | null;
 }
 
 interface FindResponse {
@@ -26,6 +323,7 @@ interface TitleMedia {
   posterUrl: string | null;
   synopsis: string | null;
   certification: string | null;
+  languages: string[];
 }
 
 export interface PosterEnrichmentResult {
@@ -35,19 +333,40 @@ export interface PosterEnrichmentResult {
   errors: number;
 }
 
+export function formatEnrichmentProgress(input: {
+  completedAtStart: number;
+  processedThisRun: number;
+  total: number;
+  found: number;
+  missing: number;
+  errors: number;
+}): string {
+  return `Progress ${(input.completedAtStart + input.processedThisRun).toLocaleString("en-US")}/${input.total.toLocaleString("en-US")} · found ${input.found.toLocaleString("en-US")} · none ${input.missing.toLocaleString("en-US")} · errors ${input.errors.toLocaleString("en-US")}`;
+}
+
 export async function enrichPosters(
   catalog: CatalogDatabase,
   options: {
     apiKey?: string;
+    apiKeys?: string[];
     concurrency?: number;
     handleSignals?: boolean;
     pageSize?: number;
+    onProgress?: (processed: number, pending: number) => void;
   } = {},
 ): Promise<PosterEnrichmentResult> {
-  const apiKey = options.apiKey ?? readTmdbApiKey();
-  const concurrency = options.concurrency ?? TMDB_POSTER_CONCURRENCY;
+  const apiKeys =
+    options.apiKeys ?? (options.apiKey ? [options.apiKey] : readTmdbApiKeys());
+  const workersPerKey = options.concurrency ?? TMDB_CONCURRENCY;
+  const coordinator = tmdbCoordinator(apiKeys, workersPerKey);
+  if (coordinator.clients.activeCount === 0) {
+    throw new Error("No usable TMDB API key");
+  }
   const pageSize = options.pageSize ?? TMDB_POSTER_PAGE_SIZE;
-  const pendingTotal = catalog.posterStats().pending ?? 0;
+  const hydration = catalog.hydrationStats();
+  const pendingTotal = hydration.pending;
+  const completedAtStart = hydration.processed;
+  let durableProcessed = completedAtStart;
   const stats: PosterEnrichmentResult = {
     processed: 0,
     found: 0,
@@ -60,98 +379,33 @@ export async function enrichPosters(
   }
 
   log(
-    `Looking up TMDB posters for ${pendingTotal.toLocaleString()} titles (${concurrency} workers, background)`,
+    `Looking up TMDB records for ${pendingTotal.toLocaleString()} titles (${coordinator.workerCount} workers, ${TMDB_REQUESTS_PER_SECOND} req/s per key)`,
   );
 
+  activeTmdbCoordinator = coordinator;
   let stop = false;
-  const onInterrupt = (): void => {
-    log("Interrupt received; flushing poster writes");
-    stop = true;
-  };
-  if (options.handleSignals !== false) {
-    process.once("SIGINT", onInterrupt);
+  const onInterrupt = (): void => { stop = true; };
+  if (options.handleSignals !== false) process.once("SIGINT", onInterrupt);
+  try {
+    while (!stop && !shutdownSignal.aborted) {
+      const pending = catalog.listTitlesNeedingPosters(pageSize, drainPriorityIds(), true);
+      if (!pending.length) break;
+      const completed = await Promise.all(pending.map((title) =>
+        coordinator.hydrate(catalog, title.id, title.kind, false)));
+      stats.processed += completed.length;
+      stats.errors += completed.filter((done) => !done).length;
+      const rows = catalog.mediaFor(pending.map((title) => title.id));
+      stats.found += rows.filter((row) => !!row.posterUrl).length;
+      stats.missing += rows.filter((row) => row.posterUrl === "").length;
+      durableProcessed = catalog.hydrationStats().processed;
+      options.onProgress?.(durableProcessed, hydration.total);
+      if (stats.errors) throw new Error(`${stats.errors} TMDb lookups failed. They will be retried.`);
+      await yieldEventLoop();
+    }
+    return stats;
+  } finally {
+    if (options.handleSignals !== false) process.removeListener("SIGINT", onInterrupt);
   }
-
-  while (!stop) {
-    const pending = catalog.listTitlesNeedingPosters(
-      pageSize,
-      drainPriorityIds(),
-      false,
-    );
-    if (!pending.length) break;
-    await enrichPage(
-      catalog,
-      apiKey,
-      pending,
-      concurrency,
-      stats,
-      pendingTotal,
-      () => stop,
-    );
-    await yieldEventLoop();
-  }
-
-  log(
-    `Stopped after ${stats.processed.toLocaleString()} lookups (${stats.found.toLocaleString()} posters saved)`,
-  );
-  return stats;
-}
-
-async function enrichPage(
-  catalog: CatalogDatabase,
-  apiKey: string,
-  pending: Array<{ id: string; kind: string }>,
-  concurrency: number,
-  stats: PosterEnrichmentResult,
-  pendingTotal: number,
-  shouldStop: () => boolean,
-): Promise<void> {
-  let cursor = 0;
-  let batch: Array<{
-    id: string;
-    posterUrl: string | null;
-    synopsis: string | null;
-    certification: string | null;
-  }> = [];
-  const flush = (): void => {
-    if (!batch.length) return;
-    const rows = batch;
-    batch = [];
-    void catalog.updatePosterUrlsQueued(rows);
-  };
-
-  const workers = Array.from(
-    { length: Math.min(concurrency, pending.length) },
-    async () => {
-      while (!shouldStop()) {
-        const index = cursor++;
-        if (index >= pending.length) return;
-        const title = pending[index];
-        try {
-          const media = await findTitleMedia(apiKey, title.id, title.kind);
-          batch.push({ id: title.id, ...media });
-          if (media.posterUrl) stats.found += 1;
-          else stats.missing += 1;
-        } catch (error) {
-          stats.errors += 1;
-          log(
-            `Failed ${title.id}: ${error instanceof Error ? error.message : "unknown error"}`,
-          );
-        }
-        stats.processed += 1;
-        if (batch.length >= 25) flush();
-        if (stats.processed % 250 === 0) {
-          log(
-            `Progress ${stats.processed.toLocaleString()}/${pendingTotal.toLocaleString()} · found ${stats.found.toLocaleString()} · none ${stats.missing.toLocaleString()} · errors ${stats.errors}`,
-          );
-        }
-        await yieldEventLoop();
-      }
-    },
-  );
-
-  await Promise.all(workers);
-  flush();
 }
 
 export async function fillTitles(
@@ -163,68 +417,82 @@ export async function fillTitles(
     synopsis: string | null;
     posterUrl: string | null;
     certification: string | null;
+    hydrationComplete: boolean;
   }>
 > {
   const rows = catalog.mediaFor(ids).slice(0, 40);
-  const pending = rows.filter(
-    (row) =>
-      row.posterUrl == null || row.synopsis == null || row.certification == null,
-  );
-  const apiKey = tryReadTmdbApiKey();
-  if (apiKey && pending.length) {
-    let cursor = 0;
-    const workers = Array.from(
-      { length: Math.min(4, pending.length) },
-      async () => {
-        while (cursor < pending.length) {
-          const row = pending[cursor];
-          cursor += 1;
-          if (!row) return;
-          await enrichOneTitle(catalog, row.id, row.kind);
-        }
-      },
-    );
-    await Promise.all(workers);
-  }
+  const coordinator = activeTmdbCoordinator ?? tryCreateTmdbCoordinator();
+  if (coordinator) await Promise.all(rows.map((row) => coordinator.hydrate(catalog, row.id, row.kind, true)));
   return catalog.mediaFor(rows.map((row) => row.id)).map((row) => ({
     id: row.id,
     synopsis: row.synopsis,
     posterUrl: row.posterUrl,
     certification: row.certification,
+    hydrationComplete: !catalog.titleNeedsMedia(row.id),
   }));
 }
 
+class TmdbKeyRejectedError extends Error {
+  constructor() {
+    super("TMDB rejected an API key");
+  }
+}
+
 async function findTitleMedia(
-  apiKey: string,
+  clients: TmdbClientPool,
+  imdbId: string,
+  kind: string,
+): Promise<TitleMedia> {
+  let lastError: Error | null = null;
+  const availableClients = clients.activeCount;
+  for (let attempt = 0; attempt < availableClients; attempt++) {
+    const client = clients.next();
+    if (!client) break;
+    try {
+      return await findTitleMediaWithClient(client, imdbId, kind);
+    } catch (error) {
+      if (error instanceof TmdbKeyRejectedError) {
+        clients.disable(client);
+        lastError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError ?? new Error("No usable TMDB API key");
+}
+
+async function findTitleMediaWithClient(
+  client: TmdbClient,
   imdbId: string,
   kind: string,
 ): Promise<TitleMedia> {
   const url = new URL(`${TMDB_API_BASE}/find/${encodeURIComponent(imdbId)}`);
   url.searchParams.set("external_source", "imdb_id");
-  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("api_key", client.key);
   url.searchParams.set("language", "en-US");
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const response = await fetch(url, {
-      headers: { Accept: "application/json" },
-    });
-    await delay(TMDB_POSTER_GAP_MS);
+    const response = await scheduledTmdbFetch(client, url);
     if (response.status === 429) {
-      const retryAfter = Number(response.headers.get("retry-after"));
-      await sleep(
-        (Number.isFinite(retryAfter) ? retryAfter : 1 + attempt) * 1000,
+      client.rateLimits += 1;
+      client.scheduler.penalize(
+        parseRetryAfterMs(response.headers.get("retry-after")),
+        attempt,
       );
       continue;
     }
     if (response.status === 401 || response.status === 403) {
-      throw new Error("TMDB rejected the API key");
+      throw new TmdbKeyRejectedError();
     }
     if (!response.ok) {
       lastError = new Error(`TMDB find failed (${response.status})`);
       await sleep(300 * (attempt + 1));
       continue;
     }
+    client.successes += 1;
+    client.scheduler.recover();
     const data = (await response.json()) as FindResponse;
     const preferred =
       kind === "tv" || kind === "miniseries"
@@ -234,15 +502,19 @@ async function findTitleMedia(
       preferred.find((item) => item.poster_path || item.overview?.trim()) ??
       preferred[0];
     const overview = hit?.overview?.trim() || null;
-    const certification = hit?.id
-      ? await readCertification(apiKey, hit.id, kind)
-      : "";
+    const fromFind = languageCodes({
+      original_language: hit?.original_language,
+    });
+    const facts = hit?.id
+      ? await readTitleFacts(client, hit.id, kind)
+      : { certification: "", languages: [] as string[] };
     return {
       posterUrl: hit?.poster_path
         ? `${TMDB_IMAGE_BASE}${hit.poster_path}`
         : null,
       synopsis: overview,
-      certification,
+      certification: facts.certification,
+      languages: facts.languages.length ? facts.languages : fromFind,
     };
   }
   throw lastError ?? new Error("TMDB rate limit exceeded");
@@ -252,36 +524,61 @@ export async function enrichOneTitle(
   catalog: CatalogDatabase,
   id: string,
   kind: string,
+  coordinator = activeTmdbCoordinator ?? tryCreateTmdbCoordinator(),
 ): Promise<void> {
-  const apiKey = tryReadTmdbApiKey();
-  if (!apiKey) return;
-  try {
-    const media = await findTitleMedia(apiKey, id, kind);
-    catalog.updatePosterUrls([{ id, ...media }]);
-  } catch (error) {
-    log(
-      `Failed ${id}: ${error instanceof Error ? error.message : "unknown error"}`,
-    );
-  }
+  if (coordinator) await coordinator.hydrate(catalog, id, kind, true);
 }
 
-async function readCertification(
-  apiKey: string,
+interface TmdbTitleFacts {
+  original_language?: string | null;
+  spoken_languages?: Array<{ iso_639_1?: string | null }>;
+  release_dates?: ReleaseDates;
+  content_ratings?: ContentRatings;
+}
+
+async function readTitleFacts(
+  client: TmdbClient,
   tmdbId: number,
   kind: string,
-): Promise<string | null> {
+): Promise<{ certification: string; languages: string[] }> {
   const tv = kind === "tv" || kind === "miniseries";
   const url = new URL(
-    `${TMDB_API_BASE}${tv ? `/tv/${tmdbId}/content_ratings` : `/movie/${tmdbId}/release_dates`}`,
+    `${TMDB_API_BASE}${tv ? `/tv/${tmdbId}` : `/movie/${tmdbId}`}`,
   );
-  url.searchParams.set("api_key", apiKey);
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) return null;
-  const data = (await response.json()) as ReleaseDates | ContentRatings;
-  const region = (process.env.CATALOG_REGION || "US").toUpperCase();
-  return tv
-    ? pickTvCertification(data as ContentRatings, region)
-    : pickMovieCertification(data as ReleaseDates, region);
+  url.searchParams.set("api_key", client.key);
+  url.searchParams.set(
+    "append_to_response",
+    tv ? "content_ratings" : "release_dates",
+  );
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const response = await scheduledTmdbFetch(client, url);
+    if (response.status === 429) {
+      client.rateLimits += 1;
+      client.scheduler.penalize(
+        parseRetryAfterMs(response.headers.get("retry-after")),
+        attempt,
+      );
+      continue;
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new TmdbKeyRejectedError();
+    }
+    if (response.status === 404) return { certification: "", languages: [] };
+    if (!response.ok) {
+      throw new Error(`TMDB certification failed (${response.status})`);
+    }
+    client.successes += 1;
+    client.scheduler.recover();
+    const data = (await response.json()) as TmdbTitleFacts;
+    const region = (process.env.CATALOG_REGION || "US").toUpperCase();
+    return {
+      certification: tv
+        ? pickTvCertification(data.content_ratings, region)
+        : pickMovieCertification(data.release_dates, region),
+      languages: languageCodes(data),
+    };
+  }
+  throw new Error("TMDB certification rate limit exceeded");
 }
 
 interface ReleaseDate {
@@ -314,7 +611,8 @@ export function pickMovieCertification(
     const dates = group.release_dates ?? [];
     const theatrical = dates.find(
       (entry) =>
-        (entry.type === 2 || entry.type === 3) && cleanCert(entry.certification),
+        (entry.type === 2 || entry.type === 3) &&
+        cleanCert(entry.certification),
     );
     const any = dates.find((entry) => cleanCert(entry.certification));
     const value =
@@ -350,35 +648,70 @@ function cleanCert(value?: string): string {
   return value?.trim() ?? "";
 }
 
-export function tryReadTmdbApiKey(): string | null {
+export function tryReadTmdbApiKeys(): string[] | null {
   try {
-    return readTmdbApiKey();
+    return readTmdbApiKeys();
   } catch {
     return null;
   }
 }
 
+export function tryReadTmdbApiKey(): string | null {
+  return tryReadTmdbApiKeys()?.[0] ?? null;
+}
+
+export function readTmdbApiKeys(): string[] {
+  const keys = tmdbApiKeys(process.env.TMDB_API_KEYS, process.env.TMDB_API_KEY);
+  if (keys.length) return keys;
+  throw new Error("TMDb API keys are missing from this build.");
+}
+
 export function readTmdbApiKey(): string {
-  const fromEnv = process.env.TMDB_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
-  const appData = process.env.APPDATA;
-  if (appData) {
-    const file = join(appData, "rescore", "rescore.json");
-    if (existsSync(file)) {
-      const raw = JSON.parse(readFileSync(file, "utf8")) as {
-        settings?: { tmdbApiKey?: string };
-      };
-      const key = raw.settings?.tmdbApiKey?.trim();
-      if (key) return key;
-    }
+  return readTmdbApiKeys()[0];
+}
+
+function tryCreateTmdbCoordinator(): TmdbHydrationCoordinator | null {
+  const keys = tryReadTmdbApiKeys();
+  return keys ? tmdbCoordinator(keys, TMDB_CONCURRENCY) : null;
+}
+
+function tmdbCoordinator(
+  keys: string[],
+  workersPerKey: number,
+): TmdbHydrationCoordinator {
+  const keySignature = keys.join("\n");
+  if (
+    activeTmdbCoordinator &&
+    activeTmdbKeySignature === keySignature &&
+    activeTmdbWorkersPerKey === workersPerKey
+  ) {
+    return activeTmdbCoordinator;
   }
-  throw new Error(
-    "Set TMDB_API_KEY, or keep a TMDB key in the desktop app settings file.",
-  );
+  activeTmdbCoordinator = new TmdbHydrationCoordinator(keys, {
+    requestsPerSecond: TMDB_REQUESTS_PER_SECOND,
+    concurrency: workersPerKey,
+    maxConcurrency: TMDB_MAX_CONCURRENCY,
+  });
+  activeTmdbKeySignature = keySignature;
+  activeTmdbWorkersPerKey = workersPerKey;
+  return activeTmdbCoordinator;
+}
+
+async function scheduledTmdbFetch(
+  client: TmdbClient,
+  url: URL,
+): Promise<Response> {
+  await client.scheduler.acquire();
+  try {
+    client.requests += 1;
+    return await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.any([shutdownSignal, AbortSignal.timeout(20000)]) });
+  } finally {
+    client.scheduler.release();
+  }
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return cancellableDelay(ms);
 }
 
 function yieldEventLoop(): Promise<void> {
@@ -395,11 +728,14 @@ function log(message: string): void {
 }
 
 let posterInflight: Promise<PosterEnrichmentResult | null> | null = null;
+let activeTmdbCoordinator: TmdbHydrationCoordinator | null = null;
+let activeTmdbKeySignature: string | null = null;
+let activeTmdbWorkersPerKey: number | null = null;
 const priorityIds: string[] = [];
 let loggedMissingKey = false;
 
 export const MISSING_TMDB_KEY_MESSAGE =
-  "No TMDB API key; skipping new poster lookups. Existing poster URLs are unchanged.";
+  "No TMDB API keys; skipping new poster lookups. Existing poster URLs are unchanged.";
 
 export function prioritizePosterIds(ids: string[]): void {
   for (const id of ids) {
@@ -409,18 +745,27 @@ export function prioritizePosterIds(ids: string[]): void {
   }
 }
 
+let lastPosterError: string | null = null;
+export function posterEnrichmentError(): string | null { return lastPosterError; }
+
 export function isPosterEnrichmentRunning(): boolean {
   return posterInflight != null;
 }
 
 export function startPosterEnrichment(
   catalog: CatalogDatabase,
-  options: { ids?: string[] } = {},
+  options: {
+    ids?: string[];
+    onProgress?: (processed: number, pending: number) => void;
+  } = {},
 ): Promise<PosterEnrichmentResult | null> {
+  shutdownSignal.throwIfAborted();
   if (options.ids?.length) prioritizePosterIds(options.ids);
   if (posterInflight) return posterInflight;
-  const apiKey = tryReadTmdbApiKey();
-  if (!apiKey) {
+  lastPosterError = null;
+  const apiKeys = tryReadTmdbApiKeys();
+  if (!apiKeys?.length) {
+    lastPosterError = MISSING_TMDB_KEY_MESSAGE;
     if (!loggedMissingKey) {
       loggedMissingKey = true;
       log(MISSING_TMDB_KEY_MESSAGE);
@@ -428,10 +773,12 @@ export function startPosterEnrichment(
     return Promise.resolve(null);
   }
   posterInflight = enrichPosters(catalog, {
-    apiKey,
+    apiKeys,
     handleSignals: false,
+    onProgress: options.onProgress,
   })
     .catch((error: unknown) => {
+      lastPosterError = error instanceof Error ? error.message : String(error);
       emit({
         channel: "posters",
         phase: "posters",
@@ -443,5 +790,5 @@ export function startPosterEnrichment(
     .finally(() => {
       posterInflight = null;
     });
-  return posterInflight;
+  return trackWork(posterInflight);
 }

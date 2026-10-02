@@ -7,8 +7,10 @@ out
 .eslintcache
 release
 *.local
+apps/api/src/tmdb-keys.local.ts
 apps/api/data
 apps/desktop/build/api-runtime
 apps/desktop/build/node
+apps/desktop/build/service
 *.tsv
 *.tsv.gz

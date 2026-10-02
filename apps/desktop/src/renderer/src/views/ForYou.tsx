@@ -1,3 +1,4 @@
+import { useVisibleMedia, mergeTitleMedia } from "../lib/use-visible-media";
 import {
   useEffect,
   useRef,
@@ -36,6 +37,7 @@ export default function ForYou({
   onError: (message: string) => void;
   rankingMode: RankingMode;
 }): JSX.Element {
+  const { containerRef, media } = useVisibleMedia();
   const [result, setResult] = useState<ForYouResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [entering, setEntering] = useState(false);
@@ -50,7 +52,6 @@ export default function ForYou({
       if (id !== requestId.current) return;
       setResult(next);
       setEntering(true);
-      void applyAgeRatings(id, next.movies);
     } catch (error) {
       onError(
         error instanceof Error ? error.message : "Could not build rankings",
@@ -60,34 +61,6 @@ export default function ForYou({
     }
   }
 
-  async function applyAgeRatings(
-    request: number,
-    movies: MovieSummary[],
-  ): Promise<void> {
-    const ids = movies
-      .filter((movie) => !movie.certification)
-      .map((movie) => movie.imdbId);
-    if (!ids.length) return;
-    try {
-      const rows = await window.api.fillMedia(ids);
-      if (request !== requestId.current) return;
-      const ratings = new Map(
-        rows.map((row) => [row.id, row.certification || undefined]),
-      );
-      setResult((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          movies: current.movies.map((movie) => {
-            const certification = ratings.get(movie.imdbId);
-            return certification ? { ...movie, certification } : movie;
-          }),
-        };
-      });
-    } catch {
-      /* age badges stay empty until the next refresh */
-    }
-  }
 
   useEffect(() => {
     void load();
@@ -101,11 +74,11 @@ export default function ForYou({
 
   const ready = (result?.profile ?? profile)?.ready;
 
-  const movies = result?.movies ?? [];
+  const movies = (result?.movies ?? []).map((movie) => mergeTitleMedia(movie, media));
   const refreshing = loading && movies.length > 0;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section ref={containerRef} className="flex min-h-0 flex-1 flex-col">
       <div className="mb-[22px] flex shrink-0 items-end justify-between gap-4">
         <div>
           <h2 className="m-0 text-[28px] font-650 tracking-title">
@@ -181,6 +154,7 @@ export default function ForYou({
                 ),
               )}
               key={titleKey(movie)}
+              data-imdb-id={movie.imdbId}
               style={
                 {
                   "--enter-delay": `${enterDelayMs(index, 1, 18)}ms`,

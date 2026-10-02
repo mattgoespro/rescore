@@ -12,7 +12,7 @@ This document is an implementation contract for IMDBrain’s cataloguing system.
 
 The cataloguing system is the self-hosted title index that the desktop app searches. It downloads IMDb’s non-commercial datasets, keeps movies / TV series / mini-series in SQLite keyed by IMDb `tt` ids, and serves filtered, paginated title pages to Electron over a local HTTP API.
 
-Library state (watched / watchlist / skipped, personal rating, note) lives in the **same** SQLite file because search filters and For You candidate selection depend on it. Public IMDb ratings and vote counts are refreshed from the daily ratings dump. Optional TMDB lookups and licensed manifests overlay posters and synopses; they are not required for search.
+Library state (watched / watchlist / skipped, personal rating, note) lives in the **same** SQLite file because search filters and For You candidate selection depend on it. Public IMDb ratings and vote counts are refreshed from the daily ratings dump. TMDb hydrates posters, synopses, and age ratings; browsing starts once IMDb titles and credits are ready. Visible titles and opened details hydrate on demand while background hydration continues.
 
 The catalogue is not a remote movie API. The desktop app never downloads IMDb dumps and never calls TMDB. It talks only to the catalog API.
 
@@ -22,19 +22,19 @@ The catalogue is not a remote movie API. The desktop app never downloads IMDb du
 
 Two npm workspace packages:
 
-| Package | Path | Role |
-| --- | --- | --- |
-| `@imdbrain/api` | `apps/api` | Express catalog API: build, store, query, hydrate, enrich, serve |
-| `imdbrain` | `apps/desktop` | Electron app: spawn/adopt the API, IPC, Discover UI, DTO mapping |
+| Package         | Path           | Role                                                             |
+| --------------- | -------------- | ---------------------------------------------------------------- |
+| `@imdbrain/api` | `apps/api`     | Express catalog API: build, store, query, hydrate, enrich, serve |
+| `imdbrain`      | `apps/desktop` | Electron app: spawn/adopt the API, IPC, Discover UI, DTO mapping |
 
 Default API origin: `http://127.0.0.1:3847` (`DEFAULT_CATALOG_API_URL`, `PORT` default `3847`). CORS allows missing `Origin` or `http(s)://localhost|127.0.0.1(:port)`. JSON body limit is `15mb`. Zod failures return `400` `{ error: "Invalid request", details }`.
 
-Electron spawns the API **only** when the configured URL host is `127.0.0.1` or `localhost`. Remote URLs must already be running. Spawn env:
+Packaged Windows builds require the Windows service and never spawn a fallback API. In source development, Electron spawns the API **only** when the configured URL host is `127.0.0.1` or `localhost`. Remote URLs must already be running. Spawn env:
 
 - Dev: `IMDB_DATA_DIR = <apiRoot>/data`, `CATALOG_DB_PATH = <apiRoot>/data/catalog.sqlite`
 - Packaged: `IMDB_DATA_DIR = <userData>/data`, `CATALOG_DB_PATH = <userData>/data/catalog.sqlite`
 - `PORT` from the configured URL
-- `TMDB_API_KEY` copied from desktop settings when set
+- TMDb keys are compiled into the API from gitignored `apps/api/src/tmdb-keys.local.ts`. Electron removes inherited `TMDB_API_KEYS` and `TMDB_API_KEY` values when it spawns the API. A direct API launch can still override the baked keys with either environment variable.
 
 Desktop `CatalogStatus.phase` values: `"starting" | "building" | "ready" | "error"`. API `CatalogPhase` values: `"idle" | "building" | "ready" | "error"`.
 
@@ -42,20 +42,20 @@ Desktop `CatalogStatus.phase` values: `"starting" | "building" | "ready" | "erro
 
 ## 3. Feature composition
 
-| Feature | Contract | Owner |
-| --- | --- | --- |
-| Local SQLite catalogue | WAL, `busy_timeout=5000`, `foreign_keys=ON`, migrations 1–9 | `apps/api/src/catalog/schema.ts`, `database.ts` |
-| IMDb dump ingest | Parallel download of ratings + basics; keep movie/tv/miniseries, non-adult, rated, non-empty title; reconcile rather than wipe | `apps/api/src/build/`, `apps/api/src/services/gzip-tsv.ts` |
-| Credits import | Background after titles; skip when dump fingerprints match; max 4 directors, max 8 cast; `people(nconst)` + JOIN for display names | `apps/api/src/build/import-credits.ts`, `apps/api/src/build/types.ts` |
-| Ratings sync | Daily `title.ratings.tsv.gz`; gzip streamed into diff-only SQLite UPDATE; no new titles; in-memory Map only during title ingest | `apps/api/src/services/dataset.ts`, `ratings-store.ts` |
-| IMDb rating sort | `sort=rating` → `ORDER BY t.imdb_rating, t.imdb_votes, t.id`; `bayesian_score` still persisted for ranking helpers | `apps/api/src/catalog/query.ts`, `bayesian.ts` |
-| FTS5 search | `titles_fts` on `title`, `original_title`, `id`; prefix AND; exact `tt` id bypasses FTS | `apps/api/src/catalog/query.ts` |
-| SQL hydration | Batch-load genres + people into `TitleDto` | `apps/api/src/catalog/hydrate.ts` |
-| TMDB media overlay | Optional `poster_url` + `synopsis` only; miss stored as `""`; `/v1/media` disk cache | `apps/api/src/services/tmdb-posters.ts`, `apps/api/src/routes/media.ts` |
-| Licensed overlay | `POST /v1/imports/catalog`, version `1`, max 50_000 titles, provider-neutral JSON | `apps/api/src/routes/v1.ts`, `CatalogDatabase.upsertTitles` |
-| Readiness | Titles usable before credits | `apps/api/src/catalog/meta.ts`, `apps/api/src/services/ensure-catalog.ts` |
-| Desktop catalog runtime | Spawn/adopt localhost API, poll `/health`, push `catalog:status` | `apps/desktop/src/main/catalog-runtime.ts` |
-| Work queues | `catalogWorkQueue` (ratings), `mediaWorkQueue` (poster writes), `maintenanceWorkQueue` (`ANALYZE` after 250ms idle) | `apps/api/src/catalog/work-queue.ts` |
+| Feature                 | Contract                                                                                                                           | Owner                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Local SQLite catalogue  | WAL, `busy_timeout=15000`, `foreign_keys=ON`, migrations                                                                           | `apps/api/src/catalog/schema.ts`, `database.ts`                           |
+| IMDb dump ingest        | Parallel download of ratings + basics; keep movie/tv/miniseries, non-adult, rated, non-empty title; reconcile rather than wipe     | `apps/api/src/build/`, `apps/api/src/services/gzip-tsv.ts`                |
+| Credits import          | Background after titles; skip when dump fingerprints match; max 4 directors, max 8 cast; `people(nconst)` + JOIN for display names | `apps/api/src/build/import-credits.ts`, `apps/api/src/build/types.ts`     |
+| Ratings sync            | Daily `title.ratings.tsv.gz`; gzip streamed into diff-only SQLite UPDATE; no new titles; in-memory Map only during title ingest    | `apps/api/src/services/dataset.ts`, `ratings-store.ts`                    |
+| IMDb rating sort        | `sort=rating` → `ORDER BY t.imdb_rating, t.imdb_votes, t.id`; `bayesian_score` still persisted for ranking helpers                 | `apps/api/src/catalog/query.ts`, `bayesian.ts`                            |
+| FTS5 search             | `titles_fts` on `title`, `original_title`, `id`; prefix AND; exact `tt` id bypasses FTS                                            | `apps/api/src/catalog/query.ts`                                           |
+| SQL hydration           | Batch-load genres + people into `TitleDto`                                                                                         | `apps/api/src/catalog/hydrate.ts`                                         |
+| TMDB media overlay      | `poster_url`, `synopsis`, and certification; `NULL` is pending and `""` is a durable miss; `/v1/media` disk cache                  | `apps/api/src/services/tmdb-posters.ts`, `apps/api/src/routes/media.ts`   |
+| Licensed overlay        | `POST /v1/imports/catalog`, version `1`, max 50_000 titles, provider-neutral JSON                                                  | `apps/api/src/routes/v1.ts`, `CatalogDatabase.upsertTitles`               |
+| Readiness               | Splash remains until titles, credits, and TMDb hydration are durable                                                               | `apps/api/src/catalog/meta.ts`, `apps/api/src/services/ensure-catalog.ts` |
+| Desktop catalog runtime | Spawn/adopt localhost API, poll `/health`, push `catalog:status`                                                                   | `apps/desktop/src/main/catalog-runtime.ts`                                |
+| Work queues             | `catalogWorkQueue` (ratings), `mediaWorkQueue` (poster writes), `maintenanceWorkQueue` (`ANALYZE` after 60s idle)                  | `apps/api/src/catalog/work-queue.ts`                                      |
 
 ---
 
@@ -90,7 +90,12 @@ interface TitleDto {
 ```typescript
 interface TitleListResponse {
   data: TitleDto[];
-  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 interface FacetsResponse {
@@ -153,11 +158,11 @@ interface TitleQuery {
 ### 4.4 Title kinds (IMDb `titleType` → stored `kind`)
 
 | IMDb `titleType` (case-insensitive) | Stored `kind` |
-| --- | --- |
-| `movie` | `movie` |
-| `tvSeries` | `tv` |
-| `tvMiniSeries` | `miniseries` |
-| anything else | **excluded** |
+| ----------------------------------- | ------------- |
+| `movie`                             | `movie`       |
+| `tvSeries`                          | `tv`          |
+| `tvMiniSeries`                      | `miniseries`  |
+| anything else                       | **excluded**  |
 
 ### 4.5 Import filters (`importBasics`)
 
@@ -177,20 +182,20 @@ Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. Dur
 
 **`titles`**
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | TEXT PK | lowercase `tt…` |
-| `title` | TEXT NOT NULL | |
-| `original_title` | TEXT | |
-| `kind` | TEXT NOT NULL DEFAULT `'movie'` | `movie` \| `tv` \| `miniseries` |
-| `year` | INTEGER | |
-| `runtime_minutes` | INTEGER | |
-| `synopsis` | TEXT | TMDB/licensed; `NULL` = pending, `''` = confirmed miss |
-| `poster_url` | TEXT | same NULL vs `''` rule |
-| `imdb_rating` | REAL | |
-| `imdb_votes` | INTEGER | |
-| `bayesian_score` | REAL | persisted for ranking helpers; Discover `sort=rating` uses `imdb_rating` |
-| `updated_at` | TEXT NOT NULL | |
+| Column            | Type                            | Notes                                                                    |
+| ----------------- | ------------------------------- | ------------------------------------------------------------------------ |
+| `id`              | TEXT PK                         | lowercase `tt…`                                                          |
+| `title`           | TEXT NOT NULL                   |                                                                          |
+| `original_title`  | TEXT                            |                                                                          |
+| `kind`            | TEXT NOT NULL DEFAULT `'movie'` | `movie` \| `tv` \| `miniseries`                                          |
+| `year`            | INTEGER                         |                                                                          |
+| `runtime_minutes` | INTEGER                         |                                                                          |
+| `synopsis`        | TEXT                            | TMDB/licensed; `NULL` = pending, `''` = confirmed miss                   |
+| `poster_url`      | TEXT                            | same NULL vs `''` rule                                                   |
+| `imdb_rating`     | REAL                            |                                                                          |
+| `imdb_votes`      | INTEGER                         |                                                                          |
+| `bayesian_score`  | REAL                            | persisted for ranking helpers; Discover `sort=rating` uses `imdb_rating` |
+| `updated_at`      | TEXT NOT NULL                   |                                                                          |
 
 **`title_genres`:** `(title_id, genre)` PK, FK `titles(id)` ON DELETE CASCADE.
 
@@ -221,38 +226,40 @@ where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on e
 
 ### 4.8 Constants
 
-| Name | Value |
-| --- | --- |
-| `PORT` | `Number(process.env.PORT) \|\| 3847` |
-| `IMDB_DATASETS_BASE` | `https://datasets.imdbws.com` |
-| `DATASET_URL` | `${IMDB_DATASETS_BASE}/title.ratings.tsv.gz` |
-| `DATA_DIR` | `process.env.IMDB_DATA_DIR ?? join(process.cwd(), "data")` |
-| `CATALOG_DB_PATH` | `process.env.CATALOG_DB_PATH ?? join(DATA_DIR, "catalog.sqlite")` |
-| `POSTER_CACHE_DIR` | `process.env.POSTER_CACHE_DIR ?? join(DATA_DIR, "posters")` |
-| `SYNC_INTERVAL_MS` | `24 * 60 * 60 * 1000` |
-| `MAX_RATING_IDS` | `200` |
-| `TMDB_API_BASE` | `https://api.themoviedb.org/3` |
-| `TMDB_IMAGE_BASE` | `https://image.tmdb.org/t/p/w342` |
-| `TMDB_POSTER_CONCURRENCY` | `max(1, Number(process.env.TMDB_CONCURRENCY) \|\| 12)` |
-| `TMDB_POSTER_PAGE_SIZE` | `max(50, Number(process.env.TMDB_POSTER_PAGE) \|\| 400)` |
-| `MAX_DIRECTORS` | `4` |
-| `MAX_CAST` | `8` |
-| `TITLE_BATCH` | `10_000` |
-| Multi-row INSERT | 50 titles / 80 people values per statement |
-| `RATING_CHUNK` | `5000` |
-| Count cache | no TTL; key `{revision, librarySkipRev, condition, params, fts}`; invalidate on rebuild / library skip change |
-| Facets cache TTL | `10 * 60 * 1000` ms |
-| Media cache `Cache-Control` | `public, max-age=604800, immutable` |
-| Gzip stream | `highWaterMark` / gunzip `chunkSize` `256 * 1024` |
-| Gzip reuse min size | `64` bytes, magic `0x1f 0x8b` |
-| JSON body limit | `15mb` |
-| Licensed import cap | `50_000` titles, `version: 1` |
-| API list `pageSize` default | `25` (max `100`; `limit` overrides `pageSize`) |
-| Desktop discover `pageSize` | `40` |
-| For You candidate `imdb_votes` floor | `5000` |
-| For You default/max | `80` / `120` |
-| Desktop For You slice | `40` after scoring |
-| Desktop HTTP retries | search: 2 / 4000 ms; health: 1 / 1000 ms; long: 4 / 20000 ms |
+| Name                                 | Value                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `PORT`                               | `Number(process.env.PORT) \|\| 3847`                                                                          |
+| `IMDB_DATASETS_BASE`                 | `https://datasets.imdbws.com`                                                                                 |
+| `DATASET_URL`                        | `${IMDB_DATASETS_BASE}/title.ratings.tsv.gz`                                                                  |
+| `DATA_DIR`                           | `process.env.IMDB_DATA_DIR ?? join(process.cwd(), "data")`                                                    |
+| `CATALOG_DB_PATH`                    | `process.env.CATALOG_DB_PATH ?? join(DATA_DIR, "catalog.sqlite")`                                             |
+| `POSTER_CACHE_DIR`                   | `process.env.POSTER_CACHE_DIR ?? join(DATA_DIR, "posters")`                                                   |
+| `SYNC_INTERVAL_MS`                   | `24 * 60 * 60 * 1000`                                                                                         |
+| `MAX_RATING_IDS`                     | `200`                                                                                                         |
+| `TMDB_API_BASE`                      | `https://api.themoviedb.org/3`                                                                                |
+| `TMDB_IMAGE_BASE`                    | `https://image.tmdb.org/t/p/w342`                                                                             |
+| `TMDB_CONCURRENCY`                   | `max(1, floor(Number(process.env.TMDB_CONCURRENCY) \|\| 8))` per configured key                               |
+| `TMDB_MAX_CONCURRENCY`               | `max(1, floor(Number(process.env.TMDB_MAX_CONCURRENCY) \|\| 32))` across all configured keys                  |
+| `TMDB_REQUESTS_PER_SECOND`           | `max(0.1, Number(process.env.TMDB_REQUESTS_PER_SECOND) \|\| 40)` per configured key                           |
+| `TMDB_POSTER_PAGE_SIZE`              | `max(50, Number(process.env.TMDB_POSTER_PAGE) \|\| 400)`                                                      |
+| `MAX_DIRECTORS`                      | `4`                                                                                                           |
+| `MAX_CAST`                           | `8`                                                                                                           |
+| `TITLE_BATCH`                        | `10_000`                                                                                                      |
+| Multi-row INSERT                     | 50 titles / 80 people values per statement                                                                    |
+| `RATING_CHUNK`                       | `5000`                                                                                                        |
+| Count cache                          | no TTL; key `{revision, librarySkipRev, condition, params, fts}`; invalidate on rebuild / library skip change |
+| Facets cache TTL                     | `10 * 60 * 1000` ms                                                                                           |
+| Media cache `Cache-Control`          | `public, max-age=604800, immutable`                                                                           |
+| Gzip stream                          | `highWaterMark` / gunzip `chunkSize` `256 * 1024`                                                             |
+| Gzip reuse min size                  | `64` bytes, magic `0x1f 0x8b`                                                                                 |
+| JSON body limit                      | `15mb`                                                                                                        |
+| Licensed import cap                  | `50_000` titles, `version: 1`                                                                                 |
+| API list `pageSize` default          | `25` (max `100`; `limit` overrides `pageSize`)                                                                |
+| Desktop discover `pageSize`          | `40`                                                                                                          |
+| For You candidate `imdb_votes` floor | `5000`                                                                                                        |
+| For You default/max                  | `80` / `120`                                                                                                  |
+| Desktop For You slice                | `40` after scoring                                                                                            |
+| Desktop HTTP retries                 | search: 2 / 4000 ms; health: 1 / 1000 ms; long: 4 / 20000 ms                                                  |
 
 On-disk dump files under `DATA_DIR`:
 
@@ -283,7 +290,7 @@ flowchart TD
   creditsScan["scan crew/principals; write credit diffs"]
   names["resolve unknown nconsts only"]
   ratingsDiff["ratings UPDATE where values changed"]
-  tmdb["TMDB find: concurrency 12, w342, no request blocking"]
+  tmdb["TMDb hydration: 40 requests per second, durable completion"]
   serve["GET /v1/titles"]
 
   ensure --> dumps
@@ -302,24 +309,23 @@ flowchart TD
 
 ### 5.1 Stage table
 
-| Stage | Function | Behavior |
-| --- | --- | --- |
-| Skip-if-usable | `ensureCatalog` / `catalogIsUsable` | If usable (`titleCount > 0` AND `builtAt` AND `isHealthy()`) **and** `force` is false, still call `buildCatalogTitles` so HEAD/ETag runs. Leftover `buildInProgress` is cleared. Credits start in the background either way. |
-| Dump reuse | `ensureGzipFile(..., force)` | HEAD probe; reuse local gzip if valid magic/size and ETag or Last-Modified or Content-Length match `{file}.meta.json`. `--force` / `POST /v1/catalog/rebuild` re-downloads (`force=true`) then **reconciles** (does not wipe). Incomplete `.tmp` files deleted on API start. |
-| Title dumps | `downloadTitleDumps` | Parallel: `title.ratings.tsv.gz` and `title.basics.tsv.gz`. Progress reported into catalog status `download`. Fingerprint = ratings dump fingerprint + basics dump fingerprint (`etag` else `lastModified` else `size`). |
-| Unchanged titles | `runBuildTitles` | If not `force`, catalogue already has titles + `builtAt`, and stored `titlesDumpFingerprint` matches → return `{ unchanged: true }` without parsing. `ensureCatalog` then returns `null`. |
-| Ratings Map | `parseRatingsTsv` | Stream ratings TSV into a JS `Map`. Used only for this ingest; dropped after `ingestTitles`. Daily `syncDataset` streams the gzip into SQLite and does not keep the Map. |
-| Reconcile | `ingestTitles` → `startTitleIngest` / `upsertTitleRows` / `finishTitleIngest` | Temp `ingest_seen`. Stream basics with §4.5 keep-filters. Rating from the Map. Batch `INSERT … ON CONFLICT(id) DO UPDATE SET … WHERE` title/kind/year/runtime/rating/votes differ. **Never** set `poster_url`/`synopsis` on conflict. Replace a title’s genre rows only when the genre list changed. `DELETE FROM titles WHERE id NOT IN ingest_seen` (FK CASCADE drops genres/people/library for gone ids). Create `ingest_seen` **after** `beginBulkLoad` (temp_store=MEMORY would drop a pre-existing TEMP table). |
-| First insert | empty DB | `beginBulkLoad`: drop FTS triggers, `synchronous=OFF`, `temp_store=MEMORY`, multi-row INSERT. `endBulkLoad` rebuilds FTS once. Incremental runs keep triggers; FTS `WHEN` handles the small diff. |
-| Meta | `setCatalogMeta` | `builtAt` ISO now, `revision = builtAt`, `source = "imdb-noncommercial-datasets"`, `titlesReady=1`, store `titlesDumpFingerprint`. Clear `buildInProgress`. `queueAnalyze()` on the maintenance queue (250ms idle), not on the ratings/media queues. |
-| Credits (API vs CLI) | `startCreditsBuild` / `buildCatalog` | After titles, `ensureCatalog` (API startup and `POST /v1/catalog/rebuild`) calls `void startCreditsBuild` — credits run in the **background** so search can open. CLI `npm run build:catalog` calls `buildCatalog`, which **awaits** credits before returning. |
-| Credits import | `runBuildCredits` | Skip if `creditsReady && !creditsInProgress` **and** credits dump fingerprint matches. Else scan crew/principals as now. `startCreditsRebuild` does **not** `DELETE FROM title_people`. Keep `MAX_DIRECTORS` / `MAX_CAST`. Upsert `people` only for nconsts not already present; `importNames` skips `neededNames` already in `people`. Replace `title_people` per title only when the nconst list changed. Set `creditsReady` and `creditsDumpFingerprint`. `ANALYZE title_people` on the maintenance queue. Failure logs a warning; titles stay usable. |
-| TMDB overlay | `startPosterEnrichment` | No-op without `TMDB_API_KEY` or desktop settings key; logs that message once per process and leaves existing `poster_url` values alone. Priority ids first (ids that still `titleNeedsMedia`), then `imdb_votes DESC` where `poster_url IS NULL OR synopsis IS NULL`. `GET {TMDB_API_BASE}/find/{imdbId}?external_source=imdb_id&language=en-US`. Prefer `tv_results` for `tv`/`miniseries`, else `movie_results`. Poster URL = `TMDB_IMAGE_BASE + poster_path` (`w342`). Miss writes `""`. Concurrency default 12, page size default 400. 429 retries; 401/403 abort. Poster writes go through `mediaWorkQueue`. |
-| Ratings loop | `syncDataset` | On startup after ensure, then every `SYNC_INTERVAL_MS`. Re-download ratings if missing, stale (>24h mtime), or `POST /sync` `force`. If the file is present, not stale, and the store/catalog is already ready, **return without rewriting rows** (title ingest already wrote today’s ratings). `upsertRatingsFromFile` streams gzip and `UPDATE … WHERE imdb_rating IS NOT ? OR imdb_votes IS NOT ?` for ids that exist. `RatingsStore` does not keep the dump Map after persist; `POST /ratings` reads SQLite. Failed refresh keeps last good in-memory set if already ready. |
-| Work queues | split | `catalogWorkQueue`: chunked rating writes. `mediaWorkQueue`: queued poster updates. `maintenanceWorkQueue`: `ANALYZE` after 250ms idle. |
-| Serve | `listTitles` | `buildWhere` + ORDER BY + LIMIT/OFFSET + `hydrateTitles` (JOIN `people` for names). |
+| Stage            | Function                                                                      | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skip-if-usable   | `ensureCatalog` / `catalogIsUsable`                                           | If usable (`titleCount > 0` AND `builtAt` AND `isHealthy()`) **and** `force` is false, still call `buildCatalogTitles` so HEAD/ETag runs. Leftover `buildInProgress` is cleared. Credits start in the background either way.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Dump reuse       | `ensureGzipFile(..., force)`                                                  | HEAD probe; reuse local gzip if valid magic/size and ETag or Last-Modified or Content-Length match `{file}.meta.json`. `--force` / `POST /v1/catalog/rebuild` re-downloads (`force=true`) then **reconciles** (does not wipe). Incomplete `.tmp` files deleted on API start.                                                                                                                                                                                                                                                                                                                                                  |
+| Title dumps      | `downloadTitleDumps`                                                          | Parallel: `title.ratings.tsv.gz` and `title.basics.tsv.gz`. Progress reported into catalog status `download`. Fingerprint = ratings dump fingerprint + basics dump fingerprint (`etag` else `lastModified` else `size`).                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Unchanged titles | `runBuildTitles`                                                              | If not `force`, catalogue already has titles + `builtAt`, and stored `titlesDumpFingerprint` matches → return `{ unchanged: true }` without parsing. `ensureCatalog` then returns `null`.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Ratings Map      | `parseRatingsTsv`                                                             | Stream ratings TSV into a JS `Map`. Used only for this ingest; dropped after `ingestTitles`. Daily `syncDataset` streams the gzip into SQLite and does not keep the Map.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Reconcile        | `ingestTitles` → `startTitleIngest` / `upsertTitleRows` / `finishTitleIngest` | Temp `ingest_seen`. Stream basics with §4.5 keep-filters. Rating from the Map. Batch `INSERT … ON CONFLICT(id) DO UPDATE SET … WHERE` title/kind/year/runtime/rating/votes differ. **Never** set `poster_url`/`synopsis` on conflict. Replace a title’s genre rows only when the genre list changed. `DELETE FROM titles WHERE id NOT IN ingest_seen` (FK CASCADE drops genres/people/library for gone ids). Create `ingest_seen` **after** `beginBulkLoad` (temp_store=MEMORY would drop a pre-existing TEMP table).                                                                                                         |
+| First insert     | empty DB                                                                      | `beginBulkLoad`: drop FTS triggers, `synchronous=OFF`, `temp_store=MEMORY`, multi-row INSERT. `endBulkLoad` rebuilds FTS once. Incremental runs keep triggers; FTS `WHEN` handles the small diff.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Meta             | `setCatalogMeta`                                                              | `builtAt` ISO now, `revision = builtAt`, `source = "imdb-noncommercial-datasets"`, `titlesReady=1`, store `titlesDumpFingerprint`. Clear `buildInProgress`. `queueAnalyze()` on the maintenance queue (250ms idle), not on the ratings/media queues.                                                                                                                                                                                                                                                                                                                                                                          |
+| Credits import   | `runBuildCredits`                                                             | Skip if `creditsReady && !creditsInProgress` **and** credits dump fingerprint matches. Else scan crew/principals as now. `startCreditsRebuild` does **not** `DELETE FROM title_people`. Keep `MAX_DIRECTORS` / `MAX_CAST`. Upsert `people` only for nconsts not already present; `importNames` skips `neededNames` already in `people`. Replace `title_people` per title only when the nconst list changed. Set `creditsReady` and `creditsDumpFingerprint`. `ANALYZE title_people` on the maintenance queue.                                                                                                                 |
+| TMDb hydration   | `startPosterEnrichment`                                                       | A non-blocking background pass sharing per-title jobs with on-demand hydration. One API process owns the catalogue and one in-memory coordinator assigns pending titles once to key-specific TMDb clients. Priority ids first, then `imdb_votes DESC` where poster, synopsis, or certification is `NULL`. Each configured key begins with a 40 requests/second budget and up to 8 in-flight calls; total workers are capped at 32. A `429` backs off only that key; a rejected key is disabled while healthy keys continue. A completed miss writes `""`; failed calls remain `NULL` and surface an error instead of looping forever. Poster writes go through `mediaWorkQueue`. |
+| Ratings loop     | `syncDataset`                                                                 | On startup after ensure, then every `SYNC_INTERVAL_MS`. Re-download ratings if missing, stale (>24h mtime), or `POST /sync` `force`. If the file is present, not stale, and the store/catalog is already ready, **return without rewriting rows** (title ingest already wrote today’s ratings). `upsertRatingsFromFile` streams gzip and `UPDATE … WHERE imdb_rating IS NOT ? OR imdb_votes IS NOT ?` for ids that exist. `RatingsStore` does not keep the dump Map after persist; `POST /ratings` reads SQLite. Failed refresh keeps last good in-memory set if already ready.                                               |
+| Work queues      | split                                                                         | `catalogWorkQueue`: chunked rating writes. `mediaWorkQueue`: queued poster updates. `maintenanceWorkQueue`: `ANALYZE` after 250ms idle.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Serve            | `listTitles`                                                                  | `buildWhere` + ORDER BY + LIMIT/OFFSET + `hydrateTitles` (JOIN `people` for names).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
-Usable catalog after titles are imported: search works with empty `directors`/`cast` until credits finish (`titlesReady` does not require `creditsReady`).
+The desktop UI is usable only after titles, credits, and the full TMDb hydration pass are durably complete.
 
 Licensed overlay is a parallel ingest path, not part of the IMDb rebuild: `POST /v1/imports/catalog` upserts supplied metadata (replaces genres/people for those ids; people keys via `personKey`), then applies ratings for those ids from SQLite/`RatingsStore`. On `ON CONFLICT(id)`, the upsert updates title/kind/year/runtime/synopsis/poster/`updated_at` only — it does **not** overwrite `imdb_rating`, `imdb_votes`, or `bayesian_score`. New rows insert those rating columns as null, then `upsertRatings` fills them. Ratings remain IMDb-synced via `/sync` and the daily job.
 
@@ -371,39 +377,39 @@ App boot (`App.tsx`) blocks only when there is no usable catalogue (`isCatalogUi
 
 From `defaultFilters()`:
 
-| Field | Default |
-| --- | --- |
-| `query` | `""` |
-| `titleKind` | `"movie"` |
-| `genres` | `[]` |
-| `yearMin` | `2000` |
-| `yearMax` | current calendar year |
-| `ratingMin` | `7` |
-| `voteCountMin` | `1000` |
-| `hideWatched` | `true` |
-| `hideWatchlist` | `false` |
-| `sortBy` | `"match"` |
-| `page` | `1` |
-| `runtimeMin` / `runtimeMax` | `null` |
+| Field                       | Default               |
+| --------------------------- | --------------------- |
+| `query`                     | `""`                  |
+| `titleKind`                 | `"movie"`             |
+| `genres`                    | `[]`                  |
+| `yearMin`                   | `2000`                |
+| `yearMax`                   | current calendar year |
+| `ratingMin`                 | `7`                   |
+| `voteCountMin`              | `1000`                |
+| `hideWatched`               | `true`                |
+| `hideWatchlist`             | `false`               |
+| `sortBy`                    | `"match"`             |
+| `page`                      | `1`                   |
+| `runtimeMin` / `runtimeMax` | `null`                |
 
 ### 6.3 Wired vs unwired filters
 
-| `DiscoverFilters` field | Sent to API? | Mapping |
-| --- | --- | --- |
-| `query` | yes | `query` (omitted if empty) |
-| `titleKind` | yes | `kind` (`movie` \| `tv` \| `miniseries`) |
-| `genres` (numeric ids) | yes | comma-separated **names** via `/v1/facets` + `genreId` hash |
-| `yearMin` / `yearMax` | yes | same names |
-| `ratingMin` | yes | omitted if `0` |
-| `voteCountMin` | yes | `votesMin`; omitted if `0` |
-| `runtimeMin` / `runtimeMax` | yes | omitted if null |
-| `hideWatched` / `hideWatchlist` | yes | `"true"` only when true |
-| `sortBy` | yes | see sort map |
-| `page` | yes | `page`; `includeTotal` is `"false"` when `page > 1` else `"true"` |
-| `withoutGenres` | **no** | unused |
-| `ratingMax` | **no** | type default `10`; `matchesRatingFilters` exists but is not on the discover path |
-| `language` | **no** | unused |
-| `cast` / `directors` / `keywords` / `providers` | **no** | IPC stubs return `[]` |
+| `DiscoverFilters` field                         | Sent to API? | Mapping                                                                          |
+| ----------------------------------------------- | ------------ | -------------------------------------------------------------------------------- |
+| `query`                                         | yes          | `query` (omitted if empty)                                                       |
+| `titleKind`                                     | yes          | `kind` (`movie` \| `tv` \| `miniseries`)                                         |
+| `genres` (numeric ids)                          | yes          | comma-separated **names** via `/v1/facets` + `genreId` hash                      |
+| `yearMin` / `yearMax`                           | yes          | same names                                                                       |
+| `ratingMin`                                     | yes          | omitted if `0`                                                                   |
+| `voteCountMin`                                  | yes          | `votesMin`; omitted if `0`                                                       |
+| `runtimeMin` / `runtimeMax`                     | yes          | omitted if null                                                                  |
+| `hideWatched` / `hideWatchlist`                 | yes          | `"true"` only when true                                                          |
+| `sortBy`                                        | yes          | see sort map                                                                     |
+| `page`                                          | yes          | `page`; `includeTotal` is `"false"` when `page > 1` else `"true"`                |
+| `withoutGenres`                                 | **no**       | unused                                                                           |
+| `ratingMax`                                     | **no**       | type default `10`; `matchesRatingFilters` exists but is not on the discover path |
+| `language`                                      | **no**       | unused                                                                           |
+| `cast` / `directors` / `keywords` / `providers` | **no**       | IPC stubs return `[]`                                                            |
 
 **Always-on catalogue rule (not a UI toggle):** search `WHERE` excludes skipped titles. The `NOT EXISTS (… status = 'skipped')` subquery is omitted when there are zero skipped library rows.
 
@@ -418,25 +424,25 @@ Genre filter semantics: `EXISTS (… g.genre IN (…))` — **OR** across select
 
 ### 6.4 Sort mapping (desktop `sortBy` → API)
 
-| UI `sortBy` | API `sort` | API `order` |
-| --- | --- | --- |
-| `match` | `votes` | `desc` |
-| `vote_average.desc` | `rating` | `desc` |
-| `vote_count.desc` | `votes` | `desc` |
-| `popularity.desc` | `votes` | `desc` |
-| `primary_release_date.desc` | `year` | `desc` |
-| `primary_release_date.asc` | `year` | `asc` |
-| default | `title` | `asc` |
+| UI `sortBy`                 | API `sort` | API `order` |
+| --------------------------- | ---------- | ----------- |
+| `match`                     | `votes`    | `desc`      |
+| `vote_average.desc`         | `rating`   | `desc`      |
+| `vote_count.desc`           | `votes`    | `desc`      |
+| `popularity.desc`           | `votes`    | `desc`      |
+| `primary_release_date.desc` | `year`     | `desc`      |
+| `primary_release_date.asc`  | `year`     | `asc`       |
+| default                     | `title`    | `asc`       |
 
 SQL sort columns:
 
-| API `sort` | SQL |
-| --- | --- |
-| `title` | `t.title COLLATE NOCASE` |
-| `year` | `t.year` |
-| `rating` | `t.imdb_rating`, then `t.imdb_votes` |
-| `votes` | `t.imdb_votes` |
-| `updatedAt` | `t.updated_at` |
+| API `sort`  | SQL                                  |
+| ----------- | ------------------------------------ |
+| `title`     | `t.title COLLATE NOCASE`             |
+| `year`      | `t.year`                             |
+| `rating`    | `t.imdb_rating`, then `t.imdb_votes` |
+| `votes`     | `t.imdb_votes`                       |
+| `updatedAt` | `t.updated_at`                       |
 
 Tie-breaker always: `t.id ASC`. Order is `ASC` only when `query.order` uppercases to `"ASC"`; anything else is `DESC`.
 
@@ -470,7 +476,7 @@ Tie-breaker always: `t.id ASC`. Order is `ASC` only when `query.order` uppercase
 
 After a successful discover:
 
-1. Fire-and-forget `POST /v1/catalog/enrich-posters` with **visible** IMDb ids only (no look-ahead pages). The API keeps only ids that still `titleNeedsMedia`.
+1. Fire-and-forget `POST /v1/catalog/enrich-posters` with **visible** IMDb ids only (no look-ahead pages). The API keeps only ids whose raw TMDb columns are still `NULL`; confirmed empty-string misses are not retried.
 2. If `sortBy === "match"` **and** taste profile `ratedCount >= 3`, re-sort the **current page** with `scoreMovie` / `sortMovies("match")` in `apps/desktop/src/main/ranking.ts`. Library and genre facets for match-sort are cached in desktop main until a library upsert/remove/clear. Do not reimplement ranking here. If `ratedCount < 3`, return API vote-desc order unchanged.
 
 Network-down (`CatalogError.status === 0`) on discover returns empty `{ page: 1, totalPages: 0, totalResults: 0, results: [] }` instead of throwing.
@@ -500,42 +506,42 @@ then `hydrateTitles`. Desktop scores these and slices to 40 **before** poster en
 
 Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 
-| Method | Path | Status | Request | Response |
-| --- | --- | --- | --- | --- |
-| `GET` | `/health` | 200 | — | `HealthResponse` below |
-| `GET` | `/v1/titles` | 200 / 400 | `listQuery` | `TitleListResponse` |
-| `GET` | `/v1/titles/:id` | 200 / 404 | `tt` id | `{ data: TitleDto }`; if `titleNeedsMedia` (`poster_url` or `synopsis` IS NULL), `void startPosterEnrichment({ ids: [id] })` — **do not await** TMDB; response may still have `posterUrl: null` |
-| `GET` | `/v1/facets` | 200 | — | `FacetsResponse`. In-memory 10 min TTL. Genres: `GROUP BY genre ORDER BY count DESC, genre`. Kinds: `GROUP BY kind ORDER BY count DESC, kind`. Years: `min(year)`, `max(year)`. |
-| `GET` | `/v1/for-you` | 200 | `limit` 1–120 default 80 | `ForYouResponse` |
-| `GET` | `/v1/media?src=` | 200 / 400 / 404 / 502 | https URL on `image.tmdb.org` \| `media.themoviedb.org` \| `www.themoviedb.org` | stream/pipe image bytes (`createReadStream` / `pipeline`), disk cache under `POSTER_CACHE_DIR/{size}/{sha1}{ext}` |
-| `GET` | `/v1/library` | 200 | optional `status` | `{ data: LibraryEntryDto[] }` newest `updated_at` first |
-| `PUT` | `/v1/library/:id` | 200 / 404 | `{ status, personalRating?, note? }` | `{ data: LibraryEntryDto }`. If `status==="watched"` and `personalRating` is provided it must not be `null`. |
-| `DELETE` | `/v1/library/:id` | 204 / 404 | — | empty |
-| `POST` | `/v1/catalog/rebuild` | 202 / 409 | `{ force?: boolean }` | `{ ok: true, ...catalogStatus() }`. Always starts `ensureCatalog({ force: true })` if not already building. Then ratings sync **without** force (skip persist if the file is fresh) + poster enrichment. |
-| `POST` | `/v1/catalog/enrich-posters` | 202 | optional `ids` (max 400) | `{ ok: true, running }`. Ignores look-ahead/filter fields. Only ids that `titleNeedsMedia` are queued. |
-| `POST` | `/v1/imports/catalog` | 201 / 400 | manifest below | `{ data: ImportStatusDto }`. Completes synchronously. Duplicate ids rejected. |
-| `GET` | `/v1/imports/:id` | 200 / 404 | UUID | `{ data: ImportStatusDto }` |
-| `POST` | `/ratings` | 200 / 400 / 503 | `{ ids: tt[] }` max 200 | `{ syncedAt, ratings }` from `RatingsStore` |
-| `POST` | `/sync` | 200 | — | force ratings file refresh `{ ok, ready, syncedAt, titleCount }` |
+| Method   | Path                         | Status                | Request                                                                         | Response                                                                                                                                                                                                 |
+| -------- | ---------------------------- | --------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/health`                    | 200                   | —                                                                               | `HealthResponse` below                                                                                                                                                                                   |
+| `GET`    | `/v1/titles`                 | 200 / 400             | `listQuery`                                                                     | `TitleListResponse`                                                                                                                                                                                      |
+| `GET`    | `/v1/titles/:id`             | 200 / 404             | `tt` id                                                                         | `{ data: TitleDto }`; pending raw TMDb columns are hydrated before the response. Completed empty-string misses are not retried.                                                                          |
+| `GET`    | `/v1/facets`                 | 200                   | —                                                                               | `FacetsResponse`. In-memory 10 min TTL. Genres: `GROUP BY genre ORDER BY count DESC, genre`. Kinds: `GROUP BY kind ORDER BY count DESC, kind`. Years: `min(year)`, `max(year)`.                          |
+| `GET`    | `/v1/for-you`                | 200                   | `limit` 1–120 default 80                                                        | `ForYouResponse`                                                                                                                                                                                         |
+| `GET`    | `/v1/media?src=`             | 200 / 400 / 404 / 502 | https URL on `image.tmdb.org` \| `media.themoviedb.org` \| `www.themoviedb.org` | stream/pipe image bytes (`createReadStream` / `pipeline`), disk cache under `POSTER_CACHE_DIR/{size}/{sha1}{ext}`                                                                                        |
+| `GET`    | `/v1/library`                | 200                   | optional `status`                                                               | `{ data: LibraryEntryDto[] }` newest `updated_at` first                                                                                                                                                  |
+| `PUT`    | `/v1/library/:id`            | 200 / 404             | `{ status, personalRating?, note? }`                                            | `{ data: LibraryEntryDto }`. If `status==="watched"` and `personalRating` is provided it must not be `null`.                                                                                             |
+| `DELETE` | `/v1/library/:id`            | 204 / 404             | —                                                                               | empty                                                                                                                                                                                                    |
+| `POST`   | `/v1/catalog/rebuild`        | 202 / 409             | `{ force?: boolean }`                                                           | `{ ok: true, ...catalogStatus() }`. Always starts `ensureCatalog({ force: true })` if not already building. Then ratings sync **without** force (skip persist if the file is fresh) + poster enrichment. |
+| `POST`   | `/v1/catalog/enrich-posters` | 202                   | optional `ids` (max 400)                                                        | `{ ok: true, running }`. Ignores look-ahead/filter fields. Only ids with a pending raw TMDb column are queued.                                                                                           |
+| `POST`   | `/v1/imports/catalog`        | 201 / 400             | manifest below                                                                  | `{ data: ImportStatusDto }`. Completes synchronously. Duplicate ids rejected.                                                                                                                            |
+| `GET`    | `/v1/imports/:id`            | 200 / 404             | UUID                                                                            | `{ data: ImportStatusDto }`                                                                                                                                                                              |
+| `POST`   | `/ratings`                   | 200 / 400 / 503       | `{ ids: tt[] }` max 200                                                         | `{ syncedAt, ratings }` from `RatingsStore`                                                                                                                                                              |
+| `POST`   | `/sync`                      | 200                   | —                                                                               | force ratings file refresh `{ ok, ready, syncedAt, titleCount }`                                                                                                                                         |
 
 **`listQuery` (GET `/v1/titles`):**
 
-| Param | Constraint | Default |
-| --- | --- | --- |
-| `page` | int 1–100000 | 1 |
-| `pageSize` | int 1–100 | 25 |
-| `limit` | int 1–100 | overrides `pageSize` if set |
-| `sort` | `title\|year\|rating\|votes\|updatedAt` | `title` |
-| `order` | `asc\|desc` | `asc` |
-| `query` | trim, 1–200 chars | omitted |
-| `genre` | string or array, split commas, max 30 names × 60 chars | → `genres` |
-| `kind` | 1–40 chars | omitted |
-| `yearMin` / `yearMax` | int 1870–3000; min ≤ max | omitted |
-| `ratingMin` | 0–10 | omitted |
-| `votesMin` | 0–2_000_000_000 | omitted |
-| `runtimeMin` / `runtimeMax` | 1–2000 | omitted |
-| `hideWatched` / `hideWatchlist` | `"true"` / `"false"` | omitted |
-| `includeTotal` | `"true"` / `"false"` | true |
+| Param                           | Constraint                                             | Default                     |
+| ------------------------------- | ------------------------------------------------------ | --------------------------- |
+| `page`                          | int 1–100000                                           | 1                           |
+| `pageSize`                      | int 1–100                                              | 25                          |
+| `limit`                         | int 1–100                                              | overrides `pageSize` if set |
+| `sort`                          | `title\|year\|rating\|votes\|updatedAt`                | `title`                     |
+| `order`                         | `asc\|desc`                                            | `asc`                       |
+| `query`                         | trim, 1–200 chars                                      | omitted                     |
+| `genre`                         | string or array, split commas, max 30 names × 60 chars | → `genres`                  |
+| `kind`                          | 1–40 chars                                             | omitted                     |
+| `yearMin` / `yearMax`           | int 1870–3000; min ≤ max                               | omitted                     |
+| `ratingMin`                     | 0–10                                                   | omitted                     |
+| `votesMin`                      | 0–2_000_000_000                                        | omitted                     |
+| `runtimeMin` / `runtimeMax`     | 1–2000                                                 | omitted                     |
+| `hideWatched` / `hideWatchlist` | `"true"` / `"false"`                                   | omitted                     |
+| `includeTotal`                  | `"true"` / `"false"`                                   | true                        |
 
 **HealthResponse:**
 
@@ -571,16 +577,18 @@ Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 ```json
 {
   "version": 1,
-  "titles": [{
-    "id": "tt0111161",
-    "title": "The Shawshank Redemption",
-    "kind": "movie",
-    "year": 1994,
-    "runtimeMinutes": 142,
-    "genres": ["Drama"],
-    "directors": ["Frank Darabont"],
-    "cast": ["Tim Robbins", "Morgan Freeman"]
-  }]
+  "titles": [
+    {
+      "id": "tt0111161",
+      "title": "The Shawshank Redemption",
+      "kind": "movie",
+      "year": 1994,
+      "runtimeMinutes": 142,
+      "genres": ["Drama"],
+      "directors": ["Frank Darabont"],
+      "cast": ["Tim Robbins", "Morgan Freeman"]
+    }
+  ]
 }
 ```
 
@@ -590,21 +598,21 @@ Optional per title: `originalTitle`, `synopsis`, `posterUrl` (URL). Upsert repla
 
 Invoke (renderer → main):
 
-| Channel | Preload | Handler |
-| --- | --- | --- |
-| `catalog:configured` | `configured()` | `GET /health` → `ready` |
-| `catalog:status` | `catalogStatus()` | runtime snapshot |
-| `catalog:retry` | `retryCatalog()` | restart bootstrap |
-| `catalog:rebuild` | `rebuildCatalog()` | `POST /v1/catalog/rebuild` `{ force: true }` |
-| `catalog:genres` | `genres()` | `GET /v1/facets` → `{ id: genreId(name), name }` |
-| `catalog:discover` | `discover(filters)` | section 6 |
-| `catalog:title` | `movie(id)` | `GET /v1/titles/:id` |
-| `catalog:providers` | `providers()` | **stub `[]`** |
-| `catalog:searchPeople` | `searchPeople()` | **stub `[]`** |
-| `catalog:searchKeywords` | `searchKeywords()` | **stub `[]`** |
-| `library:list` | `listLibrary()` | `GET /v1/library` |
-| `library:upsert` | `upsertLibrary()` | `PUT /v1/library/:id` |
-| `library:remove` | `removeLibrary()` | `DELETE /v1/library/:id` |
+| Channel                  | Preload             | Handler                                          |
+| ------------------------ | ------------------- | ------------------------------------------------ |
+| `catalog:configured`     | `configured()`      | `GET /health` → `ready`                          |
+| `catalog:status`         | `catalogStatus()`   | runtime snapshot                                 |
+| `catalog:retry`          | `retryCatalog()`    | restart bootstrap                                |
+| `catalog:rebuild`        | `rebuildCatalog()`  | `POST /v1/catalog/rebuild` `{ force: true }`     |
+| `catalog:genres`         | `genres()`          | `GET /v1/facets` → `{ id: genreId(name), name }` |
+| `catalog:discover`       | `discover(filters)` | section 6                                        |
+| `catalog:title`          | `movie(id)`         | `GET /v1/titles/:id`                             |
+| `catalog:providers`      | `providers()`       | **stub `[]`**                                    |
+| `catalog:searchPeople`   | `searchPeople()`    | **stub `[]`**                                    |
+| `catalog:searchKeywords` | `searchKeywords()`  | **stub `[]`**                                    |
+| `library:list`           | `listLibrary()`     | `GET /v1/library`                                |
+| `library:upsert`         | `upsertLibrary()`   | `PUT /v1/library/:id`                            |
+| `library:remove`         | `removeLibrary()`   | `DELETE /v1/library/:id`                         |
 
 Push (main → renderer): `catalog:status` with `CatalogStatus`.
 
@@ -612,13 +620,32 @@ Runtime poll: `POLL_MS = 250`, start timeout `30_000`. Rebuild 409 is treated as
 
 ### 7.3 CLI (catalogue)
 
-| Command | Effect |
-| --- | --- |
-| `npm run dev:api` | API with `tsx watch` |
-| `npm run build:catalog` | HEAD dumps; skip parse when fingerprints match; otherwise reconcile titles then **wait** for credits. `--force` re-downloads dumps then reconciles (never wipe-rebuild) |
-| `npm run enrich:posters` | TMDB backfill |
-| `npm run migrate -w @imdbrain/api` | apply SQLite migrations |
-| `npm test` | `@imdbrain/api` tests including `catalog.test.ts` |
+| Command                            | Effect                                                                                                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev:api`                  | API with `tsx watch`                                                                                                                                                    |
+| `npm run build:catalog`            | HEAD dumps; skip parse when fingerprints match; otherwise reconcile titles then **wait** for credits. `--force` re-downloads dumps then reconciles (never wipe-rebuild) |
+| `npm run enrich:posters`           | TMDB backfill                                                                                                                                                           |
+| `npm run migrate -w @imdbrain/api` | apply SQLite migrations                                                                                                                                                 |
+| `npm test`                         | `@imdbrain/api` tests including `catalog.test.ts`                                                                                                                       |
+
+### TMDb multi-key operation
+
+TMDb v3 keys are baked into the API build from gitignored
+`apps/api/src/tmdb-keys.local.ts`. Changing that file requires rebuilding or
+restarting the API. A restart does not remove the SQLite catalogue, so
+committed media stays complete and uncommitted titles resume as pending.
+
+Only one API process may own a catalogue. It coordinates all configured keys
+through one pending-title queue and serializes SQLite writes. Do not run
+`enrich:posters` or a second API against the same database while the desktop
+API is hydrating it.
+
+To benchmark configured keys, run
+`TMDB_SMOKE_CONFIRM=1 npm run smoke:tmdb -w @rescore/api`. The confirmation
+gated script measures each key alone and all keys together at 20, 30, and 40
+requests per second per key. It emits lane labels, not key values, along with
+successful RPS, p50/p95 latency, and 429 counts. Do not assume keys scale
+linearly unless the combined result confirms it.
 
 ---
 

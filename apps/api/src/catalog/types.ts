@@ -32,6 +32,7 @@ export interface TitleQuery {
   withoutGenres?: string[];
   directors?: string[];
   cast?: string[];
+  withoutLanguages?: string[];
   runtimeMin?: number;
   runtimeMax?: number;
   includeTotal?: boolean;

@@ -1,3 +1,4 @@
+import type { BackgroundServiceStatus } from "../shared/background-service";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   CatalogStatus,
@@ -11,7 +12,6 @@ import type {
   MovieEnrichment,
   MovieSummary,
   PagedMovies,
-  PersonRef,
   SearchHistoryEntry,
   Settings,
   TasteProfile,
@@ -20,12 +20,23 @@ import type {
 import type { SearchHistoryInput } from "../shared/search-history";
 
 const api = {
+  backgroundService: {
+    getStatus: (): Promise<BackgroundServiceStatus> => ipcRenderer.invoke("background-service:status"),
+    retry: (): Promise<BackgroundServiceStatus> => ipcRenderer.invoke("background-service:retry"),
+    openLogs: (): Promise<void> => ipcRenderer.invoke("background-service:logs"),
+  },
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("settings:get"),
   setSettings: (patch: Partial<Settings>): Promise<Settings> =>
     ipcRenderer.invoke("settings:set", patch),
   configured: (): Promise<boolean> => ipcRenderer.invoke("catalog:configured"),
   catalogStatus: (): Promise<CatalogStatus> =>
     ipcRenderer.invoke("catalog:status"),
+  tmdbHealth: (): Promise<{
+    total: number;
+    posters: number;
+    synopses: number;
+    certifications: number;
+  }> => ipcRenderer.invoke("catalog:tmdbHealth"),
   retryCatalog: (): Promise<CatalogStatus> =>
     ipcRenderer.invoke("catalog:retry"),
   rebuildCatalog: (): Promise<CatalogStatus> =>
@@ -38,11 +49,6 @@ const api = {
   },
   genres: (mediaType?: MediaType): Promise<Genre[]> =>
     ipcRenderer.invoke("catalog:genres", mediaType),
-  searchPeople: (
-    query: string,
-    role: "director" | "cast",
-  ): Promise<PersonRef[]> =>
-    ipcRenderer.invoke("catalog:searchPeople", query, role),
   discover: (filters: DiscoverFilters): Promise<PagedMovies> =>
     ipcRenderer.invoke("catalog:discover", filters),
   movie: (id: string, _mediaType?: MediaType): Promise<MovieDetails | null> =>
@@ -55,6 +61,7 @@ const api = {
       synopsis: string | null;
       posterUrl: string | null;
       certification: string | null;
+      hydrationComplete: boolean;
     }>
   > => ipcRenderer.invoke("catalog:fillMedia", ids),
   movieMeta: (

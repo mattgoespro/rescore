@@ -1,7 +1,9 @@
+import { shutdownSignal, cancellableDelay } from "../services/runtime-lifecycle.js";
 type Work<T> = () => T | Promise<T>;
 
 export class CatalogWorkQueue {
   private tail: Promise<void> = Promise.resolve();
+  drain(): Promise<void> { return this.tail; }
 
   enqueue<T>(work: Work<T>): Promise<T> {
     const result = this.tail.then(
@@ -41,7 +43,8 @@ export function queueIdleAnalyze(
   idleMs = ANALYZE_IDLE_MS,
 ): Promise<void> {
   return maintenanceWorkQueue.enqueue(async () => {
-    await delay(idleMs);
+    try { await cancellableDelay(idleMs); } catch { return; }
+    if (shutdownSignal.aborted) return;
     run();
   });
 }

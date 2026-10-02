@@ -1,3 +1,4 @@
+import { acquireCatalogOwnership } from "../services/catalog-ownership.js";
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -10,6 +11,7 @@ import type {
   TitleListResponse,
 } from "../catalog-types.js";
 import { bayesianScore } from "./bayesian.js";
+import { normalizeLanguageCodes } from "./languages.js";
 import { invalidateFacetsCache } from "./facets-cache.js";
 import {
   flagIsSet,
@@ -49,7 +51,10 @@ import {
   upsertRatingsSync,
   upsertTitleRows,
 } from "./rebuild.js";
-import { applyMigrations } from "./schema.js";
+import {
+  applyMigrations,
+  TMDB_HYDRATION_PENDING_SQL,
+} from "./schema.js";
 import {
   personKey,
   type CatalogMeta,
@@ -63,15 +68,24 @@ import { mediaWorkQueue } from "./work-queue.js";
 
 export class CatalogDatabase {
   private readonly db: Database.Database;
+  private readonly releaseOwnership: () => void;
   private ingestBulk = false;
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
-    this.db = new Database(path);
+    this.releaseOwnership = acquireCatalogOwnership(path);
+    let opened: Database.Database | undefined;
+    try {
+    this.db = opened = new Database(path);
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("busy_timeout = 15000");
     applyMigrations(this.db);
+    } catch (error) {
+      opened?.close();
+      this.releaseOwnership();
+      throw error;
+    }
   }
 
   upsertTitles(titles: CatalogTitleInput[]): number {
@@ -189,15 +203,55 @@ LIMIT ?`,
     return titleById(this.db, id);
   }
 
+  tmdbCoverage(): {
+    total: number;
+    posters: number;
+    synopses: number;
+    certifications: number;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END) AS posters,
+           SUM(CASE WHEN synopsis IS NOT NULL AND synopsis != '' THEN 1 ELSE 0 END) AS synopses,
+           SUM(CASE WHEN certification IS NOT NULL AND certification != '' THEN 1 ELSE 0 END) AS certifications
+         FROM titles`,
+      )
+      .get() as {
+      total: number;
+      posters: number | null;
+      synopses: number | null;
+      certifications: number | null;
+    };
+    return {
+      total: row.total,
+      posters: row.posters ?? 0,
+      synopses: row.synopses ?? 0,
+      certifications: row.certifications ?? 0,
+    };
+  }
+
+  tmdbComplete(): boolean {
+    const stats = this.hydrationStats();
+    return stats.total > 0 && stats.complete;
+  }
+
+  titleNeedsLanguages(id: string): boolean {
+    const row = this.db
+      .prepare("SELECT languages_checked AS checked FROM titles WHERE id = ?")
+      .get(id.toLowerCase()) as { checked: number } | undefined;
+    return row?.checked !== 1;
+  }
+
   titleNeedsMedia(id: string): boolean {
     const row = this.db
       .prepare(
-        "SELECT poster_url, synopsis FROM titles WHERE id = ?",
+        `SELECT 1 AS pending FROM titles
+         WHERE id = ? AND (${TMDB_HYDRATION_PENDING_SQL})`,
       )
-      .get(id.toLowerCase()) as
-      | { poster_url: string | null; synopsis: string | null }
-      | undefined;
-    return Boolean(row && (row.poster_url == null || row.synopsis == null));
+      .get(id.toLowerCase());
+    return Boolean(row);
   }
 
   mediaFor(ids: string[]): Array<{
@@ -332,9 +386,9 @@ LIMIT ?`,
       .prepare(
         `SELECT
       count(*) AS total,
-      sum(CASE WHEN poster_url IS NULL THEN 1 ELSE 0 END) AS pending,
-      sum(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END) AS found,
-      sum(CASE WHEN poster_url = '' THEN 1 ELSE 0 END) AS missing
+      coalesce(sum(CASE WHEN poster_url IS NULL THEN 1 ELSE 0 END), 0) AS pending,
+      coalesce(sum(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END), 0) AS found,
+      coalesce(sum(CASE WHEN poster_url = '' THEN 1 ELSE 0 END), 0) AS missing
     FROM titles`,
       )
       .get() as {
@@ -345,13 +399,36 @@ LIMIT ?`,
     };
   }
 
+  hydrationStats(): {
+    total: number;
+    processed: number;
+    pending: number;
+    complete: boolean;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           count(*) AS total,
+           coalesce(sum(CASE WHEN ${TMDB_HYDRATION_PENDING_SQL} THEN 1 ELSE 0 END), 0) AS pending
+         FROM titles`,
+      )
+      .get() as { total: number; pending: number };
+    const total = Number(row.total);
+    const pending = Number(row.pending);
+    return {
+      total,
+      processed: total - pending,
+      pending,
+      complete: pending === 0,
+    };
+  }
+
   listTitlesNeedingPosters(
     limit = 400,
     priorityIds: string[] = [],
     fillRest = false,
   ): Array<{ id: string; kind: string }> {
-    const needsEnrichment =
-      "(poster_url IS NULL OR synopsis IS NULL)";
+    const needsEnrichment = `(${TMDB_HYDRATION_PENDING_SQL})`;
     const wanted = [
       ...new Set(priorityIds.map((id) => id.toLowerCase()).filter(Boolean)),
     ];
@@ -383,24 +460,54 @@ LIMIT ?`,
       posterUrl?: string | null;
       synopsis?: string | null;
       certification?: string | null;
+      languages?: string[];
     }>,
   ): void {
     if (!rows.length) return;
     const update = this.db.prepare(
       `UPDATE titles SET
-        poster_url = CASE WHEN poster_url IS NULL THEN @posterUrl ELSE poster_url END,
-        synopsis = CASE WHEN synopsis IS NULL THEN @synopsis ELSE synopsis END,
-        certification = CASE WHEN certification IS NULL THEN @certification ELSE certification END
+        poster_url = CASE
+          WHEN @setPoster = 1 AND poster_url IS NULL THEN @posterUrl
+          ELSE poster_url END,
+        synopsis = CASE
+          WHEN @setSynopsis = 1 AND synopsis IS NULL THEN @synopsis
+          ELSE synopsis END,
+        certification = CASE
+          WHEN @setCertification = 1 AND certification IS NULL THEN @certification
+          ELSE certification END
        WHERE id = @id`,
+    );
+    const clearLanguages = this.db.prepare(
+      "DELETE FROM title_languages WHERE title_id = ?",
+    );
+    const addLanguage = this.db.prepare(
+      "INSERT INTO title_languages(title_id, language, position) VALUES (?, ?, ?)",
+    );
+    const markLanguagesChecked = this.db.prepare(
+      "UPDATE titles SET languages_checked = 1 WHERE id = ?",
     );
     this.db.transaction(() => {
       for (const row of rows) {
+        const setPoster = row.posterUrl !== undefined;
+        const setSynopsis = row.synopsis !== undefined;
+        const setCertification =
+          row.certification !== undefined && row.certification !== null;
         update.run({
           id: row.id,
+          setPoster: setPoster ? 1 : 0,
+          setSynopsis: setSynopsis ? 1 : 0,
+          setCertification: setCertification ? 1 : 0,
           posterUrl: row.posterUrl ?? "",
           synopsis: row.synopsis ?? "",
-          certification: row.certification ?? null,
+          certification: row.certification ?? "",
         });
+        if (row.languages) {
+          clearLanguages.run(row.id);
+          normalizeLanguageCodes(row.languages).forEach((language, position) => {
+            addLanguage.run(row.id, language, position);
+          });
+          markLanguagesChecked.run(row.id);
+        }
       }
     })();
   }
@@ -411,6 +518,7 @@ LIMIT ?`,
       posterUrl?: string | null;
       synopsis?: string | null;
       certification?: string | null;
+      languages?: string[];
     }>,
   ): Promise<void> {
     return mediaWorkQueue.enqueue(() => this.updatePosterUrls(rows));
@@ -571,7 +679,7 @@ LIMIT ?`,
   }
 
   close(): void {
-    this.db.close();
+    try { this.db.close(); } finally { this.releaseOwnership(); }
   }
 
   isHealthy(): boolean {

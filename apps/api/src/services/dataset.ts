@@ -1,3 +1,5 @@
+import { trackWork, shutdownSignal } from "./runtime-lifecycle.js";
+import { serviceConfig } from "./service-environment.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR, DATASET_FILE, DATASET_URL } from "../config.js";
@@ -16,10 +18,11 @@ export function datasetPath(): string {
 
 export function syncDataset(store: RatingsStore, force = false): Promise<void> {
   if (inflight) return inflight;
+  shutdownSignal.throwIfAborted();
   inflight = ensureDataset(store, force).finally(() => {
     inflight = null;
   });
-  return inflight;
+  return trackWork(inflight);
 }
 
 async function ensureDataset(
@@ -40,6 +43,7 @@ async function ensureDataset(
     await ensureGzipFile(DATASET_URL, file, false);
     await loadFromFile(store, file, true);
   } catch (error) {
+    if (serviceConfig || shutdownSignal.aborted) throw error;
     if (store.ready()) {
       emit({
         channel: "ratings",

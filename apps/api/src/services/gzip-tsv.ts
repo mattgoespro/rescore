@@ -1,3 +1,4 @@
+import { shutdownSignal } from "./runtime-lifecycle.js";
 import {
   closeSync,
   createReadStream,
@@ -108,7 +109,7 @@ export async function downloadGzip(
   probe?: RemoteProbe,
 ): Promise<void> {
   const headers: Record<string, string> = { Accept: "application/gzip" };
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers, signal: shutdownSignal });
   if (!response.ok || !response.body) {
     throw new Error(`Failed to download ${url} (${response.status})`);
   }
@@ -145,6 +146,7 @@ export async function downloadGzip(
       ),
       counter,
       createWriteStream(tmp),
+      { signal: shutdownSignal },
     );
     emit(true);
     if (totalBytes != null && receivedBytes !== totalBytes) {
@@ -168,6 +170,7 @@ export async function* readTsvRows(file: string): AsyncGenerator<string[]> {
   });
   let header = true;
   for await (const line of lines) {
+    shutdownSignal.throwIfAborted();
     if (header) {
       header = false;
       continue;
@@ -247,7 +250,7 @@ export async function probeRemote(url: string): Promise<RemoteProbe> {
     const response = await fetch(url, {
       method: "HEAD",
       headers: { Accept: "application/gzip" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.any([shutdownSignal, AbortSignal.timeout(8000)]),
     });
     if (!response.ok) return empty;
     return headersToProbe(response);

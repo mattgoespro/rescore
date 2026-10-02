@@ -52,7 +52,6 @@ import SettingsView from "./views/Settings";
 export default function App(): JSX.Element {
   const [view, setView] = useState<AppView>("discover");
   const [settings, setSettings] = useState<Settings>(defaultSettings());
-  const [configured, setConfigured] = useState(false);
   const [movieGenres, setMovieGenres] = useState<Genre[]>([]);
   const [tvGenres, setTvGenres] = useState<Genre[]>([]);
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
@@ -79,24 +78,20 @@ export default function App(): JSX.Element {
   }, [movieGenres, tvGenres]);
 
   const refresh = useCallback(async () => {
-    const [nextSettings, nextLibrary, isConfigured] = await Promise.all([
+    const [nextSettings, nextLibrary] = await Promise.all([
       window.api.getSettings(),
       window.api.listLibrary(),
-      window.api.configured(),
     ]);
     setSettings(nextSettings);
     setMediaProxyOrigin(nextSettings.catalogApiUrl);
     setLibrary(nextLibrary);
-    setConfigured(isConfigured);
-    if (isConfigured) {
-      const [nextGenres, nextProfile] = await Promise.all([
-        window.api.genres().catch(() => [] as Genre[]),
-        window.api.profile().catch(() => null),
-      ]);
-      setMovieGenres(nextGenres);
-      setTvGenres(nextGenres);
-      setProfile(nextProfile);
-    }
+    const [nextGenres, nextProfile] = await Promise.all([
+      window.api.genres().catch(() => [] as Genre[]),
+      window.api.profile().catch(() => null),
+    ]);
+    setMovieGenres(nextGenres);
+    setTvGenres(nextGenres);
+    setProfile(nextProfile);
   }, []);
 
   useEffect(() => {
@@ -117,14 +112,15 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (catalogStatus?.phase === "error") {
-      setBooting(false);
+      // Error UI is independent of booting. A later service recovery must still
+      // perform the initial library/profile/genre load.
+      setBooting(true);
       return;
     }
     if (isCatalogUiBlocked(catalogStatus)) return;
     const shouldRefresh = booting;
     setBooting(false);
     if (!shouldRefresh) return;
-    setConfigured(true);
     setError("");
     void refresh().catch((err: Error) => setError(err.message));
   }, [catalogStatus, refresh, booting]);
@@ -151,29 +147,39 @@ export default function App(): JSX.Element {
       return;
     }
     const key = titleKey(selected);
-    const cached = detailsCache.current.get(key);
-    if (cached) {
-      setDetails(cached);
-      return;
-    }
     let cancelled = false;
-    window.api
-      .movie(selected.imdbId, selected.mediaType)
-      .then((movie) => {
-        if (!movie) {
-          if (!cancelled) setDetails(null);
-          return;
+    let filling = false;
+    let complete = false;
+    const loadDetails = async (): Promise<void> => {
+      try {
+        const movie = await window.api.movie(selected.imdbId, selected.mediaType);
+        if (!cancelled) {
+          setDetails(movie);
+          if (movie) detailsCache.current.set(key, movie);
         }
-        if (movie.overview) detailsCache.current.set(key, movie);
-        if (!cancelled) setDetails(movie);
-      })
-      .catch(() => {
-        if (!cancelled && detailsCache.current.get(key) == null)
-          setDetails(null);
-      });
-    return () => {
-      cancelled = true;
+      } catch { if (!cancelled) setDetails(null); }
     };
+    setDetails(detailsCache.current.get(key) ?? null);
+    void loadDetails();
+    const fill = async (): Promise<void> => {
+      if (cancelled || filling || complete) return;
+      filling = true;
+      try {
+        const rows = await window.api.fillMedia([selected.imdbId]);
+        complete = rows[0]?.hydrationComplete === true;
+        if (!cancelled) await loadDetails();
+      } catch { /* Existing detail remains available while metadata retries. */ }
+      finally { filling = false; }
+    };
+    void fill();
+    const unsubscribe = window.api.onCatalogStatus((status) => {
+      if (status.tmdbHydration?.completedIds?.includes(selected.imdbId)) {
+        detailsCache.current.delete(key);
+        void loadDetails();
+      }
+    });
+    const timer = window.setInterval(() => void fill(), 30_000);
+    return () => { cancelled = true; unsubscribe(); window.clearInterval(timer); };
   }, [selected]);
 
   async function saveSettings(patch: Partial<Settings>): Promise<void> {
@@ -183,7 +189,6 @@ export default function App(): JSX.Element {
     applyAppearance(next);
     setError("");
     if (isAppearanceOnlyPatch(patch)) return;
-    setConfigured(Boolean(next.catalogApiUrl.trim()));
     if (patch.catalogApiUrl !== undefined) {
       setBooting(true);
       return;
@@ -204,14 +209,8 @@ export default function App(): JSX.Element {
   const catalogBusy = isCatalogUiBlocked(catalogStatus);
   const rebuildFeedback = catalogRebuildFeedback(catalogStatus);
   const catalogFailed = catalogStatus?.phase === "error";
-  const showWelcome =
-    !booting &&
-    !catalogBusy &&
-    !catalogFailed &&
-    !configured &&
-    view !== "settings";
-  const discoverLayout = view === "discover" && configured && !booting;
-  const forYouLayout = view === "foryou" && configured && !booting;
+  const discoverLayout = view === "discover" && !booting && !catalogBusy;
+  const forYouLayout = view === "foryou" && !booting && !catalogBusy;
 
   const inspector = (
     <Inspector
@@ -330,16 +329,17 @@ export default function App(): JSX.Element {
                 layout="inline"
                 label={rebuildFeedback.label}
                 download={catalogStatus?.download}
+                hydration={catalogStatus?.tmdbHydration}
               />
             </div>
           ) : null}
-          {booting || catalogBusy ? (
-            <CatalogLoader
-              label={catalogStatus?.message ?? "Loading your ranking studio…"}
-              download={catalogStatus?.download}
-              detail={catalogLoaderDetail(catalogStatus)}
-            />
-          ) : view === "settings" ? (
+          {!catalogBusy && catalogStatus?.tmdbHydration && !catalogStatus.tmdbHydration.complete && (
+            <p role="status" className="mx-4 my-2 shrink-0 text-xs text-muted">
+              {catalogStatus.tmdbHydration.message || "Metadata loads as you browse."}
+              {" "}{catalogStatus.tmdbHydration.processed.toLocaleString()} / {catalogStatus.tmdbHydration.total.toLocaleString()}
+            </p>
+          )}
+          {view === "settings" ? (
             <SettingsView
               settings={settings}
               catalogStatus={catalogStatus}
@@ -363,8 +363,7 @@ export default function App(): JSX.Element {
                   onClick={() => {
                     setError("");
                     setBooting(true);
-                    if (catalogStatus?.error) void window.api.rebuildCatalog();
-                    else void window.api.retryCatalog();
+                    void window.api.retryCatalog();
                   }}
                 >
                   Try again
@@ -374,33 +373,18 @@ export default function App(): JSX.Element {
                 </button>
               </div>
             </section>
-          ) : showWelcome ? (
-            <section className="mx-auto my-[8vh] max-w-160 px-0 py-2">
-              <h2 className="mt-0 mb-2.5 text-[32px] tracking-title">
-                Connect your local catalog.
-              </h2>
-              <p className="leading-[1.55] text-muted">
-                Rescore uses your local catalog API, then ranks titles against
-                ratings, skips, and watch history. Catalog titles use IMDb IDs
-                as their canonical identity.
-              </p>
-              <p className="leading-[1.55] text-muted">
-                Confirm the catalog API URL in Settings if it is not the default
-                localhost service.
-              </p>
-              <button
-                className={btn("primary")}
-                onClick={() => setView("settings")}
-              >
-                Open Settings
-              </button>
-            </section>
+          ) : booting || catalogBusy ? (
+            <CatalogLoader
+              label={catalogStatus?.message ?? "Loading your ranking studio…"}
+              download={catalogStatus?.download}
+              hydration={catalogStatus?.tmdbHydration}
+              detail={catalogLoaderDetail(catalogStatus)}
+            />
           ) : view === "discover" ? (
             <Discover
               filters={filters}
               setFilters={setFilters}
               genres={genres}
-              profileReady={Boolean(profile?.ready)}
               selectedId={selected ? titleKey(selected) : null}
               onOpen={setSelected}
               onError={setError}
@@ -428,9 +412,8 @@ export default function App(): JSX.Element {
         {!discoverLayout &&
         selected &&
         view !== "settings" &&
-        !showWelcome &&
-        !booting &&
         !catalogBusy &&
+        !booting &&
         !catalogFailed
           ? inspector
           : null}

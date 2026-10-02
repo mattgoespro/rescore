@@ -5,6 +5,7 @@ import type {
   MovieSummary,
   WatchStatus,
 } from "../../../../shared/types";
+import { formatLanguages } from "../../../../shared/languages";
 import {
   formatRuntime,
   formatSeasons,
@@ -74,6 +75,11 @@ export default function Inspector({
     .join(" · ");
   const runtime = formatRuntime(details?.runtime ?? movie.runtime);
   const seasons = formatSeasons(details?.seasonCount ?? movie.seasonCount);
+  const languages = formatLanguages(
+    details?.imdbId === movie.imdbId
+      ? details.languages
+      : movie.languages,
+  );
   const matchValue =
     match ?? ("match" in movie ? (movie as { match?: number }).match : null);
   const subject = details ?? movie;
@@ -81,7 +87,10 @@ export default function Inspector({
   return (
     <aside className={inspectorClass(docked)}>
       <div className="hero-ph relative aspect-[2/3] w-full overflow-hidden">
-        <HeroPoster key={data.posterPath ?? "none"} path={data.posterPath} />
+        <HeroPoster
+          key={data.posterPath || movie.posterPath || "none"}
+          path={data.posterPath || movie.posterPath}
+        />
         <div className="hero-fade pointer-events-none absolute inset-x-0 bottom-0 h-[72px]" />
       </div>
       <div className="animate-fade px-4 pt-4 pb-[18px]" key={movie.imdbId}>
@@ -96,6 +105,7 @@ export default function Inspector({
             seasons,
             runtime,
             genres,
+            languages,
           ]}
         />
         {details?.tagline ? (
@@ -104,7 +114,7 @@ export default function Inspector({
           </div>
         ) : null}
         <p className="mb-3.5 text-[13px] leading-[1.55] text-muted">
-          {data.overview || "No synopsis available."}
+          {data.overview || movie.overview || "No synopsis available."}
         </p>
         <Stats
           voteAverage={data.voteAverage}

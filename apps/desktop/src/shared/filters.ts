@@ -1,4 +1,4 @@
-import type { PersonRef, TitleKind } from "./movie";
+import type { TitleKind } from "./movie";
 
 export type AppView = "discover" | "foryou" | "library" | "settings";
 
@@ -7,6 +7,7 @@ export interface DiscoverFilters {
   titleKind: TitleKind;
   genres: number[];
   withoutGenres: number[];
+  excludeLanguages: string[];
   yearMin: number | null;
   yearMax: number | null;
   ratingMin: number;
@@ -14,8 +15,6 @@ export interface DiscoverFilters {
   voteCountMin: number;
   runtimeMin: number | null;
   runtimeMax: number | null;
-  cast: PersonRef[];
-  directors: PersonRef[];
   sortBy: string;
   hideWatched: boolean;
   hideWatchlist: boolean;
@@ -46,26 +45,12 @@ export const TITLE_KIND_OPTIONS = [
 ] as const;
 
 export const SORT_OPTIONS = [
-  { value: "match", label: "Most voted" },
-  { value: "popularity.desc", label: "Popularity" },
   { value: "vote_average.desc", label: "IMDb rating" },
+  { value: "match", label: "Best match for you" },
   { value: "primary_release_date.desc", label: "Newest first" },
   { value: "primary_release_date.asc", label: "Oldest first" },
-  { value: "vote_count.desc", label: "Most voted" },
+  { value: "popularity.desc", label: "Popularity" },
 ] as const;
-
-export function sortOptions(
-  profileReady: boolean,
-): Array<{ value: string; label: string }> {
-  return SORT_OPTIONS.map((option) =>
-    option.value === "match"
-      ? {
-          ...option,
-          label: profileReady ? "Best match for you" : "Most voted",
-        }
-      : option,
-  );
-}
 
 export function defaultFilters(): DiscoverFilters {
   return {
@@ -80,8 +65,7 @@ export function defaultFilters(): DiscoverFilters {
     voteCountMin: 1000,
     runtimeMin: null,
     runtimeMax: null,
-    cast: [],
-    directors: [],
+    excludeLanguages: [],
     sortBy: "match",
     hideWatched: true,
     hideWatchlist: false,

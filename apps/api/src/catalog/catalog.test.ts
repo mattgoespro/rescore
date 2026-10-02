@@ -450,8 +450,10 @@ test("GET title returns immediately with a null poster", async () => {
     rating: 8.7,
     votes: 1000,
   });
+  const previousKeys = process.env.TMDB_API_KEYS;
   const previousKey = process.env.TMDB_API_KEY;
   const previousAppData = process.env.APPDATA;
+  process.env.TMDB_API_KEYS = "";
   delete process.env.TMDB_API_KEY;
   process.env.APPDATA = join(tmpdir(), "rescore-no-tmdb");
   const server = createApp(new RatingsStore(catalog), catalog).listen(0);
@@ -459,7 +461,9 @@ test("GET title returns immediately with a null poster", async () => {
   try {
     const { port } = server.address() as AddressInfo;
     const started = Date.now();
-    const response = await fetch(`http://127.0.0.1:${port}/v1/titles/tt0133093`);
+    const response = await fetch(
+      `http://127.0.0.1:${port}/v1/titles/tt0133093`,
+    );
     const elapsed = Date.now() - started;
     const body = (await response.json()) as {
       data: { posterUrl: string | null };
@@ -468,6 +472,8 @@ test("GET title returns immediately with a null poster", async () => {
     assert.equal(body.data.posterUrl, null);
     assert.ok(elapsed < 500);
   } finally {
+    if (previousKeys === undefined) delete process.env.TMDB_API_KEYS;
+    else process.env.TMDB_API_KEYS = previousKeys;
     if (previousKey === undefined) delete process.env.TMDB_API_KEY;
     else process.env.TMDB_API_KEY = previousKey;
     if (previousAppData === undefined) delete process.env.APPDATA;
@@ -590,10 +596,23 @@ test("rating sort cursor paging keeps the votes tie-break across pages", () => {
 
 test("poster candidates stay limited to the requested ids", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0000001", title: "Shown", rating: 8, votes: 100 });
-  seedTitle(catalog, { id: "tt0000002", title: "Hidden", rating: 8, votes: 90 });
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Shown",
+    rating: 8,
+    votes: 100,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Hidden",
+    rating: 8,
+    votes: 90,
+  });
   const rows = catalog.listTitlesNeedingPosters(50, ["tt0000001"], false);
-  assert.deepEqual(rows.map((row) => row.id), ["tt0000001"]);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["tt0000001"],
+  );
   catalog.close();
 });
 
@@ -658,17 +677,128 @@ test("excluded genres and people narrow the page", () => {
       cast: ["Jane Doe"],
     },
   ]);
-  const base = { page: 1, pageSize: 10, sort: "title" as const, order: "asc" as const, includeTotal: false };
+  const base = {
+    page: 1,
+    pageSize: 10,
+    sort: "title" as const,
+    order: "asc" as const,
+    includeTotal: false,
+  };
   assert.deepEqual(
-    catalog.listTitles({ ...base, withoutGenres: ["Horror"] }).data.map((row) => row.id),
+    catalog
+      .listTitles({ ...base, withoutGenres: ["Horror"] })
+      .data.map((row) => row.id),
     ["tt0000002"],
   );
   assert.deepEqual(
-    catalog.listTitles({ ...base, directors: ["Jane Doe"] }).data.map((row) => row.id),
+    catalog
+      .listTitles({ ...base, directors: ["Jane Doe"] })
+      .data.map((row) => row.id),
     ["tt0000001"],
   );
   assert.deepEqual(
-    catalog.listTitles({ ...base, cast: ["Jane Doe"] }).data.map((row) => row.id),
+    catalog
+      .listTitles({ ...base, cast: ["Jane Doe"] })
+      .data.map((row) => row.id),
+    ["tt0000002"],
+  );
+  catalog.close();
+});
+
+test("excluded languages drop a title when any stored language matches", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Both", kind: "movie" },
+    { id: "tt0000002", title: "Japanese", kind: "movie" },
+    { id: "tt0000003", title: "Unknown", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    { id: "tt0000001", languages: ["fr", "en"] },
+    { id: "tt0000002", languages: ["JA"] },
+  ]);
+  const base = {
+    page: 1,
+    pageSize: 10,
+    sort: "title" as const,
+    order: "asc" as const,
+    includeTotal: false,
+  };
+  assert.equal(catalog.titleNeedsLanguages("tt0000003"), true);
+  assert.equal(catalog.titleNeedsLanguages("tt0000001"), false);
+  assert.deepEqual(catalog.title("tt0000001")?.languages, ["fr", "en"]);
+  assert.deepEqual(
+    catalog
+      .listTitles({ ...base, withoutLanguages: ["en"] })
+      .data.map((row) => row.id),
+    ["tt0000002", "tt0000003"],
+  );
+  assert.deepEqual(
+    catalog
+      .listTitles({ ...base, withoutLanguages: ["ja", "fr"] })
+      .data.map((row) => row.id),
+    ["tt0000003"],
+  );
+  catalog.close();
+});
+
+test("tmdb coverage counts filled posters, synopses, and age ratings", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Filled", kind: "movie" },
+    { id: "tt0000002", title: "Poster only", kind: "movie" },
+    { id: "tt0000003", title: "Empty", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: "https://image.tmdb.org/t/p/w500/a.jpg",
+      synopsis: "A synopsis.",
+      certification: "PG-13",
+    },
+    {
+      id: "tt0000002",
+      posterUrl: "https://image.tmdb.org/t/p/w500/b.jpg",
+    },
+  ]);
+  assert.deepEqual(catalog.tmdbCoverage(), {
+    total: 3,
+    posters: 2,
+    synopses: 1,
+    certifications: 1,
+  });
+  catalog.close();
+});
+
+test("tmdb hydration keeps confirmed misses complete and certifications pending", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Confirmed miss", kind: "movie" },
+    { id: "tt0000002", title: "Needs certification", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: null,
+      synopsis: null,
+      certification: "",
+    },
+    {
+      id: "tt0000002",
+      posterUrl: "https://image.tmdb.org/t/p/w500/b.jpg",
+      synopsis: "A synopsis.",
+    },
+  ]);
+
+  assert.equal(catalog.titleNeedsMedia("tt0000001"), false);
+  assert.equal(catalog.titleNeedsMedia("tt0000002"), true);
+  assert.deepEqual(catalog.hydrationStats(), {
+    total: 2,
+    processed: 1,
+    pending: 1,
+    complete: false,
+  });
+  assert.deepEqual(
+    catalog.listTitlesNeedingPosters(10, [], true).map((title) => title.id),
     ["tt0000002"],
   );
   catalog.close();

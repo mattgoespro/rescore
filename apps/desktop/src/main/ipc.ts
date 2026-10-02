@@ -1,4 +1,8 @@
-import { BrowserWindow, dialog, ipcMain } from "electron";
+import { effectiveCatalogUrl } from "./catalog-connection";
+import { BackgroundService, serviceOwnsCatalog, serviceRequired } from "./background-service";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { readFileSync, writeFileSync } from "fs";
 import { isAppearanceOnlyPatch } from "../shared/appearance";
 import {
@@ -31,21 +35,43 @@ let store: AppStore;
 let getWindow: () => BrowserWindow | null;
 let catalog: CatalogRuntime;
 
+function trustedServiceSender(event: Electron.IpcMainInvokeEvent): boolean {
+  if (event.sender !== getWindow()?.webContents || event.senderFrame !== event.sender.mainFrame) return false;
+  try {
+    const url = new URL(event.senderFrame.url);
+    if (app.isPackaged) return url.protocol === "file:" && fileURLToPath(url).toLowerCase() === resolve(__dirname, "../renderer/index.html").toLowerCase();
+    return !!process.env.ELECTRON_RENDERER_URL && url.origin === new URL(process.env.ELECTRON_RENDERER_URL).origin;
+  } catch { return false; }
+}
+
 export function registerIpc(
   appStore: AppStore,
   windowGetter: () => BrowserWindow | null,
   catalogRuntime: CatalogRuntime,
+  backgroundService: BackgroundService,
 ): void {
   store = appStore;
   getWindow = windowGetter;
   catalog = catalogRuntime;
+  const serviceAction = (event: Electron.IpcMainInvokeEvent) => {
+    if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+    return backgroundService.ensureRunning();
+  };
+  ipcMain.handle("background-service:status", (event) => {
+    if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+    return backgroundService.getStatus();
+  });
+  ipcMain.handle("background-service:retry", (event) => serviceAction(event));
+  ipcMain.handle("background-service:logs", (event) => {
+    if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+    return backgroundService.openLogs();
+  });
   ipcMain.handle("settings:get", () => store.getSettings());
   ipcMain.handle("settings:set", (_event, patch: Partial<Settings>) => {
     const previousUrl = store.getSettings().catalogApiUrl;
+    if (serviceOwnsCatalog() && patch.catalogApiUrl !== undefined && patch.catalogApiUrl !== previousUrl) throw new Error("Packaged Windows builds require the local catalogue service.");
     const next = store.setSettings(patch);
     if (next.catalogApiUrl !== previousUrl) catalog.retry();
-    else if (patch.tmdbApiKey !== undefined)
-      void startPosterEnrichment(next.catalogApiUrl);
     else if (!isAppearanceOnlyPatch(patch))
       void getClient()
         .genres()
@@ -54,7 +80,16 @@ export function registerIpc(
     return next;
   });
   ipcMain.handle("catalog:status", () => catalog.status());
-  ipcMain.handle("catalog:retry", () => {
+  ipcMain.handle("catalog:tmdbHealth", () =>
+    withCatalog({ total: 0, posters: 0, synopses: 0, certifications: 0 }, () =>
+      getClient().tmdbHealth(),
+    ),
+  );
+  ipcMain.handle("catalog:retry", async (event) => {
+    if (serviceRequired()) {
+      if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+      await backgroundService.ensureRunning();
+    }
     catalog.retry();
     return catalog.status();
   });
@@ -63,12 +98,15 @@ export function registerIpc(
   ipcMain.handle("catalog:genres", () =>
     withCatalog([], () => getClient().genres()),
   );
-  ipcMain.handle("catalog:searchPeople", (_event, query: string, role: "director" | "cast") =>
-    withCatalog([], () => getClient().searchPeople(query, role)),
-  );
   ipcMain.handle("catalog:discover", (_event, filters: DiscoverFilters) =>
     withCatalog(
-      { page: 1, totalPages: 0, totalResults: 0, results: [], nextCursor: null },
+      {
+        page: 1,
+        totalPages: 0,
+        totalResults: 0,
+        results: [],
+        nextCursor: null,
+      },
       () => discover(filters),
     ),
   );
@@ -103,9 +141,8 @@ export function registerIpc(
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
   ipcMain.handle("search-history:list", () => store.listSearchHistory());
-  ipcMain.handle(
-    "search-history:save",
-    (_event, input: SearchHistoryInput) => store.saveSearchHistory(input),
+  ipcMain.handle("search-history:save", (_event, input: SearchHistoryInput) =>
+    store.saveSearchHistory(input),
   );
   ipcMain.handle("search-history:remove", (_event, id: string) =>
     store.removeSearchHistory(id),
@@ -130,8 +167,10 @@ interface LibraryUpsert {
 
 let catalogClient: CatalogClient | null = null;
 let catalogClientUrl = "";
-let matchCache: { library: LibraryEntry[]; genres: { id: number; name: string }[] } | null =
-  null;
+let matchCache: {
+  library: LibraryEntry[];
+  genres: { id: number; name: string }[];
+} | null = null;
 
 async function matchContext(): Promise<{
   library: LibraryEntry[];
@@ -147,7 +186,7 @@ async function matchContext(): Promise<{
 }
 
 function getClient(): CatalogClient {
-  const url = store.getSettings().catalogApiUrl;
+  const url = effectiveCatalogUrl(store.getSettings().catalogApiUrl);
   if (!catalogClient || catalogClientUrl !== url) {
     catalogClient = new CatalogClient(url);
     catalogClientUrl = url;
@@ -176,24 +215,8 @@ function emptyForYou(): ForYouResult {
   };
 }
 
-async function startPosterEnrichment(baseUrl: string): Promise<void> {
-  try {
-    await fetch(
-      new URL("/v1/catalog/enrich-posters", `${baseUrl.replace(/\/+$/, "")}/`),
-      {
-        method: "POST",
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(4000),
-      },
-    );
-  } catch {
-    /* catalog will pick the key up on the next start */
-  }
-}
-
 async function discover(filters: DiscoverFilters) {
   const page = await getClient().discover(filters);
-  void getClient().enrichPosters(page.results.map((movie) => movie.imdbId));
   if (filters.sortBy !== "match") return page;
   const { library, genres } = await matchContext();
   const profile = buildProfile(library, genres);
@@ -239,7 +262,6 @@ async function forYou(): Promise<ForYouResult> {
     ),
     "match",
   ).slice(0, 40);
-  void getClient().enrichPosters(movies.map((movie) => movie.imdbId));
   return {
     profile: publicProfile(profile),
     insights: describeProfile(profile),
@@ -262,6 +284,7 @@ function toSummaryFromDto(title: {
   genres: string[];
   directors: string[];
   cast: string[];
+  languages?: string[];
 }): MovieSummary {
   const kind = title.kind.toLowerCase();
   const titleKind = kind.includes("mini")
@@ -281,7 +304,8 @@ function toSummaryFromDto(title: {
     releaseDate: title.year ? `${title.year}-01-01` : "",
     year: title.year ?? undefined,
     genreIds: title.genres.map(genreId),
-    originalLanguage: "",
+    originalLanguage: title.languages?.[0] ?? "",
+    languages: title.languages ?? [],
     popularity: 0,
     voteAverage: title.imdbRating ?? 0,
     voteCount: title.imdbVotes ?? 0,

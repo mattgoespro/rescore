@@ -8,6 +8,7 @@ The API refreshes **current IMDb ratings and vote counts** from IMDb’s officia
 
 ## Features
 
+- **Required Windows service** — the installer registers it without starting it; launching either installed or unpacked Rescore starts it automatically. Browse during TMDb hydration with on-demand metadata. See [background service setup and recovery](docs/background-service.md).
 - **Advanced search** — title or `tt` IMDb ID, genres, year window, rating and vote floors, runtime, hide watched/watchlist
 - **Best match sort** — re-ranks search results against your taste model once you have rated enough titles; otherwise sorts by votes
 - **Live IMDb ratings** — the catalog API merges the daily IMDb ratings dump before it returns a page

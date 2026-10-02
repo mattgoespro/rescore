@@ -37,6 +37,7 @@ export interface MovieSummary {
   year?: number;
   genreIds: number[];
   originalLanguage: string;
+  languages?: string[];
   popularity: number;
   voteAverage: number;
   voteCount: number;

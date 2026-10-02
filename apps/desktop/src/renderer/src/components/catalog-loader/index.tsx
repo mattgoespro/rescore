@@ -1,5 +1,8 @@
 import type { JSX } from "react";
-import type { CatalogDownloadProgress } from "../../../../shared/types";
+import type {
+  CatalogDownloadProgress,
+  TmdbHydrationProgress,
+} from "../../../../shared/types";
 import { progressBarClass, progressFillClass } from "../../lib/ui";
 import Spinner from "./spinner";
 
@@ -7,11 +10,13 @@ export default function CatalogLoader({
   label,
   detail,
   download,
+  hydration,
   layout = "page",
 }: {
   label: string;
   detail?: string;
   download?: CatalogDownloadProgress | null;
+  hydration?: TmdbHydrationProgress | null;
   layout?: "page" | "inline";
 }): JSX.Element {
   const percent = download ? overallPercent(download) : null;
@@ -60,6 +65,38 @@ export default function CatalogLoader({
               {caption}
             </p>
           ) : null}
+        </div>
+      ) : null}
+      {hydration && !hydration.complete && hydration.total > 0 ? (
+        <div
+          className={
+            inline
+              ? "flex w-full max-w-md flex-col items-stretch gap-1.5"
+              : "flex w-72 max-w-full flex-col items-stretch gap-1.5"
+          }
+        >
+          <div
+            className={progressBarClass}
+            role="progressbar"
+            aria-label="TMDb hydration progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={hydration.percent}
+          >
+            <div
+              className={`${progressFillClass} transition-[width] duration-200`}
+              style={{ width: `${hydration.percent}%` }}
+            />
+          </div>
+          <p
+            className={
+              inline
+                ? "m-0 text-xs leading-[1.45] text-muted tabular"
+                : "m-0 text-center text-xs leading-[1.45] text-muted tabular"
+            }
+          >
+            {`${hydration.percent}% · ${hydration.processed.toLocaleString()} / ${hydration.total.toLocaleString()}`}
+          </p>
         </div>
       ) : null}
       {detail ? (

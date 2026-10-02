@@ -4,6 +4,9 @@ let mediaProxyOrigin = DEFAULT_CATALOG_API_URL;
 
 export function setMediaProxyOrigin(origin: string): void {
   mediaProxyOrigin = origin.trim().replace(/\/+$/, "");
+  if (/^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(mediaProxyOrigin)) {
+    mediaProxyOrigin = "rescore-media://catalog";
+  }
 }
 
 export function posterUrl(

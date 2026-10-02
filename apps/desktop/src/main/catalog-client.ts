@@ -1,3 +1,5 @@
+import { catalogFetch } from "./catalog-connection";
+import { languageQueryCodes } from "../shared/languages";
 import type {
   DiscoverFilters,
   Genre,
@@ -37,6 +39,22 @@ export class CatalogClient {
 
   constructor(private readonly baseUrl: string) {}
 
+  tmdbHealth(): Promise<{
+    total: number;
+    posters: number;
+    synopses: number;
+    certifications: number;
+  }> {
+    return this.request<{
+      data: {
+        total: number;
+        posters: number;
+        synopses: number;
+        certifications: number;
+      };
+    }>("/v1/catalog/tmdb-health", undefined, "health").then((body) => body.data);
+  }
+
   async configured(): Promise<boolean> {
     if (!this.baseUrl.trim()) return false;
     try {
@@ -65,7 +83,7 @@ export class CatalogClient {
     for (let attempt = 0; attempt < retries; attempt++) {
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await catalogFetch(url, {
           headers: { Accept: "application/json" },
           signal: AbortSignal.timeout(timeoutMs),
         });
@@ -97,7 +115,11 @@ export class CatalogClient {
   }
 
   async title(imdbId: string): Promise<MovieDetails> {
-    const response = await this.request<{ data: TitleDto }>(`/v1/titles/${encodeURIComponent(imdbId)}`);
+    const response = await this.request<{ data: TitleDto }>(
+      `/v1/titles/${encodeURIComponent(imdbId)}`,
+      undefined,
+      "long",
+    );
     return toDetails(response.data);
   }
 
@@ -140,7 +162,7 @@ export class CatalogClient {
 
   async saveLibrary(movie: MovieSummary, status: WatchStatus, rating?: number): Promise<void> {
     const url = new URL(`/v1/library/${encodeURIComponent(movie.imdbId)}`, this.baseUrl);
-    const response = await fetch(url, {
+    const response = await catalogFetch(url, {
       method: "PUT",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ status, personalRating: rating ?? null }),
@@ -150,7 +172,7 @@ export class CatalogClient {
   }
 
   async removeLibrary(imdbId: string): Promise<void> {
-    const response = await fetch(new URL(`/v1/library/${encodeURIComponent(imdbId)}`, this.baseUrl), {
+    const response = await catalogFetch(new URL(`/v1/library/${encodeURIComponent(imdbId)}`, this.baseUrl), {
       method: "DELETE",
       signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
     });
@@ -165,6 +187,7 @@ export class CatalogClient {
       synopsis: string | null;
       posterUrl: string | null;
       certification: string | null;
+      hydrationComplete: boolean;
     }>
   > {
     const unique = [...new Set(ids.map((id) => id.toLowerCase()))].slice(0, 40);
@@ -173,7 +196,7 @@ export class CatalogClient {
       "/v1/catalog/fill",
       this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
     );
-    const response = await fetch(url, {
+    const response = await catalogFetch(url, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -194,6 +217,7 @@ export class CatalogClient {
         synopsis: string | null;
         posterUrl: string | null;
         certification: string | null;
+      hydrationComplete: boolean;
       }>;
     };
     return body.data;
@@ -202,7 +226,7 @@ export class CatalogClient {
   async enrichPosters(ids: string[]): Promise<void> {
     if (!ids.length) return;
     const url = new URL("/v1/catalog/enrich-posters", this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`);
-    await fetch(url, {
+    await catalogFetch(url, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
@@ -231,11 +255,8 @@ export class CatalogClient {
       runtimeMax: filters.runtimeMax ?? undefined,
       genre: genreNames.length ? genreNames.join(",") : undefined,
       withoutGenre: withoutGenreNames.length ? withoutGenreNames.join(",") : undefined,
-      director: filters.directors.length
-        ? filters.directors.map((person) => person.name).join(",")
-        : undefined,
-      cast: filters.cast.length
-        ? filters.cast.map((person) => person.name).join(",")
+      withoutLanguage: filters.excludeLanguages.length
+        ? languageQueryCodes(filters.excludeLanguages).join(",")
         : undefined,
       hideWatched: filters.hideWatched ? "true" : undefined,
       hideWatchlist: filters.hideWatchlist ? "true" : undefined,
@@ -246,18 +267,6 @@ export class CatalogClient {
     };
   }
 
-  async searchPeople(
-    query: string,
-    role: "director" | "cast",
-  ): Promise<Array<{ id: number; name: string }>> {
-    const response = await this.request<{
-      data: Array<{ nconst: string; name: string }>;
-    }>("/v1/people", { q: query, role });
-    return response.data.map((person) => ({
-      id: genreId(person.name),
-      name: person.name,
-    }));
-  }
 }
 
 export function genreId(name: string): number {
@@ -271,7 +280,8 @@ function toSummary(title: TitleDto): MovieSummary {
     imdbId: title.id.toLowerCase(), mediaType: titleKind === "movie" ? "movie" : "tv", titleKind,
     title: title.title, originalTitle: title.originalTitle ?? undefined, overview: title.synopsis ?? "",
     posterPath: title.posterUrl, backdropPath: null, releaseDate: title.year ? `${title.year}-01-01` : "",
-    year: title.year ?? undefined, genreIds: title.genres.map(genreId), originalLanguage: "", popularity: 0,
+    year: title.year ?? undefined, genreIds: title.genres.map(genreId),
+    originalLanguage: title.languages?.[0] ?? "", languages: title.languages ?? [], popularity: 0,
     voteAverage: title.imdbRating ?? 0, voteCount: title.imdbVotes ?? 0, adult: false,
     certification: title.certification || undefined,
     runtime: title.runtimeMinutes ?? undefined, directorIds: title.directors.map(genreId),

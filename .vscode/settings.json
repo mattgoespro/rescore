@@ -5,9 +5,9 @@
   "debug.toolBarLocation": "commandCenter",
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "always",
+    "source.fixAll.tailwindcss": "always",
     "source.organizeImports": "always",
-    "source.removeUnused.ts": "never",
-    "source.fixAll.tailwindcss": "always"
+    "source.removeUnused.ts": "never"
   },
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.fontFamily": "Fira Code, Ubuntu Mono, monospace",
@@ -24,6 +24,7 @@
   "gitProjectManager.maxDepthRecursion": 2,
   "gitProjectManager.openInNewWindow": true,
   "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+  "npm.exclude": ["**/.worktrees/**"],
   "search.exclude": {
     "**/*-lock.json": true,
     "**/*.md": true

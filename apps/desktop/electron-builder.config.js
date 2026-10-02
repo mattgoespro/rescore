@@ -1,4 +1,5 @@
 const { execFileSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
 const {
   closeSync,
   copyFileSync,
@@ -8,12 +9,15 @@ const {
   openSync,
   readFileSync,
   readSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } = require("node:fs");
 const { delimiter, join } = require("node:path");
 
 const BUNDLED_NODE_VERSION = "22.23.2";
+const WINSW_VERSION = "2.12.0";
+const WINSW_SHA256 = "05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da";
 
 /** @type {Promise<void> | null} */
 let apiRuntimeStage = null;
@@ -144,6 +148,28 @@ async function stageApiRuntimeToDisk(projectDir) {
     },
   );
   copyFileSync(bundledNode, join(stagingDir, "node.exe"));
+  const wrapperCache = join(projectDir, "build/service/WinSW-x64.exe");
+  mkdirSync(join(projectDir, "build/service"), { recursive: true });
+  if (!existsSync(wrapperCache)) {
+    const response = await fetch(`https://github.com/winsw/winsw/releases/download/v${WINSW_VERSION}/WinSW-x64.exe`);
+    if (!response.ok) throw new Error(`WinSW download failed (${response.status})`);
+    writeFileSync(wrapperCache, Buffer.from(await response.arrayBuffer()));
+  }
+  const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+  if (hash(wrapperCache) !== WINSW_SHA256) throw new Error("WinSW checksum mismatch");
+  copyFileSync(wrapperCache, join(stagingDir, "RescoreService.exe"));
+  copyFileSync(join(projectDir, "resources/service/WinSW-LICENSE.txt"), join(stagingDir, "WinSW-LICENSE.txt"));
+  const files = [];
+  function inventory(dir, prefix = "") {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) inventory(join(dir, entry.name), relative);
+      else if (entry.isFile()) files.push({ path: relative, sha256: hash(join(dir, entry.name)) });
+      else throw new Error(`Unexpected link in service runtime: ${relative}`);
+    }
+  }
+  inventory(stagingDir);
+  writeFileSync(join(stagingDir, "service-manifest.json"), JSON.stringify({ version: JSON.parse(readFileSync(join(projectDir, "package.json"), "utf8")).version, files }));
 
   const required = [
     join(stagingDir, "node.exe"),
@@ -208,10 +234,14 @@ module.exports = {
   asarUnpack: ["resources/**"],
   beforePack: stageApiRuntime,
   afterPack: copyApiRuntime,
+  extraResources: [{ from: "resources/service", to: "service", filter: ["**/*", "!test-*.ps1"] }],
   win: {
     executableName: "Rescore",
   },
   nsis: {
+    perMachine: false,
+    runAfterFinish: false,
+    include: "resources/service/installer.nsh",
     artifactName: "${name}-${version}-setup.${ext}",
     shortcutName: "${productName}",
     uninstallDisplayName: "${productName}",

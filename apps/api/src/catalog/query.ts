@@ -451,6 +451,16 @@ function buildWhere(
       );
     }
   }
+  if (query.withoutLanguages?.length) {
+    const placeholders = query.withoutLanguages.map((_, index) => {
+      const key = `withoutLanguage${index}`;
+      params[key] = query.withoutLanguages![index]!;
+      return `@${key}`;
+    });
+    where.push(
+      `NOT EXISTS (SELECT 1 FROM title_languages tl WHERE tl.title_id = t.id AND tl.language IN (${placeholders.join(",")}))`,
+    );
+  }
   if (query.kind) {
     where.push("t.kind=@kind");
     params.kind = query.kind;

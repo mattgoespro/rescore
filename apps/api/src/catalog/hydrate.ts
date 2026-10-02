@@ -7,6 +7,7 @@ export function toTitleDto(
   genres: string[],
   directors: string[],
   cast: string[],
+  languages: string[],
 ): TitleDto {
   return {
     id: row.id,
@@ -23,6 +24,7 @@ export function toTitleDto(
     genres,
     directors,
     cast,
+    languages,
   };
 }
 
@@ -66,6 +68,17 @@ export function hydrateTitles(
     list.push(row.name);
     bucket.set(row.title_id, list);
   }
+  const languageRows = db
+    .prepare(
+      `SELECT title_id, language FROM title_languages WHERE title_id IN (${placeholders}) ORDER BY position`,
+    )
+    .all(...ids) as Array<{ title_id: string; language: string }>;
+  const languages = new Map<string, string[]>();
+  for (const row of languageRows) {
+    const list = languages.get(row.title_id) ?? [];
+    list.push(row.language);
+    languages.set(row.title_id, list);
+  }
 
   return rows.map((row) =>
     toTitleDto(
@@ -73,6 +86,7 @@ export function hydrateTitles(
       genres.get(row.id) ?? [],
       directors.get(row.id) ?? [],
       cast.get(row.id) ?? [],
+      languages.get(row.id) ?? [],
     ),
   );
 }

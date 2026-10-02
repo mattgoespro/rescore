@@ -1,5 +1,10 @@
+import { randomBytes } from "node:crypto";
+import { effectiveCatalogUrl, serviceConnection, matchesServiceHealth } from "./catalog-connection";
+import { serviceOwnsCatalog } from "./background-service";
+import { catalogFetch } from "./catalog-connection";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { connect } from "node:net";
 import { join } from "node:path";
 import { app, type BrowserWindow } from "electron";
 import { is } from "@electron-toolkit/utils";
@@ -8,8 +13,13 @@ import {
   type CatalogPhase,
   type CatalogStatus,
 } from "../shared/types";
-import { shouldRestartHungChild } from "./api-watch";
+import { shouldRestartHungChild, shouldSpawnReplacement } from "./api-watch";
 import { planApiLaunch } from "./api-launch";
+import { shouldTerminateCatalogApi } from "./catalog-reload";
+import {
+  createHydrationEventParser,
+  hydrationEventsUrl,
+} from "./hydration-events";
 import type { AppStore } from "./store";
 
 const START_TIMEOUT_MS = 30_000;
@@ -28,6 +38,8 @@ interface HealthPayload {
   creditsReady?: boolean;
   titlesUpdateAvailable?: boolean;
   creditsFailed?: boolean;
+  catalogUsable?: boolean;
+  tmdbHydration?: CatalogStatus["tmdbHydration"];
 }
 
 export interface CatalogRuntime {
@@ -51,13 +63,15 @@ export function createCatalogRuntime(
     download: null,
     titlesUpdateAvailable: false,
     creditsFailed: false,
+    catalogUsable: false,
   };
   let generation = 0;
   let spawned: ChildProcess | null = null;
-  let adoptedPid: number | null = null;
   let quitting = false;
+  const controlToken = randomBytes(32).toString("hex");
   let restartAttempts = 0;
   let recovering = false;
+  let hydrationEventsAbort: AbortController | null = null;
 
   const publish = (next: CatalogStatus): void => {
     current = next;
@@ -69,6 +83,8 @@ export function createCatalogRuntime(
   };
 
   const start = (): void => {
+    quitting = false;
+    stopHydrationEvents();
     generation += 1;
     restartAttempts = 0;
     run(generation);
@@ -77,12 +93,20 @@ export function createCatalogRuntime(
   async function stop(): Promise<void> {
     quitting = true;
     generation += 1;
+    stopHydrationEvents();
     const child = spawned;
-    const pid = adoptedPid;
     spawned = null;
-    adoptedPid = null;
-    await killProcessTree(child);
-    if (pid && pid !== child?.pid) await killPid(pid);
+    if (shouldTerminateCatalogApi({ ownsApi: child != null })) {
+      try {
+        await fetch(new URL("/internal/shutdown", catalogUrl(store)), {
+          method: "POST", headers: { Authorization: `Bearer ${controlToken}` },
+          signal: AbortSignal.timeout(5000), redirect: "error",
+        });
+        const deadline = Date.now() + 30_000;
+        while (child?.exitCode == null && child?.signalCode == null && Date.now() < deadline) await sleep(100);
+      } catch { /* Process may already have exited. */ }
+      await killProcessTree(child);
+    }
   }
 
   async function bootstrap(gen: number): Promise<void> {
@@ -95,13 +119,21 @@ export function createCatalogRuntime(
       download: null,
       titlesUpdateAvailable: false,
       creditsFailed: false,
+      catalogUsable: false,
     });
 
     const baseUrl = catalogUrl(store);
     try {
-      if (!(await canReach(baseUrl))) {
+      const reachable = await canReach(baseUrl);
+      if (generation !== gen || quitting) return;
+      if (!reachable) {
+        if (serviceOwnsCatalog()) {
+          publish({ ...current, phase: "error", error: "Catalogue service unavailable. Open Settings for details and Retry.", message: "The required catalogue service is unavailable." });
+          return;
+        }
         if (!spawned || spawned.exitCode != null) {
           await killProcessTree(spawned);
+          if (generation !== gen || quitting) return;
           spawned = null;
           const started = spawnApi(baseUrl);
           if (!started.ok) {
@@ -114,11 +146,11 @@ export function createCatalogRuntime(
               download: null,
               titlesUpdateAvailable: false,
               creditsFailed: false,
+              catalogUsable: false,
             });
             return;
           }
           spawned = started.child;
-          adoptedPid = null;
         }
         publish({
           phase: "starting",
@@ -129,9 +161,8 @@ export function createCatalogRuntime(
           download: null,
           titlesUpdateAvailable: false,
           creditsFailed: false,
+          catalogUsable: false,
         });
-      } else if (isLocalUrl(baseUrl) && !spawned) {
-        adoptedPid = await listeningPid(portFromUrl(baseUrl));
       }
 
       const reached = await waitForReachable(baseUrl, gen);
@@ -146,10 +177,12 @@ export function createCatalogRuntime(
           download: null,
           titlesUpdateAvailable: false,
           creditsFailed: false,
+          catalogUsable: false,
         });
         return;
       }
 
+      startHydrationEvents(baseUrl, gen);
       await pollUntilSettled(baseUrl, gen);
       if (generation === gen && !quitting) void watchApi(baseUrl, gen);
     } catch (error) {
@@ -163,7 +196,10 @@ export function createCatalogRuntime(
     }
   }
 
-  async function waitForReachable(baseUrl: string, gen: number): Promise<boolean> {
+  async function waitForReachable(
+    baseUrl: string,
+    gen: number,
+  ): Promise<boolean> {
     const deadline = Date.now() + START_TIMEOUT_MS;
     while (Date.now() < deadline && generation === gen) {
       if (await canReach(baseUrl)) return true;
@@ -180,7 +216,15 @@ export function createCatalogRuntime(
       if (!health) {
         missed += 1;
         const childAlive = spawned != null && spawned.exitCode == null;
-        if (!childAlive && missed >= 8) {
+        if (!childAlive && (await portOpen(baseUrl))) {
+          missed = 0;
+          await sleep(POLL_MS);
+          continue;
+        }
+        if (
+          shouldSpawnReplacement({ childAlive, portOpen: false }) &&
+          missed >= 8
+        ) {
           throw new Error("Catalog API became unreachable.");
         }
         publish({
@@ -192,6 +236,7 @@ export function createCatalogRuntime(
           download: null,
           titlesUpdateAvailable: current.titlesUpdateAvailable,
           creditsFailed: current.creditsFailed,
+          catalogUsable: current.catalogUsable,
         });
         await sleep(POLL_MS);
         continue;
@@ -200,8 +245,71 @@ export function createCatalogRuntime(
       restartAttempts = 0;
       const next = statusFromHealth(health);
       publish(next);
-      if (next.phase === "ready" || next.phase === "error") return;
+      if (next.phase === "ready" && next.catalogUsable) return;
       await sleep(next.download ? 200 : POLL_MS);
+    }
+  }
+
+  function startHydrationEvents(baseUrl: string, gen: number): void {
+    if (!isLocalUrl(baseUrl)) return;
+    stopHydrationEvents();
+    const controller = new AbortController();
+    hydrationEventsAbort = controller;
+    void consumeHydrationEvents(baseUrl, gen, controller);
+  }
+
+  function stopHydrationEvents(): void {
+    hydrationEventsAbort?.abort();
+    hydrationEventsAbort = null;
+  }
+
+  async function consumeHydrationEvents(
+    baseUrl: string,
+    gen: number,
+    controller: AbortController,
+  ): Promise<void> {
+    try {
+      while (generation === gen && !quitting && !controller.signal.aborted) {
+        try {
+          const response = await catalogFetch(hydrationEventsUrl(baseUrl), {
+            headers: { Accept: "text/event-stream" },
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) {
+            throw new Error(
+              `Hydration events unavailable (${response.status})`,
+            );
+          }
+          const parser = createHydrationEventParser();
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          try {
+            while (
+              generation === gen &&
+              !quitting &&
+              !controller.signal.aborted
+            ) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              for (const hydration of parser.push(
+                decoder.decode(chunk.value, { stream: true }),
+              )) {
+                if (generation !== gen || quitting) return;
+                publish({ ...current, tmdbHydration: hydration });
+              }
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        } catch {
+          // Health polling remains authoritative for API liveness and recovery.
+        }
+        if (generation === gen && !quitting && !controller.signal.aborted) {
+          await sleep(1_000);
+        }
+      }
+    } finally {
+      if (hydrationEventsAbort === controller) hydrationEventsAbort = null;
     }
   }
 
@@ -217,6 +325,17 @@ export function createCatalogRuntime(
       }
       misses += 1;
       const childAlive = spawned != null && spawned.exitCode == null;
+      if (
+        !shouldSpawnReplacement({
+          childAlive,
+          portOpen: await portOpen(baseUrl),
+        })
+      ) {
+        if (!childAlive) {
+          misses = 0;
+          continue;
+        }
+      }
       if (childAlive && !shouldRestartHungChild(misses)) continue;
       if (childAlive) {
         await killProcessTree(spawned);
@@ -229,6 +348,10 @@ export function createCatalogRuntime(
 
   async function recoverApi(baseUrl: string, gen: number): Promise<void> {
     if (generation !== gen || quitting || recovering) return;
+    if (serviceOwnsCatalog()) {
+      publish({ ...current, phase: "error", error: "Background service unavailable", message: "Background catalogue service is unavailable. Use Retry in Settings." });
+      return;
+    }
     recovering = true;
     try {
       if (spawned && spawned.exitCode == null) {
@@ -240,13 +363,15 @@ export function createCatalogRuntime(
       if (restartAttempts >= 5) {
         publish({
           phase: "error",
-          message: "The catalog API stopped repeatedly. Use Retry on the loader.",
+          message:
+            "The catalog API stopped repeatedly. Use Retry on the loader.",
           titleCount: current.titleCount,
           builtAt: current.builtAt,
           error: "Catalog API did not stay running.",
           download: null,
           titlesUpdateAvailable: current.titlesUpdateAvailable,
           creditsFailed: current.creditsFailed,
+          catalogUsable: current.catalogUsable,
         });
         return;
       }
@@ -260,14 +385,16 @@ export function createCatalogRuntime(
         download: null,
         titlesUpdateAvailable: current.titlesUpdateAvailable,
         creditsFailed: current.creditsFailed,
+        catalogUsable: current.catalogUsable,
       });
       await sleep(Math.min(800 * 2 ** (restartAttempts - 1), 8000));
       if (generation !== gen || quitting) return;
-      if (await canReach(baseUrl)) {
+      if ((await canReach(baseUrl)) || (await portOpen(baseUrl))) {
         restartAttempts = 0;
         await pollUntilSettled(baseUrl, gen);
         return;
       }
+      if (generation !== gen || quitting) return;
       const started = spawnApi(baseUrl);
       if (started.ok) spawned = started.child;
       const reached = await waitForReachable(baseUrl, gen);
@@ -282,6 +409,7 @@ export function createCatalogRuntime(
           download: null,
           titlesUpdateAvailable: current.titlesUpdateAvailable,
           creditsFailed: current.creditsFailed,
+          catalogUsable: current.catalogUsable,
         });
         return;
       }
@@ -291,9 +419,10 @@ export function createCatalogRuntime(
     }
   }
 
-  function spawnApi(baseUrl: string):
-    | { ok: true; child: ChildProcess }
-    | { ok: false; message: string } {
+  function spawnApi(
+    baseUrl: string,
+  ): { ok: true; child: ChildProcess } | { ok: false; message: string } {
+    if (serviceOwnsCatalog()) return { ok: false, message: "Catalogue is owned by the Windows service." };
     const plan = planApiLaunch(
       {
         dev: is.dev,
@@ -310,18 +439,22 @@ export function createCatalogRuntime(
       existsSync,
     );
     if (!plan.ok) return plan;
-    const tmdbApiKey = store.getSettings().tmdbApiKey.trim();
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PORT: portFromUrl(baseUrl),
+      RESCORE_CONTROL_TOKEN: controlToken,
+      IMDB_DATA_DIR: plan.dataDir,
+      CATALOG_DB_PATH: join(plan.dataDir, "catalog.sqlite"),
+      CATALOG_REGION: store.getSettings().region.trim() || "US",
+    };
+    delete env.RESCORE_SERVICE_CONFIG;
+    delete env.TMDB_API_KEYS;
+    delete env.TMDB_API_KEY;
     const child = spawn(plan.command, plan.args, {
       cwd: plan.cwd,
-      env: {
-        ...process.env,
-        PORT: portFromUrl(baseUrl),
-        IMDB_DATA_DIR: plan.dataDir,
-        CATALOG_DB_PATH: join(plan.dataDir, "catalog.sqlite"),
-        ...(tmdbApiKey ? { TMDB_API_KEY: tmdbApiKey } : {}),
-        CATALOG_REGION: store.getSettings().region.trim() || "US",
-      },
-      stdio: plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
+      env,
+      stdio:
+        plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
       windowsHide: plan.windowsHide,
     });
     child.on("error", (error) => {
@@ -329,14 +462,20 @@ export function createCatalogRuntime(
     });
     child.on("exit", (code, signal) => {
       if (spawned === child) spawned = null;
-      if (code && code !== 0) {
-        console.warn(`[api] exited (${code}${signal ? ` ${signal}` : ""})`);
-      }
+      if (!code) return;
+      console.warn(`[api] exited (${code}${signal ? ` ${signal}` : ""})`);
+      const baseUrl = catalogUrl(store);
+      void (async () => {
+        if (quitting || !(await canReach(baseUrl))) return;
+        const health = await readHealth(baseUrl);
+        if (health) publish(statusFromHealth(health));
+      })();
     });
     return { ok: true, child };
   }
 
   function rebuild(): CatalogStatus {
+    stopHydrationEvents();
     generation += 1;
     publish({
       phase: "building",
@@ -347,6 +486,7 @@ export function createCatalogRuntime(
       download: null,
       titlesUpdateAvailable: current.titlesUpdateAvailable,
       creditsFailed: current.creditsFailed,
+      catalogUsable: current.catalogUsable,
     });
     void runRebuild(generation);
     return current;
@@ -366,18 +506,22 @@ export function createCatalogRuntime(
           download: null,
           titlesUpdateAvailable: current.titlesUpdateAvailable,
           creditsFailed: current.creditsFailed,
+          catalogUsable: current.catalogUsable,
         });
         return;
       }
-      const response = await fetch(new URL("/v1/catalog/rebuild", `${baseUrl}/`), {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
+      const response = await catalogFetch(
+        new URL("/v1/catalog/rebuild", `${baseUrl}/`),
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ force: true }),
+          signal: AbortSignal.timeout(8000),
         },
-        body: JSON.stringify({ force: true }),
-        signal: AbortSignal.timeout(8000),
-      });
+      );
       if (generation !== gen) return;
       if (!response.ok && response.status !== 409) {
         const body = (await response.json().catch(() => null)) as {
@@ -392,9 +536,11 @@ export function createCatalogRuntime(
           download: null,
           titlesUpdateAvailable: current.titlesUpdateAvailable,
           creditsFailed: current.creditsFailed,
+          catalogUsable: current.catalogUsable,
         });
         return;
       }
+      startHydrationEvents(baseUrl, gen);
       await pollUntilSettled(baseUrl, gen);
       if (generation === gen && !quitting) void watchApi(baseUrl, gen);
     } catch (error) {
@@ -409,6 +555,7 @@ export function createCatalogRuntime(
         download: null,
         titlesUpdateAvailable: current.titlesUpdateAvailable,
         creditsFailed: current.creditsFailed,
+        catalogUsable: current.catalogUsable,
       });
     }
   }
@@ -430,7 +577,7 @@ function unreachableMessage(): string {
 }
 
 function catalogUrl(store: AppStore): string {
-  const raw = store.getSettings().catalogApiUrl.trim();
+  const raw = effectiveCatalogUrl(store.getSettings().catalogApiUrl).trim();
   return raw.replace(/\/+$/, "") || DEFAULT_CATALOG_API_URL;
 }
 
@@ -453,12 +600,39 @@ function portFromUrl(url: string): string {
   }
 }
 
+function portOpen(baseUrl: string): Promise<boolean> {
+  let host: string;
+  let port: number;
+  try {
+    host = new URL(baseUrl).hostname;
+    port = Number(portFromUrl(baseUrl));
+  } catch {
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (open: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(open);
+    };
+    const socket = connect({ host, port });
+    socket.setTimeout(400);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+  });
+}
+
 async function canReach(baseUrl: string): Promise<boolean> {
   try {
-    const response = await fetch(new URL("/health", `${baseUrl}/`), {
+    const response = await catalogFetch(new URL("/health", `${baseUrl}/`), {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(1500),
     });
+    const expected = serviceConnection();
+    if (serviceOwnsCatalog()) return !!expected && response.ok && matchesServiceHealth(await response.json(), expected);
     return response.status < 500 || response.status === 503;
   } catch {
     return false;
@@ -467,11 +641,14 @@ async function canReach(baseUrl: string): Promise<boolean> {
 
 async function readHealth(baseUrl: string): Promise<HealthPayload | null> {
   try {
-    const response = await fetch(new URL("/health", `${baseUrl}/`), {
+    const response = await catalogFetch(new URL("/health", `${baseUrl}/`), {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(4000),
     });
-    return (await response.json()) as HealthPayload;
+    const health = await response.json();
+    const expected = serviceConnection();
+    if (serviceOwnsCatalog() && (!expected || !matchesServiceHealth(health, expected))) return null;
+    return health as HealthPayload;
   } catch {
     return null;
   }
@@ -490,7 +667,8 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
         : "Starting the local catalog…");
   let phase: CatalogPhase = "starting";
   if (health.catalogPhase === "error" || error) phase = "error";
-  else if (health.catalogPhase === "building" || health.building) phase = "building";
+  else if (health.catalogPhase === "building" || health.building)
+    phase = "building";
   else if (health.ready || health.catalogPhase === "ready") phase = "ready";
   return {
     phase,
@@ -503,6 +681,8 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
     creditsReady: health.creditsReady,
     titlesUpdateAvailable: health.titlesUpdateAvailable === true,
     creditsFailed: health.creditsFailed === true,
+    catalogUsable: health.catalogUsable === true,
+    tmdbHydration: health.tmdbHydration,
   };
 }
 
@@ -511,7 +691,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function killProcessTree(child: ChildProcess | null): Promise<void> {
-  if (!child?.pid) return;
+  if (!child?.pid || child.exitCode != null || child.signalCode != null) return;
   if (process.platform === "win32") {
     await killPid(child.pid);
     return;
@@ -540,26 +720,15 @@ async function killPid(pid: number): Promise<void> {
   }
 }
 
-async function listeningPid(port: string): Promise<number | null> {
-  if (process.platform !== "win32") return null;
-  const stdout = await execFileNoThrow("netstat", ["-ano", "-p", "tcp"]);
-  if (!stdout) return null;
-  const suffix = `:${port}`;
-  for (const line of stdout.split(/\r?\n/)) {
-    if (!line.includes("LISTENING")) continue;
-    const parts = line.trim().split(/\s+/);
-    const local = parts[1] ?? "";
-    if (!local.endsWith(suffix)) continue;
-    const pid = Number(parts[parts.length - 1]);
-    if (Number.isInteger(pid) && pid > 0) return pid;
-  }
-  return null;
-}
-
 function execFileNoThrow(file: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
-    execFile(file, args, { windowsHide: true, timeout: 8000 }, (error, stdout) => {
-      resolve(error ? "" : String(stdout ?? ""));
-    });
+    execFile(
+      file,
+      args,
+      { windowsHide: true, timeout: 8000 },
+      (error, stdout) => {
+        resolve(error ? "" : String(stdout ?? ""));
+      },
+    );
   });
 }

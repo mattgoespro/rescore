@@ -34,13 +34,13 @@ export {
   SORT_OPTIONS,
   defaultFilters,
   matchesRatingFilters,
-  sortOptions,
 } from "./filters";
 export { posterUrl, setMediaProxyOrigin } from "./posters";
 export type {
   CatalogDownloadProgress,
   CatalogPhase,
   CatalogStatus,
+  TmdbHydrationProgress,
 } from "./catalog-status";
 export type {
   Affinity,

@@ -45,7 +45,8 @@ function stdout(): LineSink {
 }
 
 function render(input: LogInput, color: boolean): string {
-  return formatLine({ ...input, time: new Date() }, color);
+  const message = input.message.replace(/(api_key=)[^&\s]+/gi, "$1[redacted]").replace(/Bearer\s+[a-z0-9._-]+/gi, "Bearer [redacted]");
+  return formatLine({ ...input, message, time: new Date() }, color);
 }
 
 function closeDownloadIfOpen(sink: LineSink): void {

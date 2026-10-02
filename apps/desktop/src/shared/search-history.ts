@@ -101,6 +101,7 @@ export function applySearchHistory(
     titleKind: entry.titleKind,
     genres: entry.genres.map((genre) => genre.id),
     withoutGenres: [],
+    excludeLanguages: [],
     yearMin: entry.yearMin,
     yearMax: entry.yearMax,
     ratingMin: entry.ratingMin,

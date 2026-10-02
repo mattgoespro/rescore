@@ -3,7 +3,20 @@ export interface ImdbRating {
   votes: number;
 }
 
+export interface TmdbHydrationProgress {
+  completedIds?: string[];
+  processed: number;
+  total: number;
+  percent: number;
+  complete: boolean;
+  message: string;
+}
+
 export interface HealthResponse {
+  runtimeMode?: "service" | "app";
+  protocolVersion?: number;
+  catalogId?: string | null;
+  runtimeVersion?: string | null;
   ok: boolean;
   ready: boolean;
   building: boolean;
@@ -20,6 +33,8 @@ export interface HealthResponse {
   creditsReady?: boolean;
   titlesUpdateAvailable: boolean;
   creditsFailed: boolean;
+  catalogUsable: boolean;
+  tmdbHydration: TmdbHydrationProgress;
 }
 
 export interface CatalogDownloadProgress {

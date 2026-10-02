@@ -1,3 +1,4 @@
+import { cancellableDelay } from "../services/runtime-lifecycle.js";
 import { CATALOG_DB_PATH } from "../config.js";
 import type { CatalogDatabase } from "../catalog/index.js";
 import { dumpFingerprint, probeRemote } from "../services/gzip-tsv.js";
@@ -69,7 +70,7 @@ export async function buildCatalogCredits(
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return cancellableDelay(ms);
 }
 
 export function startCreditsBuild(
@@ -265,7 +266,7 @@ async function runBuildCredits(
     const names = await importNames(files.names, neededNames);
     for (const [nconst, name] of known) names.set(nconst, name);
     log("Writing credits", "credits");
-    insertCredits(catalog, directors, cast, names, kept);
+    await insertCredits(catalog, directors, cast, names, kept);
   } catch (error) {
     catalog.finishCreditsRebuild();
     catalog.setCreditsInProgress(false);

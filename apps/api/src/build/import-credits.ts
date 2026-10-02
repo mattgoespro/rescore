@@ -1,3 +1,4 @@
+import { shutdownSignal } from "../services/runtime-lifecycle.js";
 import type { CatalogDatabase, CatalogPersonRow } from "../catalog/index.js";
 import { imdbValue, readTsvRows } from "../services/gzip-tsv.js";
 import { trimCredits } from "./parse-helpers.js";
@@ -98,13 +99,13 @@ function creditSignature(rows: CatalogPersonRow[]): string {
   return rows.map((row) => `${row.role}:${row.nconst}`).join("|");
 }
 
-export function insertCredits(
+export async function insertCredits(
   catalog: CatalogDatabase,
   directors: Map<string, Credit[]>,
   cast: Map<string, Credit[]>,
   names: Map<string, string>,
   kept: Set<string>,
-): void {
+): Promise<void> {
   const existing = catalog.creditSignatures();
   const byTitle = new Map<string, CatalogPersonRow[]>();
   const push = (
@@ -133,7 +134,9 @@ export function insertCredits(
     trimCredits(credits, MAX_CAST);
     push(titleId, credits, "cast");
   }
+  let written = 0;
   for (const titleId of kept) {
+    if (++written % 1000 === 0) { await new Promise<void>((resolve) => setImmediate(resolve)); shutdownSignal.throwIfAborted(); }
     const rows = byTitle.get(titleId) ?? [];
     if (creditSignature(rows) === (existing.get(titleId) ?? "")) continue;
     catalog.replaceTitleCredits(titleId, rows);

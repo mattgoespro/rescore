@@ -13,9 +13,10 @@ import type {
   ThemeMode,
 } from "../../../shared/types";
 import CatalogLoader from "../components/catalog-loader";
+import BackgroundService from "../components/background-service";
 import Select from "../components/select";
 import { applyAppearance } from "../lib/appearance";
-import { catalogRebuildFeedback } from "../lib/catalog-busy";
+import { catalogRebuildFeedback, tmdbHealthPercent } from "../lib/catalog-busy";
 import { cn } from "../lib/cn";
 import {
   btn,
@@ -45,10 +46,13 @@ export default function SettingsView({
   onError: (message: string) => void;
 }): JSX.Element {
   const [catalogApiUrl, setCatalogApiUrl] = useState(settings.catalogApiUrl);
+  const [serviceRequired, setServiceRequired] = useState(true);
+  useEffect(() => {
+    void window.api.backgroundService.getStatus().then((status) => setServiceRequired(status.supported)).catch(() => undefined);
+  }, []);
   const [region, setRegion] = useState(settings.region);
   const [mode, setMode] = useState<RankingMode>(settings.rankingMode);
   const [imdbApiUrl, setImdbApiUrl] = useState(settings.imdbApiUrl);
-  const [tmdbApiKey, setTmdbApiKey] = useState(settings.tmdbApiKey);
   const [themeMode, setThemeMode] = useState<ThemeMode>(settings.themeMode);
   const [accentColor, setAccentColor] = useState(settings.accentColor);
   const [accentDraft, setAccentDraft] = useState(settings.accentColor);
@@ -61,7 +65,6 @@ export default function SettingsView({
     setRegion(settings.region);
     setMode(settings.rankingMode);
     setImdbApiUrl(settings.imdbApiUrl);
-    setTmdbApiKey(settings.tmdbApiKey);
     setThemeMode(settings.themeMode);
     setAccentColor(settings.accentColor);
     setAccentDraft(settings.accentColor);
@@ -87,7 +90,6 @@ export default function SettingsView({
       region,
       rankingMode: mode,
       imdbApiUrl: imdbApiUrl.trim(),
-      tmdbApiKey: tmdbApiKey.trim(),
       themeMode,
       accentColor,
     });
@@ -121,17 +123,15 @@ export default function SettingsView({
 
   return (
     <section>
-      <div className="mb-5.5 flex items-end justify-between gap-4">
-        <div>
-          <h2 className="m-0 text-[28px] font-650 tracking-title">Settings</h2>
-          <p className="mt-1.5 mb-0 max-w-160 text-[13px] leading-[1.45] text-muted">
-            Choose a look, connect the catalog, tune how watch streaks affect
-            ranking, and import your IMDb history. Rebuild the catalog from this
-            page when you want a fresh copy of IMDb’s datasets.
-          </p>
-        </div>
+      <div className="mb-5.5">
+        <h2 className="m-0 text-[28px] font-650 tracking-title text-balance">
+          Settings
+        </h2>
+        <p className="mt-1.5 mb-0 max-w-160 text-[13px] leading-[1.45] text-pretty text-muted">
+          Catalog, imported ratings, and how titles are ranked.
+        </p>
       </div>
-      <div className="grid grid-cols-1 items-stretch inspect:grid-cols-2 inspect:gap-0">
+      <div className="grid grid-cols-1 items-start gap-4 inspect:grid-cols-2">
         <div className="min-w-0 border border-line p-4.5 inspect:col-span-2">
           <h3 className="kicker">Appearance</h3>
           <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
@@ -189,27 +189,13 @@ export default function SettingsView({
               </div>
             </label>
           </div>
-          <p className="text-xs leading-[1.45] text-muted tabular">
+          <p className="text-xs leading-[1.45] text-pretty text-muted">
             Theme and accent apply immediately on this PC.
           </p>
         </div>
-        <div className="min-w-0 border border-t-0 border-line p-4.5">
-          <h3 className="kicker">Catalog access</h3>
-          <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
-            Catalog API URL
-            <input
-              type="url"
-              value={catalogApiUrl}
-              onChange={(e) => setCatalogApiUrl(e.target.value)}
-              placeholder="http://127.0.0.1:3847"
-            />
-          </label>
-          <p className="text-xs leading-[1.45] text-muted tabular">
-            Built automatically on first launch from IMDb’s non-commercial
-            datasets. Later launches reuse the local SQLite catalog. Default
-            address is http://127.0.0.1:3847.
-          </p>
-          <p className="text-xs leading-[1.45] text-muted tabular">
+        <div className="min-w-0 border border-line p-4.5">
+          <h3 className="kicker">Catalog</h3>
+          <p className="text-xs leading-[1.45] text-pretty text-muted">
             {catalogSummary(catalogStatus)}
           </p>
           <button
@@ -229,64 +215,20 @@ export default function SettingsView({
               />
             </div>
           ) : null}
-          <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
-            TMDB API key
-            <input
-              type="password"
-              value={tmdbApiKey}
-              onChange={(e) => setTmdbApiKey(e.target.value)}
-              placeholder="Needed for poster images"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-          <p className="leading-[1.45] text-muted tabular">
-            IMDb’s dumps don’t include posters. Rescore looks them up on TMDB in
-            the background after the catalog is ready. Without a key, titles
-            show placeholders.
+          <p className="text-xs leading-[1.45] text-pretty text-muted">
+            Posters, synopses, and age ratings fill in from TMDb while you browse.
           </p>
-          <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
-            IMDb ratings API
-            <input
-              type="url"
-              value={imdbApiUrl}
-              onChange={(e) => setImdbApiUrl(e.target.value)}
-              placeholder="http://127.0.0.1:3847"
-            />
-          </label>
-          <p className="text-xs leading-[1.45] text-muted tabular">
-            Used for local rating lookups. It normally matches the catalog URL.
-          </p>
-          <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
-            Region
-            <input
-              type="text"
-              value={region}
-              maxLength={2}
-              onChange={(e) => setRegion(e.target.value.toUpperCase())}
-            />
-          </label>
-          <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
-            Ranking mode
-            <Select
-              value={mode}
-              ariaLabel="Ranking mode"
-              options={RANKING_OPTIONS}
-              onChange={(next) => setMode(next as RankingMode)}
-            />
-          </label>
-          <button className={btn("primary")} onClick={() => void save()}>
-            Save settings
-          </button>
+          <TmdbHealth />
+          <BackgroundService />
         </div>
-        <div className="min-w-0 border border-t-0 border-line p-4.5 inspect:border-l-0">
-          <h3 className="kicker">IMDb ratings import</h3>
-          <p className="text-xs leading-[1.45] text-muted tabular">
-            On IMDb: Ratings → Export. Choose the CSV here. Rescore looks up
-            each `tt` ID, stores the movie as watched, and rebuilds your taste
-            model.
-          </p>
-          <div className="mb-3 flex flex-wrap gap-2">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="border border-line p-4.5">
+            <h3 className="kicker">Ratings import</h3>
+            <p className="text-xs leading-[1.45] text-pretty text-muted">
+              Export your ratings from IMDb, then choose the CSV. Imported titles
+              are marked watched.
+            </p>
+            <div className="mb-3 flex flex-wrap gap-2">
             <button
               className={btn("primary")}
               disabled={busy}
@@ -312,29 +254,178 @@ export default function SettingsView({
             >
               Clear library
             </button>
-          </div>
-          {progress ? (
-            <div>
-              <div className={cn("my-2.5", progressBarClass)}>
-                <div
-                  className={progressFillClass}
-                  style={{
-                    width: progress.total
-                      ? `${(progress.current / progress.total) * 100}%`
-                      : "0%",
-                  }}
-                />
-              </div>
-              <div className="text-xs leading-[1.45] text-muted tabular">
-                {progress.current}/{progress.total} {progress.title} · imported{" "}
-                {progress.imported} · skipped {progress.skipped} · errors{" "}
-                {progress.errors}
-              </div>
             </div>
-          ) : null}
+            {progress ? (
+              <div>
+                <div className={cn("my-2.5", progressBarClass)}>
+                  <div
+                    className={progressFillClass}
+                    style={{
+                      width: progress.total
+                        ? `${(progress.current / progress.total) * 100}%`
+                        : "0%",
+                    }}
+                  />
+                </div>
+                <div className="text-xs leading-[1.45] text-muted tabular">
+                  {progress.current}/{progress.total} {progress.title} · imported{" "}
+                  {progress.imported} · skipped {progress.skipped} · errors{" "}
+                  {progress.errors}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="border border-line p-4.5">
+            <h3 className="kicker">Ranking</h3>
+            {!serviceRequired && (
+              <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+                Catalog API URL
+                <input
+                  type="url"
+                  value={catalogApiUrl}
+                  onChange={(e) => setCatalogApiUrl(e.target.value)}
+                  placeholder="http://127.0.0.1:3847"
+                />
+              </label>
+            )}
+            <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+              Region
+              <input
+                type="text"
+                value={region}
+                maxLength={2}
+                onChange={(e) => setRegion(e.target.value.toUpperCase())}
+              />
+            </label>
+            <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+              Ranking mode
+              <Select
+                value={mode}
+                ariaLabel="Ranking mode"
+                options={RANKING_OPTIONS}
+                onChange={(next) => setMode(next as RankingMode)}
+              />
+            </label>
+            <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+              IMDb ratings API
+              <input
+                type="url"
+                value={imdbApiUrl}
+                onChange={(e) => setImdbApiUrl(e.target.value)}
+                placeholder="http://127.0.0.1:3847"
+              />
+            </label>
+            <p className="text-xs leading-[1.45] text-pretty text-muted">
+              Local rating lookups. Usually the same address as the catalog.
+            </p>
+            <button className={btn("primary")} onClick={() => void save()}>
+              Save settings
+            </button>
+          </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function TmdbHealth(): JSX.Element {
+  const [health, setHealth] = useState<{
+    total: number;
+    posters: number;
+    synopses: number;
+    certifications: number;
+  } | null>();
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void window.api
+        .tmdbHealth()
+        .then((next) => {
+          if (!cancelled) setHealth(next);
+        })
+        .catch(() => {
+          if (!cancelled) setHealth(null);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  if (!health?.total) {
+    return (
+      <p className="mb-3 text-xs leading-[1.45] text-pretty text-muted">
+        {health === undefined
+          ? "Checking coverage…"
+          : health
+            ? "No titles to measure yet."
+            : "Coverage is not available right now."}
+      </p>
+    );
+  }
+  const total = health.total;
+  return (
+    <div className="mb-3">
+      <p className="mb-2 text-xs font-medium text-muted">TMDb coverage</p>
+      <div className="flex flex-col gap-3">
+        <HealthBar
+          label="Posters"
+          filled={health?.posters ?? 0}
+          total={total}
+        />
+        <HealthBar
+          label="Synopses"
+          filled={health?.synopses ?? 0}
+          total={total}
+        />
+        <HealthBar
+          label="Age ratings"
+          filled={health?.certifications ?? 0}
+          total={total}
+        />
+      </div>
+    </div>
+  );
+}
+
+function HealthBar({
+  label,
+  filled,
+  total,
+}: {
+  label: string;
+  filled: number;
+  total: number;
+}): JSX.Element {
+  const percent = tmdbHealthPercent(filled, total);
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-xs text-muted">
+        <span>{label}</span>
+        <span className="tabular">
+          {percent.label} · {filled.toLocaleString()} of{" "}
+          {total.toLocaleString()}
+        </span>
+      </div>
+      <div
+        className={progressBarClass}
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent.value}
+        aria-valuetext={`${filled.toLocaleString()} of ${total.toLocaleString()}`}
+      >
+        <div
+          className={progressFillClass}
+          style={{ width: `${percent.width}%` }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -349,6 +440,7 @@ function catalogSummary(status: CatalogStatus | null): string {
     : "";
   if (!status.builtAt) return `Local catalog: ${count}.${updateNotice}`;
   const built = new Date(status.builtAt);
-  if (Number.isNaN(built.getTime())) return `Local catalog: ${count}.${updateNotice}`;
+  if (Number.isNaN(built.getTime()))
+    return `Local catalog: ${count}.${updateNotice}`;
   return `Local catalog: ${count}, last built ${built.toLocaleString()}.${updateNotice}`;
 }

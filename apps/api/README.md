@@ -32,19 +32,20 @@ rebuild. Poster URLs already stored on matching titles are restored as well.
 Use `--force` to rebuild SQLite even when a catalog already exists. Dumps are
 still skipped when ETag, size, and gzip checks match.
 
-## TMDB posters
+## TMDb hydration
 
-`npm run enrich:posters` looks up catalog titles on TMDB by IMDb ID and
-writes `https://image.tmdb.org/t/p/original/...` into `poster_url`. Discover
-and For You can prioritize the titles currently on screen. Remaining titles
-are processed from most-voted to least. The job is resumable: rows that
-already have a poster URL (or an empty string after a confirmed miss) are
-skipped. `GET /v1/media` caches image bytes under `data/posters/`.
+Browsing starts after IMDb titles and credits are ready. Visible titles and
+opened details hydrate on demand while background upkeep processes remaining
+rows by IMDb vote count. Both paths share prioritized, deduplicated jobs and
+provider limits. Completion is resumable: SQL `NULL` means pending, while an empty string means
+TMDb completed the lookup without that value. `GET /v1/media` caches image
+bytes under `data/posters/`.
 
-Set `TMDB_API_KEY`, add a key in desktop Settings, or keep it in the desktop
-settings file. The API starts poster lookup automatically after the catalog is
-ready when a key is present. Optional `TMDB_CONCURRENCY` (default 10) controls
-parallel lookups.
+TMDb keys are compiled from gitignored `src/tmdb-keys.local.ts`. A direct
+launch can override them with `TMDB_API_KEYS` or `TMDB_API_KEY`. The shared
+TMDb budget defaults to
+`TMDB_CONCURRENCY=8` and `TMDB_REQUESTS_PER_SECOND=40`; it slows down and
+retries when TMDb responds with `429` or a `Retry-After` value.
 
 ## Licensed overlay
 

@@ -13,6 +13,7 @@ export interface TitleDto {
   genres: string[];
   directors: string[];
   cast: string[];
+  languages: string[];
 }
 
 export interface TitleListResponse {

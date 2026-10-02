@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { languageName, searchLanguages } from "../../../../shared/languages";
 import type {
   DiscoverFilters,
   Genre,
@@ -21,7 +22,6 @@ export default function FilterPanel({
   filters,
   setFilters,
   genres,
-  profileReady,
   history,
   activeHistoryId,
   onApplyHistory,
@@ -30,7 +30,6 @@ export default function FilterPanel({
   filters: DiscoverFilters;
   setFilters: (filters: DiscoverFilters) => void;
   genres: Genre[];
-  profileReady?: boolean;
   history: SearchHistoryEntry[];
   activeHistoryId: string | null;
   onApplyHistory: (entry: SearchHistoryEntry) => void;
@@ -92,9 +91,7 @@ export default function FilterPanel({
         }
       />
       <SortField
-        titleKind={filters.titleKind}
         value={filters.sortBy}
-        profileReady={profileReady}
         onChange={(sortBy) => patch({ sortBy })}
       />
       <GenreChips
@@ -114,18 +111,28 @@ export default function FilterPanel({
         onToggle={toggleWithoutGenre}
       />
       <SuggestField
-        label="Directors"
-        placeholder="Add a director…"
-        values={filters.directors}
-        onChange={(directors) => patch({ directors })}
-        search={(query) => window.api.searchPeople(query, "director")}
-      />
-      <SuggestField
-        label="Cast"
-        placeholder="Add a cast member…"
-        values={filters.cast}
-        onChange={(cast) => patch({ cast })}
-        search={(query) => window.api.searchPeople(query, "cast")}
+        label="Exclude languages"
+        hint={
+          filters.excludeLanguages.length
+            ? "Hides a title when any of these is one of its languages. Titles TMDb has not described yet stay visible."
+            : "None excluded."
+        }
+        placeholder="Add a language…"
+        minQueryLength={1}
+        values={filters.excludeLanguages.map((code) => ({
+          id: code,
+          name: languageName(code),
+        }))}
+        onChange={(languages) =>
+          patch({
+            excludeLanguages: languages.map((language) => String(language.id)).slice(0, 12),
+          })
+        }
+        search={async (query) =>
+          searchLanguages(query).filter(
+            (language) => !filters.excludeLanguages.includes(language.id),
+          )
+        }
       />
       <YearRange
         yearMin={filters.yearMin}

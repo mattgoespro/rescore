@@ -11,7 +11,8 @@
     "test": "tsx --test src/**/*.test.ts",
     "migrate": "tsx src/scripts/migrate.ts",
     "build:catalog": "tsx src/scripts/build-catalog.ts",
-    "enrich:posters": "tsx src/scripts/enrich-posters.ts"
+    "enrich:posters": "tsx src/scripts/enrich-posters.ts",
+    "smoke:tmdb": "tsx src/scripts/tmdb-throughput-smoke.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

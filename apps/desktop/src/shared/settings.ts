@@ -13,7 +13,6 @@ export interface Settings {
   region: string;
   rankingMode: RankingMode;
   imdbApiUrl: string;
-  tmdbApiKey: string;
   themeMode: ThemeMode;
   accentColor: string;
 }
@@ -28,18 +27,27 @@ export function defaultSettings(): Settings {
     region: "US",
     rankingMode: "balanced",
     imdbApiUrl: DEFAULT_CATALOG_API_URL,
-    tmdbApiKey: "",
     themeMode: "dark",
     accentColor: DEFAULT_ACCENT_COLOR,
   };
 }
 
-export function normalizeSettings(raw?: Partial<Settings> | null): Settings {
-  const merged = { ...defaultSettings(), ...raw };
+export function normalizeSettings(
+  raw?:
+    | (Partial<Settings> & {
+        tmdbApiKey?: unknown;
+        tmdbApiKeys?: unknown;
+      })
+    | null,
+): Settings {
+  const {
+    tmdbApiKey: _legacyTmdbApiKey,
+    tmdbApiKeys: _legacyTmdbApiKeys,
+    ...rest
+  } = raw ?? {};
+  const merged = { ...defaultSettings(), ...rest };
   return {
     ...merged,
-    tmdbApiKey:
-      typeof merged.tmdbApiKey === "string" ? merged.tmdbApiKey.trim() : "",
     themeMode: normalizeThemeMode(merged.themeMode),
     accentColor: normalizeAccentColor(merged.accentColor),
   };

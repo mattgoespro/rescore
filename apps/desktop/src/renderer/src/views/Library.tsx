@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useVisibleMedia, mergeTitleMedia } from "../lib/use-visible-media";
+import { useMemo, useState, type JSX } from "react";
 import type {
   LibraryEntry,
   MovieSummary,
@@ -22,9 +23,7 @@ export default function Library({
   onChange: (library: LibraryEntry[]) => void;
 }): JSX.Element {
   const [tab, setTab] = useState<WatchStatus | "all">("watched");
-  const [certifications, setCertifications] = useState<Record<string, string>>(
-    {},
-  );
+  const { containerRef, media } = useVisibleMedia();
 
   const rows = useMemo(() => {
     const filtered =
@@ -36,34 +35,6 @@ export default function Library({
     );
   }, [library, tab]);
 
-  useEffect(() => {
-    const ids = rows
-      .filter(
-        (entry) =>
-          !entry.certification && certifications[entry.imdbId] === undefined,
-      )
-      .slice(0, 40)
-      .map((entry) => entry.imdbId);
-    if (!ids.length) return;
-    let cancelled = false;
-    void window.api
-      .fillMedia(ids)
-      .then((filled) => {
-        if (cancelled) return;
-        setCertifications((current) => {
-          const next = { ...current };
-          for (const id of ids) next[id] = next[id] ?? "";
-          for (const row of filled) {
-            if (row.certification) next[row.id] = row.certification;
-          }
-          return next;
-        });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [rows, certifications]);
 
   const avg = average(
     library.filter((e) => e.rating != null).map((e) => e.rating as number),
@@ -80,7 +51,7 @@ export default function Library({
     .slice(0, 5);
 
   return (
-    <section>
+    <section ref={containerRef}>
       <div className="mb-[22px] flex items-end justify-between gap-4">
         <div>
           <h2 className="m-0 text-[28px] font-650 tracking-title">
@@ -127,13 +98,14 @@ export default function Library({
         </div>
       ) : (
         <div className="flex flex-col">
-          {rows.map((entry) => (
+          {rows.map((entry) => mergeTitleMedia(entry, media)).map((entry) => (
             <div
               className={rankedRow(
                 selectedId === titleKey(entry),
                 "relative isolate",
               )}
               key={titleKey(entry)}
+              data-imdb-id={entry.imdbId}
             >
               <button
                 type="button"
@@ -183,7 +155,7 @@ export default function Library({
                 <h3 className="mt-0 mb-1 text-[15px] font-650 tracking-tightish">
                   {entry.title}
                   <AgeCaption
-                    rating={entry.certification ?? certifications[entry.imdbId]}
+                    rating={entry.certification}
                   />
                 </h3>
                 <div className="text-xs leading-[1.45] text-muted tabular">

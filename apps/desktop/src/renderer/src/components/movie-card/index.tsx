@@ -42,6 +42,7 @@ export default function MovieCard({
   return (
     <button
       data-title-key={titleKey(movie)}
+      data-imdb-id={movie.imdbId}
       className={cn(
         grid
           ? "flex w-full flex-col items-stretch gap-1.5 rounded-none border-0 bg-transparent p-0 pb-2 text-left text-inherit shadow-none"

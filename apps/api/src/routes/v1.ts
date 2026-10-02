@@ -12,7 +12,6 @@ import {
   enrichOneTitle,
   fillTitles,
   isPosterEnrichmentRunning,
-  startPosterEnrichment,
 } from "../services/tmdb-posters.js";
 
 const titleId = z.string().regex(/^tt\d+$/i, "Must be an IMDb title id").transform((id) => id.toLowerCase());
@@ -37,6 +36,12 @@ const listQuery = z.object({
     const genres = list.map((item) => String(item).trim()).filter(Boolean);
     return genres.length ? genres : undefined;
   }, z.array(z.string().trim().min(1).max(60)).max(8).optional()),
+  withoutLanguage: z.preprocess((value) => {
+    if (value == null || value === "") return undefined;
+    const list = Array.isArray(value) ? value : String(value).split(",");
+    const languages = list.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+    return languages.length ? languages : undefined;
+  }, z.array(z.string().regex(/^[a-z]{2,3}$/)).max(24).optional()),
   director: z.preprocess((value) => {
     if (value == null || value === "") return undefined;
     const list = Array.isArray(value) ? value : String(value).split(",");
@@ -60,11 +65,12 @@ const listQuery = z.object({
   hideWatchlist: optionalBoolean,
   includeTotal: optionalBoolean,
   cursor: z.string().trim().min(1).max(500).optional(),
-}).strict().refine((value) => !value.yearMin || !value.yearMax || value.yearMin <= value.yearMax, { message: "yearMin must be less than or equal to yearMax" }).transform(({ limit, genre, withoutGenre, director, cast, ...query }) => ({
+}).strict().refine((value) => !value.yearMin || !value.yearMax || value.yearMin <= value.yearMax, { message: "yearMin must be less than or equal to yearMax" }).transform(({ limit, genre, withoutGenre, withoutLanguage, director, cast, ...query }) => ({
   ...query,
   pageSize: limit ?? query.pageSize,
   genres: genre,
   withoutGenres: withoutGenre,
+  withoutLanguages: withoutLanguage,
   directors: director,
   cast,
   includeTotal: query.includeTotal ?? true,
@@ -116,15 +122,10 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
   });
   router.get("/titles/:id", async (req, res) => {
     const id = titleId.parse(req.params.id);
-    let title = db.title(id);
+    const title = db.title(id);
     if (!title) return res.status(404).json({ error: "Title not found" });
-    if (
-      db.titleNeedsMedia(id) ||
-      title.certification == null ||
-      title.synopsis == null
-    ) {
-      await enrichOneTitle(db, id, title.kind);
-      title = db.title(id) ?? title;
+    if (db.titleNeedsMedia(id)) {
+      void enrichOneTitle(db, id, title.kind);
     }
     return res.json({ data: title });
   });
@@ -161,6 +162,10 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     return res.status(202).json({ ok: true, ...catalogStatus() });
   });
 
+  router.get("/catalog/tmdb-health", (_req, res) => {
+    res.json({ data: db.tmdbCoverage() });
+  });
+
   router.post("/catalog/fill", async (req, res) => {
     const body = z
       .object({ ids: z.array(titleId).max(40) })
@@ -178,7 +183,7 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
       .strict()
       .parse(req.body && typeof req.body === "object" ? req.body : {});
     const ids = (body.ids ?? []).filter((id) => db.titleNeedsMedia(id));
-    void startPosterEnrichment(db, { ids });
+    void fillTitles(db, ids);
     return res.status(202).json({ ok: true, running: isPosterEnrichmentRunning() });
   });
 
