@@ -37,6 +37,12 @@ import {
 import Inspector from "./components/inspector";
 import { applyAppearance } from "./lib/appearance";
 import { catalogLoaderDetail, isCatalogUiBlocked } from "./lib/catalog-busy";
+import {
+  MEDIA_RETRY_MS,
+  clearPendingRetries,
+  mediaFillSettled,
+  mediaIdsToFill,
+} from "./lib/use-visible-media";
 import { cn } from "./lib/cn";
 import { listSearchHistory } from "./lib/search-history-store";
 import { btn } from "./lib/ui";
@@ -145,7 +151,8 @@ export default function App(): JSX.Element {
     const key = titleKey(selected);
     let cancelled = false;
     let filling = false;
-    let complete = false;
+    const resolved = new Set<string>();
+    const retryAt = new Map<string, number>();
     const loadDetails = async (): Promise<void> => {
       try {
         const movie = await window.api.movie(
@@ -163,11 +170,19 @@ export default function App(): JSX.Element {
     setDetails(detailsCache.current.get(key) ?? null);
     void loadDetails();
     const fill = async (): Promise<void> => {
-      if (cancelled || filling || complete) return;
+      if (cancelled || filling) return;
+      const ids = mediaIdsToFill({
+        ids: [selected.imdbId],
+        resolved,
+        retryAt,
+        now: Date.now(),
+      });
+      if (!ids.length) return;
       filling = true;
+      retryAt.set(selected.imdbId, Date.now() + MEDIA_RETRY_MS);
       try {
-        const rows = await window.api.fillMedia([selected.imdbId]);
-        complete = rows[0]?.hydrationComplete === true;
+        const rows = await window.api.fillMedia(ids);
+        if (mediaFillSettled(rows[0])) resolved.add(selected.imdbId);
         if (!cancelled) await loadDetails();
       } catch {
         /* Existing detail remains available while metadata retries. */
@@ -177,12 +192,14 @@ export default function App(): JSX.Element {
     };
     void fill();
     const unsubscribe = window.api.onCatalogStatus((status) => {
-      if (status.tmdbHydration?.completedIds?.includes(selected.imdbId)) {
-        detailsCache.current.delete(key);
-        void loadDetails();
-      }
+      const completed = status.tmdbHydration?.completedIds ?? [];
+      if (!completed.includes(selected.imdbId)) return;
+      clearPendingRetries(retryAt, completed, resolved);
+      detailsCache.current.delete(key);
+      void loadDetails();
+      void fill();
     });
-    const timer = window.setInterval(() => void fill(), 30_000);
+    const timer = window.setInterval(() => void fill(), MEDIA_RETRY_MS);
     return () => {
       cancelled = true;
       unsubscribe();

@@ -1,5 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 
+export const MEDIA_FILL_LIMIT = 40;
+export const MEDIA_RETRY_MS = 30_000;
+
+export function mediaIdsToFill(input: {
+  ids: Iterable<string>;
+  resolved: ReadonlySet<string>;
+  retryAt: ReadonlyMap<string, number>;
+  now: number;
+  limit?: number;
+}): string[] {
+  const limit = input.limit ?? MEDIA_FILL_LIMIT;
+  const ids: string[] = [];
+  for (const id of input.ids) {
+    if (ids.length >= limit) break;
+    if (input.resolved.has(id)) continue;
+    if ((input.retryAt.get(id) ?? 0) > input.now) continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
+export function mediaFillSettled(
+  row: { hydrationComplete?: boolean } | undefined,
+): boolean {
+  return row?.hydrationComplete === true;
+}
+
+export function clearPendingRetries(
+  retryAt: Map<string, number>,
+  completedIds: readonly string[],
+  resolved: ReadonlySet<string>,
+): void {
+  for (const id of completedIds) {
+    if (!resolved.has(id)) retryAt.delete(id);
+  }
+}
+
 export type TitleMedia = Awaited<
   ReturnType<Window["api"]["fillMedia"]>
 >[number];
@@ -40,18 +77,19 @@ export function useVisibleMedia() {
     const observed = new Set<Element>();
     async function fill(): Promise<void> {
       if (disposed || busy) return;
-      const ids = [...visible]
-        .filter(
-          (id) => !resolved.has(id) && (retryAt.get(id) ?? 0) <= Date.now(),
-        )
-        .slice(0, 40);
+      const ids = mediaIdsToFill({
+        ids: visible,
+        resolved,
+        retryAt,
+        now: Date.now(),
+      });
       if (!ids.length) return;
       busy = true;
-      for (const id of ids) retryAt.set(id, Date.now() + 30_000);
+      for (const id of ids) retryAt.set(id, Date.now() + MEDIA_RETRY_MS);
       try {
         const rows = await window.api.fillMedia(ids);
         if (disposed) return;
-        for (const row of rows) if (row.hydrationComplete) resolved.add(row.id);
+        for (const row of rows) if (mediaFillSettled(row)) resolved.add(row.id);
         setMedia((current) => {
           const next = new Map(current);
           for (const row of rows) next.set(row.id, row);
@@ -92,12 +130,14 @@ export function useVisibleMedia() {
     mutations.observe(container, { childList: true, subtree: true });
     scan();
     const unsubscribe = window.api.onCatalogStatus((status) => {
-      for (const id of status.tmdbHydration?.completedIds ?? []) {
-        if (!resolved.has(id)) retryAt.delete(id);
-      }
+      clearPendingRetries(
+        retryAt,
+        status.tmdbHydration?.completedIds ?? [],
+        resolved,
+      );
       void fill();
     });
-    const timer = window.setInterval(() => void fill(), 30_000);
+    const timer = window.setInterval(() => void fill(), MEDIA_RETRY_MS);
     return () => {
       disposed = true;
       observer.disconnect();
