@@ -169,7 +169,12 @@ test("unchanged ratings do not update title rows", () => {
 
 test("rating ceiling keeps an unrated title and drops a higher rating", () => {
   const catalog = openCatalog();
-  seedTitle(catalog, { id: "tt0000001", title: "High", rating: 9, votes: 1000 });
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "High",
+    rating: 9,
+    votes: 1000,
+  });
   seedTitle(catalog, { id: "tt0000002", title: "Low", rating: 7, votes: 1000 });
   catalog.upsertTitles([{ id: "tt0000003", title: "Unrated" }]);
   const page = catalog.listTitles({
@@ -179,10 +184,10 @@ test("rating ceiling keeps an unrated title and drops a higher rating", () => {
     order: "asc",
     ratingMax: 8,
   });
-  assert.deepEqual(
-    page.data.map((title) => title.id).sort(),
-    ["tt0000002", "tt0000003"],
-  );
+  assert.deepEqual(page.data.map((title) => title.id).sort(), [
+    "tt0000002",
+    "tt0000003",
+  ]);
   catalog.close();
 });
 

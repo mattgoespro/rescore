@@ -10,7 +10,13 @@ import {
 
 test("discover query omits the rating ceiling and fixes the page size", () => {
   const params = discoverQueryParams(
-    { ...defaultFilters(), ratingMin: 0, voteCountMin: 0, sortBy: "match", cursor: "abc" },
+    {
+      ...defaultFilters(),
+      ratingMin: 0,
+      voteCountMin: 0,
+      sortBy: "match",
+      cursor: "abc",
+    },
     { genres: ["Action"], withoutGenres: [] },
   );
   assert.equal(DISCOVER_PAGE_SIZE, 40);
@@ -75,7 +81,10 @@ test("replace clears the cursor and match re-rank touches only the new page", as
     rankPage: (movies) => [...movies].reverse(),
   });
   assert.equal(received, null);
-  assert.deepEqual(page.results.map((movie) => movie.imdbId), ["tt2", "tt1"]);
+  assert.deepEqual(
+    page.results.map((movie) => movie.imdbId),
+    ["tt2", "tt1"],
+  );
   assert.equal(page.nextCursor, "next");
   assert.equal(page.canLoadMore, false);
 });
@@ -102,7 +111,9 @@ test("match under three rated titles keeps catalogue order", async () => {
 });
 
 test("a full page with a cursor can load another", async () => {
-  const results = Array.from({ length: 40 }, (_, index) => summary(`tt${index}`));
+  const results = Array.from({ length: 40 }, (_, index) =>
+    summary(`tt${index}`),
+  );
   const page = await loadDiscoverSlice({
     filters: { ...defaultFilters(), sortBy: "vote_average.desc" },
     mode: "append",
@@ -110,7 +121,14 @@ test("a full page with a cursor can load another", async () => {
     ratedCount: 9,
     fetchPage: async (filters) => {
       assert.equal(filters.cursor, "cursor-value");
-      return { page: 1, totalPages: 2, totalResults: 80, results, nextCursor: "next", canLoadMore: false };
+      return {
+        page: 1,
+        totalPages: 2,
+        totalResults: 80,
+        results,
+        nextCursor: "next",
+        canLoadMore: false,
+      };
     },
     rankPage: (movies) => movies,
   });

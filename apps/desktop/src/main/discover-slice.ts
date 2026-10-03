@@ -1,5 +1,9 @@
 import { languageQueryCodes } from "../shared/languages";
-import type { DiscoverFilters, PagedMovies, RankedMovie } from "../shared/types";
+import type {
+  DiscoverFilters,
+  PagedMovies,
+  RankedMovie,
+} from "../shared/types";
 
 export const DISCOVER_PAGE_SIZE = 40;
 
@@ -12,8 +16,7 @@ export function discoverQueryParams(
     pageSize: DISCOVER_PAGE_SIZE,
     limit: DISCOVER_PAGE_SIZE,
     query: filters.query || undefined,
-    kind:
-      filters.titleKind === "miniseries" ? "miniseries" : filters.titleKind,
+    kind: filters.titleKind === "miniseries" ? "miniseries" : filters.titleKind,
     yearMin: filters.yearMin ?? undefined,
     yearMax: filters.yearMax ?? undefined,
     ratingMin: filters.ratingMin || undefined,
