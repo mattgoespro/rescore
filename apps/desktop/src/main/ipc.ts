@@ -22,7 +22,8 @@ import {
   type Settings,
   type WatchStatus,
 } from "../shared/types";
-import { CatalogClient, CatalogError, genreId } from "./catalog-client";
+import { genreId, movieFromTitle } from "../shared/movie";
+import { CatalogClient, CatalogError } from "./catalog-client";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
 import type { SearchHistoryInput } from "../shared/search-history";
@@ -315,37 +316,7 @@ function toSummaryFromDto(title: {
   cast: string[];
   languages?: string[];
 }): MovieSummary {
-  const kind = title.kind.toLowerCase();
-  const titleKind = kind.includes("mini")
-    ? "miniseries"
-    : kind.includes("tv") || kind.includes("series")
-      ? "tv"
-      : "movie";
-  return {
-    imdbId: title.id.toLowerCase(),
-    mediaType: titleKind === "movie" ? "movie" : "tv",
-    titleKind,
-    title: title.title,
-    originalTitle: title.originalTitle ?? undefined,
-    overview: title.synopsis ?? "",
-    posterPath: title.posterUrl,
-    backdropPath: null,
-    releaseDate: title.year ? `${title.year}-01-01` : "",
-    year: title.year ?? undefined,
-    genreIds: title.genres.map(genreId),
-    originalLanguage: title.languages?.[0] ?? "",
-    languages: title.languages ?? [],
-    popularity: 0,
-    voteAverage: title.imdbRating ?? 0,
-    voteCount: title.imdbVotes ?? 0,
-    adult: false,
-    certification: title.certification || undefined,
-    runtime: title.runtimeMinutes ?? undefined,
-    directorIds: title.directors.map(genreId),
-    directorNames: title.directors,
-    castIds: title.cast.map(genreId),
-    castNames: title.cast,
-  };
+  return movieFromTitle(title);
 }
 
 function toLibraryFromDto(
