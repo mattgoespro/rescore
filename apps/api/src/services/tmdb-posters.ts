@@ -243,9 +243,7 @@ export class TmdbHydrationCoordinator {
     kind: string,
     interactive: boolean,
   ): Promise<boolean> {
-    const needsMedia = catalog.titleNeedsMedia(id);
-    if (!needsMedia && !catalog.titleNeedsLanguages(id))
-      return Promise.resolve(true);
+    if (!catalog.titleNeedsMedia(id)) return Promise.resolve(true);
     let jobs = this.jobs.get(catalog);
     if (!jobs) {
       jobs = new Map();
@@ -300,16 +298,8 @@ export class TmdbHydrationCoordinator {
         const media = await findTitleMedia(this.clients, job.id, job.kind);
         await job.catalog.updatePosterUrlsQueued([{ id: job.id, ...media }]);
         publishHydratedTitles([job.id]);
-      } else if (job.catalog.titleNeedsLanguages(job.id)) {
-        const media = await findTitleMedia(this.clients, job.id, job.kind);
-        await job.catalog.updatePosterUrlsQueued([
-          { id: job.id, languages: media.languages },
-        ]);
-        publishHydratedTitles([job.id]);
       }
-      complete =
-        !job.catalog.titleNeedsMedia(job.id) &&
-        !job.catalog.titleNeedsLanguages(job.id);
+      complete = !job.catalog.titleNeedsMedia(job.id);
       if (complete) this.retryAfter.get(job.catalog)?.delete(job.id);
     } catch (error) {
       let retry = this.retryAfter.get(job.catalog);
