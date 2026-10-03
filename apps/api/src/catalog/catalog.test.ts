@@ -185,6 +185,40 @@ test("titles are ready without credits", () => {
   catalog.close();
 });
 
+test("people rows do not mark credits ready", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    {
+      id: "tt0133093",
+      title: "The Matrix",
+      directors: ["Lana Wachowski"],
+      cast: ["Keanu Reeves"],
+    },
+  ]);
+  catalog.setCatalogMeta({
+    builtAt: "2026-10-03T00:00:00.000Z",
+    revision: "test",
+    source: "test",
+  });
+  assert.equal(catalog.titlesReady(), true);
+  assert.equal(catalog.creditsReady(), false);
+
+  catalog.insertPeople([
+    {
+      titleId: "tt0133093",
+      nconst: "nm0905154",
+      name: "Lilly Wachowski",
+      role: "director",
+      position: 1,
+    },
+  ]);
+  assert.equal(catalog.creditsReady(), false);
+
+  catalog.setCreditsReady(true);
+  assert.equal(catalog.creditsReady(), true);
+  catalog.close();
+});
+
 test("batch hydrate attaches genres and people", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {

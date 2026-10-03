@@ -76,11 +76,5 @@ export function readiness(db: Database.Database): CatalogReadiness {
   ).count;
   const builtAt = readCatalogMeta(db).builtAt;
   const titlesReady = titleCount > 0 && Boolean(builtAt);
-  if (flagIsSet(db, "creditsReady")) {
-    return { titlesReady, creditsReady: true };
-  }
-  const hasPeople = Boolean(
-    db.prepare("SELECT 1 FROM title_people LIMIT 1").get(),
-  );
-  return { titlesReady, creditsReady: hasPeople };
+  return { titlesReady, creditsReady: flagIsSet(db, "creditsReady") };
 }
