@@ -11,3 +11,13 @@ export function shouldSpawnReplacement(input: {
 }): boolean {
   return !input.childAlive && !input.portOpen;
 }
+
+export function settleHealthMiss(input: {
+  childAlive: boolean;
+  portOpen: boolean;
+  missed: number;
+}): "reset" | "wait" | "give-up" {
+  if (input.portOpen && !input.childAlive) return "reset";
+  if (shouldSpawnReplacement(input) && input.missed >= 8) return "give-up";
+  return "wait";
+}

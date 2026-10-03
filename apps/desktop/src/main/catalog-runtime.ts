@@ -11,7 +11,11 @@ import {
   type CatalogStatus,
 } from "../shared/types";
 import { planApiLaunch } from "./api-launch";
-import { shouldRestartHungChild, shouldSpawnReplacement } from "./api-watch";
+import {
+  settleHealthMiss,
+  shouldRestartHungChild,
+  shouldSpawnReplacement,
+} from "./api-watch";
 import { serviceOwnsCatalog } from "./background-service";
 import {
   catalogFetch,
@@ -236,15 +240,17 @@ export function createCatalogRuntime(
       if (!health) {
         missed += 1;
         const childAlive = spawned != null && spawned.exitCode == null;
-        if (!childAlive && (await portOpen(baseUrl))) {
+        const decision = settleHealthMiss({
+          childAlive,
+          portOpen: await portOpen(baseUrl),
+          missed,
+        });
+        if (decision === "reset") {
           missed = 0;
           await sleep(POLL_MS);
           continue;
         }
-        if (
-          shouldSpawnReplacement({ childAlive, portOpen: false }) &&
-          missed >= 8
-        ) {
+        if (decision === "give-up") {
           throw new Error("Catalog API became unreachable.");
         }
         publish({
