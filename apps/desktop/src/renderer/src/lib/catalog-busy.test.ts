@@ -102,6 +102,19 @@ test("rebuild feedback is present while the splash blocks the app", () => {
   );
 });
 
+test("a blocked rebuild does not have an inline strip", () => {
+  const status = {
+    phase: "building",
+    catalogUsable: true,
+    message: "Rebuilding catalog from IMDb datasets…",
+  };
+  assert.equal(isCatalogUiBlocked(status), true);
+  assert.equal(
+    catalogRebuildFeedback(status)?.label,
+    "Rebuilding catalog from IMDb datasets…",
+  );
+});
+
 test("loader detail describes the blocking build until bytes arrive", () => {
   assert.equal(
     catalogLoaderDetail({
