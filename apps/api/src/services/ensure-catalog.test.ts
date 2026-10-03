@@ -26,22 +26,13 @@ test("health stays ready when titles exist even if a check is in flight", () => 
 
 test("catalog is usable after IMDb preparation even while TMDb is incomplete", () => {
   assert.equal(
-    isCatalogUsable({ titlesReady: true, creditsReady: true, tmdbReady: true }),
-    true,
-  );
-  assert.equal(
-    isCatalogUsable({
-      titlesReady: true,
-      creditsReady: true,
-      tmdbReady: false,
-    }),
+    isCatalogUsable({ titlesReady: true, creditsReady: true }),
     true,
   );
   assert.equal(
     isCatalogUsable({
       titlesReady: true,
       creditsReady: false,
-      tmdbReady: true,
     }),
     false,
   );
@@ -50,7 +41,6 @@ test("catalog is usable after IMDb preparation even while TMDb is incomplete", (
       titlesReady: true,
       creditsReady: true,
       creditsFailed: true,
-      tmdbReady: true,
     }),
     false,
   );
@@ -58,7 +48,6 @@ test("catalog is usable after IMDb preparation even while TMDb is incomplete", (
     isCatalogUsable({
       titlesReady: false,
       creditsReady: false,
-      tmdbReady: false,
     }),
     false,
   );

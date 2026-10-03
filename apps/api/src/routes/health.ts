@@ -46,7 +46,6 @@ export function healthRouter(
         titlesReady: runtime.titlesReady,
         creditsReady: runtime.creditsReady,
         creditsFailed: catalog.creditsFailed(),
-        tmdbReady: hydration.complete,
       }),
       tmdbHydration: hydration,
     };

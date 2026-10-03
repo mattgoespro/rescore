@@ -119,7 +119,6 @@ export function isCatalogUsable(input: {
   titlesReady: boolean;
   creditsReady: boolean;
   creditsFailed?: boolean;
-  tmdbReady?: boolean;
 }): boolean {
   return (
     input.titlesReady && input.creditsReady && input.creditsFailed !== true
@@ -170,7 +169,6 @@ export function refreshCatalogStatus(
     titlesReady: ready.titlesReady,
     creditsReady: ready.creditsReady,
     creditsFailed: catalog.creditsFailed(),
-    tmdbReady: readTmdbHydration().complete,
   });
   if (usable) {
     const titleCount = catalog.titleCount();
