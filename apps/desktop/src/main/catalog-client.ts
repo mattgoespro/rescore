@@ -1,5 +1,5 @@
 import { catalogFetch } from "./catalog-connection";
-import { languageQueryCodes } from "../shared/languages";
+import { discoverQueryParams } from "./discover-slice";
 import type {
   DiscoverFilters,
   Genre,
@@ -290,33 +290,10 @@ export class CatalogClient {
       this.genreNames(filters.genres),
       this.genreNames(filters.withoutGenres),
     ]);
-    return {
-      page: filters.page,
-      pageSize: 40,
-      limit: 40,
-      query: filters.query || undefined,
-      kind:
-        filters.titleKind === "miniseries" ? "miniseries" : filters.titleKind,
-      yearMin: filters.yearMin ?? undefined,
-      yearMax: filters.yearMax ?? undefined,
-      ratingMin: filters.ratingMin || undefined,
-      votesMin: filters.voteCountMin || undefined,
-      runtimeMin: filters.runtimeMin ?? undefined,
-      runtimeMax: filters.runtimeMax ?? undefined,
-      genre: genreNames.length ? genreNames.join(",") : undefined,
-      withoutGenre: withoutGenreNames.length
-        ? withoutGenreNames.join(",")
-        : undefined,
-      withoutLanguage: filters.excludeLanguages.length
-        ? languageQueryCodes(filters.excludeLanguages).join(",")
-        : undefined,
-      hideWatched: filters.hideWatched ? "true" : undefined,
-      hideWatchlist: filters.hideWatchlist ? "true" : undefined,
-      sort: sortFor(filters.sortBy),
-      order: orderFor(filters.sortBy),
-      includeTotal: "false",
-      cursor: filters.cursor ?? undefined,
-    };
+    return discoverQueryParams(filters, {
+      genres: genreNames,
+      withoutGenres: withoutGenreNames,
+    });
   }
 }
 
@@ -358,18 +335,6 @@ function toLibraryEntry(
     castIds: movie.castIds ?? [],
     castNames: movie.castNames ?? [],
   };
-}
-
-function sortFor(sort: string): string {
-  if (sort.includes("vote_average")) return "rating";
-  if (sort.includes("vote_count") || sort.includes("popularity"))
-    return "votes";
-  if (sort.includes("release_date")) return "year";
-  return sort === "match" ? "votes" : "title";
-}
-
-function orderFor(sort: string): string {
-  return sort.includes(".asc") ? "asc" : sort === "title" ? "asc" : "desc";
 }
 
 function sleep(ms: number): Promise<void> {
