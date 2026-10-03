@@ -131,7 +131,8 @@ export class BackgroundService {
     setServiceConnection(connection);
     blockCatalogConnection(
       serviceRequired() &&
-        (!connection || record?.phase !== "ready" ||
+        (!connection ||
+          record?.phase !== "ready" ||
           connection.runtimeVersion !== app.getVersion()),
     );
   }
@@ -153,7 +154,8 @@ export class BackgroundService {
         logsAvailable,
         enabled: managed,
         state: "transitioning",
-        message: "Preparing the required catalogue service. Please keep Rescore open.",
+        message:
+          "Preparing the required catalogue service. Please keep Rescore open.",
       };
     try {
       this.reload();
@@ -164,7 +166,9 @@ export class BackgroundService {
           logsAvailable,
           enabled: false,
           state: this.error ? "error" : "not-installed",
-          message: this.error ?? "Catalogue service needs registration. Use Retry to continue.",
+          message:
+            this.error ??
+            "Catalogue service needs registration. Use Retry to continue.",
         };
       if (record.phase !== "ready")
         return {
@@ -224,7 +228,9 @@ export class BackgroundService {
 
   ensureRunning(): Promise<BackgroundServiceStatus> {
     if (this.ensuring) return this.ensuring;
-    this.ensuring = this.runEnsureRunning().finally(() => { this.ensuring = null; });
+    this.ensuring = this.runEnsureRunning().finally(() => {
+      this.ensuring = null;
+    });
     return this.ensuring;
   }
 
@@ -234,17 +240,42 @@ export class BackgroundService {
       if (!this.sid) await this.initialize();
       const status = await this.getStatus();
       const record = this.installation();
-      const expectedHash = createHash("sha256").update(readFileSync(join(process.resourcesPath, "api", "service-manifest.json"))).digest("hex");
-      const sameLocation = record && resolve(record.desktopRoot).toLowerCase() === resolve(process.resourcesPath, "..").toLowerCase();
-      if (status.state === "running" && sameLocation && record?.activated !== false && record?.runtimeHash?.toLowerCase() === expectedHash) {
-        const displayName = await powershell(`(Get-Service -Name ${quote(record.serviceName)} -ErrorAction Stop).DisplayName`);
+      const expectedHash = createHash("sha256")
+        .update(
+          readFileSync(
+            join(process.resourcesPath, "api", "service-manifest.json"),
+          ),
+        )
+        .digest("hex");
+      const sameLocation =
+        record &&
+        resolve(record.desktopRoot).toLowerCase() ===
+          resolve(process.resourcesPath, "..").toLowerCase();
+      if (
+        status.state === "running" &&
+        sameLocation &&
+        record?.activated !== false &&
+        record?.runtimeHash?.toLowerCase() === expectedHash
+      ) {
+        const displayName = await powershell(
+          `(Get-Service -Name ${quote(record.serviceName)} -ErrorAction Stop).DisplayName`,
+        );
         if (displayName === "Rescore API") return status;
       }
-      return await this.change(status.state === "error" && record?.phase === "ready" ? "Retry" : "EnsureRunning");
+      return await this.change(
+        status.state === "error" && record?.phase === "ready"
+          ? "Retry"
+          : "EnsureRunning",
+      );
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       blockCatalogConnection(true);
-      return { supported: true, enabled: managed, state: "error", message: this.error };
+      return {
+        supported: true,
+        enabled: managed,
+        state: "error",
+        message: this.error,
+      };
     }
   }
 
@@ -258,7 +289,9 @@ export class BackgroundService {
       process.platform !== "win32" ||
       process.arch !== "x64"
     )
-      throw new Error("Service requires a Windows x64 build, installed or unpacked.");
+      throw new Error(
+        "Service requires a Windows x64 build, installed or unpacked.",
+      );
     const script = join(process.resourcesPath, "service", "manage-service.ps1");
     if (!existsSync(script))
       throw new Error("Service installer is missing. Reinstall Rescore.");

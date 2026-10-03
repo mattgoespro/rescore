@@ -34,7 +34,11 @@ export class RatingsStore {
     this.markSynced(new Date().toISOString());
   }
 
-  replace(ratings: Map<string, ImdbRating>, syncedAt: string, persist = true): void {
+  replace(
+    ratings: Map<string, ImdbRating>,
+    syncedAt: string,
+    persist = true,
+  ): void {
     this.syncedAt = syncedAt;
     if (persist && this.catalog) {
       this.ratings = new Map();

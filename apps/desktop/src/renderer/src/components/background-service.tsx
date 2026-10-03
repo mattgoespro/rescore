@@ -108,8 +108,16 @@ export default function BackgroundService(): JSX.Element {
       </p>
       <div className="flex flex-wrap gap-2">
         {status?.supported && status.state !== "running" && (
-          <button type="button" className={btn("primary")} disabled={busy}
-            onClick={() => void run("Preparing service…", () => window.api.backgroundService.retry())}>
+          <button
+            type="button"
+            className={btn("primary")}
+            disabled={busy}
+            onClick={() =>
+              void run("Preparing serviceï¿½", () =>
+                window.api.backgroundService.retry(),
+              )
+            }
+          >
             Retry
           </button>
         )}

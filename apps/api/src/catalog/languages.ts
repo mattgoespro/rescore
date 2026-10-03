@@ -5,7 +5,11 @@ export function normalizeLanguageCodes(codes: readonly string[]): string[] {
   const languages: string[] = [];
   for (const code of codes) {
     const language = code.trim().toLowerCase();
-    if (!LANGUAGE_CODE.test(language) || language === "xx" || seen.has(language)) {
+    if (
+      !LANGUAGE_CODE.test(language) ||
+      language === "xx" ||
+      seen.has(language)
+    ) {
       continue;
     }
     seen.add(language);
@@ -20,6 +24,8 @@ export function languageCodes(details: {
 }): string[] {
   return normalizeLanguageCodes([
     details.original_language ?? "",
-    ...(details.spoken_languages ?? []).map((language) => language.iso_639_1 ?? ""),
+    ...(details.spoken_languages ?? []).map(
+      (language) => language.iso_639_1 ?? "",
+    ),
   ]);
 }

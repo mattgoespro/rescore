@@ -120,7 +120,9 @@ const ALIASES: Record<string, readonly string[]> = {
   iw: ["he", "iw"],
 };
 
-const BY_CODE = new Map(LANGUAGES.map((language) => [language.id, language.name]));
+const BY_CODE = new Map(
+  LANGUAGES.map((language) => [language.id, language.name]),
+);
 
 export function languageName(code: string): string {
   const key = code.toLowerCase();
@@ -140,7 +142,9 @@ export function languageQueryCodes(codes: readonly string[]): string[] {
   return query;
 }
 
-export function formatLanguages(codes: readonly string[] | undefined): string | null {
+export function formatLanguages(
+  codes: readonly string[] | undefined,
+): string | null {
   if (!codes?.length) return null;
   return codes.map((code) => languageName(code)).join(", ");
 }

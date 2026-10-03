@@ -1,18 +1,21 @@
-import { shutdownSignal, cancellableDelay } from "../services/runtime-lifecycle.js";
+import {
+  shutdownSignal,
+  cancellableDelay,
+} from "../services/runtime-lifecycle.js";
 type Work<T> = () => T | Promise<T>;
 
 export class CatalogWorkQueue {
   private tail: Promise<void> = Promise.resolve();
-  drain(): Promise<void> { return this.tail; }
+  drain(): Promise<void> {
+    return this.tail;
+  }
 
   enqueue<T>(work: Work<T>): Promise<T> {
     const result = this.tail.then(
       () =>
         new Promise<T>((resolve, reject) => {
           setImmediate(() => {
-            Promise.resolve()
-              .then(work)
-              .then(resolve, reject);
+            Promise.resolve().then(work).then(resolve, reject);
           });
         }),
     );
@@ -43,7 +46,11 @@ export function queueIdleAnalyze(
   idleMs = ANALYZE_IDLE_MS,
 ): Promise<void> {
   return maintenanceWorkQueue.enqueue(async () => {
-    try { await cancellableDelay(idleMs); } catch { return; }
+    try {
+      await cancellableDelay(idleMs);
+    } catch {
+      return;
+    }
     if (shutdownSignal.aborted) return;
     run();
   });

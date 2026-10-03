@@ -29,7 +29,8 @@ export function resetDownloadLine(): void {
 
 function threshold(): LogLevel {
   const raw = process.env.LOG_LEVEL;
-  if (raw === "debug" || raw === "info" || raw === "warn" || raw === "error") return raw;
+  if (raw === "debug" || raw === "info" || raw === "warn" || raw === "error")
+    return raw;
   return "info";
 }
 
@@ -45,7 +46,9 @@ function stdout(): LineSink {
 }
 
 function render(input: LogInput, color: boolean): string {
-  const message = input.message.replace(/(api_key=)[^&\s]+/gi, "$1[redacted]").replace(/Bearer\s+[a-z0-9._-]+/gi, "Bearer [redacted]");
+  const message = input.message
+    .replace(/(api_key=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/Bearer\s+[a-z0-9._-]+/gi, "Bearer [redacted]");
   return formatLine({ ...input, message, time: new Date() }, color);
 }
 

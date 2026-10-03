@@ -1,7 +1,9 @@
 import type { JSX } from "react";
 import { cn } from "../../lib/cn";
 
-export default function Suggestions<T extends { id: string | number; name: string }>({
+export default function Suggestions<
+  T extends { id: string | number; name: string },
+>({
   id,
   hits,
   active,

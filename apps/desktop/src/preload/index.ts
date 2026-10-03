@@ -21,9 +21,12 @@ import type { SearchHistoryInput } from "../shared/search-history";
 
 const api = {
   backgroundService: {
-    getStatus: (): Promise<BackgroundServiceStatus> => ipcRenderer.invoke("background-service:status"),
-    retry: (): Promise<BackgroundServiceStatus> => ipcRenderer.invoke("background-service:retry"),
-    openLogs: (): Promise<void> => ipcRenderer.invoke("background-service:logs"),
+    getStatus: (): Promise<BackgroundServiceStatus> =>
+      ipcRenderer.invoke("background-service:status"),
+    retry: (): Promise<BackgroundServiceStatus> =>
+      ipcRenderer.invoke("background-service:retry"),
+    openLogs: (): Promise<void> =>
+      ipcRenderer.invoke("background-service:logs"),
   },
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("settings:get"),
   setSettings: (patch: Partial<Settings>): Promise<Settings> =>

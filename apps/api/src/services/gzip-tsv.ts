@@ -66,7 +66,10 @@ export async function ensureGzipFile(
   mkdirSync(dirname(file), { recursive: true });
   const probe = probeOverride ?? (await probeRemote(url));
   if (!force && canReuseLocalFile(file, probe)) {
-    if (!readMeta(file) && (probe.etag || probe.lastModified || probe.contentLength)) {
+    if (
+      !readMeta(file) &&
+      (probe.etag || probe.lastModified || probe.contentLength)
+    ) {
       writeMeta(file, {
         etag: probe.etag,
         lastModified: probe.lastModified,
@@ -216,7 +219,9 @@ function isValidGzipFile(file: string): boolean {
 export function dumpFingerprint(file: string): string | null {
   const meta = readMeta(file);
   if (!meta) return null;
-  return meta.etag ?? meta.lastModified ?? (meta.size > 0 ? String(meta.size) : null);
+  return (
+    meta.etag ?? meta.lastModified ?? (meta.size > 0 ? String(meta.size) : null)
+  );
 }
 
 function metaPath(file: string): string {
@@ -225,10 +230,13 @@ function metaPath(file: string): string {
 
 function readMeta(file: string): FileMeta | null {
   try {
-    const raw = JSON.parse(readFileSync(metaPath(file), "utf8")) as Partial<FileMeta>;
+    const raw = JSON.parse(
+      readFileSync(metaPath(file), "utf8"),
+    ) as Partial<FileMeta>;
     return {
       etag: typeof raw.etag === "string" ? raw.etag : null,
-      lastModified: typeof raw.lastModified === "string" ? raw.lastModified : null,
+      lastModified:
+        typeof raw.lastModified === "string" ? raw.lastModified : null,
       contentLength:
         typeof raw.contentLength === "number" && raw.contentLength > 0
           ? raw.contentLength
@@ -245,7 +253,11 @@ function writeMeta(file: string, meta: FileMeta): void {
 }
 
 export async function probeRemote(url: string): Promise<RemoteProbe> {
-  const empty: RemoteProbe = { etag: null, lastModified: null, contentLength: null };
+  const empty: RemoteProbe = {
+    etag: null,
+    lastModified: null,
+    contentLength: null,
+  };
   try {
     const response = await fetch(url, {
       method: "HEAD",

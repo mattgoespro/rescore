@@ -134,7 +134,12 @@ async function runBuildTitles(
   const existing = catalog.catalogMeta();
 
   if (force) {
-    return reconcileTitles(catalog, existing, await downloadTitleDumps(force), force);
+    return reconcileTitles(
+      catalog,
+      existing,
+      await downloadTitleDumps(force),
+      force,
+    );
   }
 
   // Probe once and thread the exact same result into both the defer
@@ -149,7 +154,10 @@ async function runBuildTitles(
     remoteFingerprint: remoteTitleDumpFingerprint(probes),
   });
   if (deferred && existing.builtAt) {
-    log("Title dumps changed remotely; keeping existing catalogue searchable", "download");
+    log(
+      "Title dumps changed remotely; keeping existing catalogue searchable",
+      "download",
+    );
     catalog.setTitlesUpdateAvailable(true);
     return {
       titleCount: catalog.titleCount(),

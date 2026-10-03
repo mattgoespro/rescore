@@ -1,5 +1,9 @@
 import { publishHydratedTitles } from "./ensure-catalog.js";
-import { shutdownSignal, cancellableDelay, trackWork } from "./runtime-lifecycle.js";
+import {
+  shutdownSignal,
+  cancellableDelay,
+  trackWork,
+} from "./runtime-lifecycle.js";
 import {
   TMDB_API_BASE,
   TMDB_CONCURRENCY,
@@ -221,25 +225,43 @@ export class TmdbHydrationCoordinator {
     );
   }
 
-  private readonly jobs = new WeakMap<CatalogDatabase, Map<string, HydrationJob>>();
-  private readonly retryAfter = new WeakMap<CatalogDatabase, Map<string, number>>();
+  private readonly jobs = new WeakMap<
+    CatalogDatabase,
+    Map<string, HydrationJob>
+  >();
+  private readonly retryAfter = new WeakMap<
+    CatalogDatabase,
+    Map<string, number>
+  >();
   private readonly queue: HydrationJob[] = [];
   private running = 0;
   private interactiveStreak = 0;
 
-  hydrate(catalog: CatalogDatabase, id: string, kind: string, interactive: boolean): Promise<boolean> {
+  hydrate(
+    catalog: CatalogDatabase,
+    id: string,
+    kind: string,
+    interactive: boolean,
+  ): Promise<boolean> {
     const needsMedia = catalog.titleNeedsMedia(id);
-    if (!needsMedia && !catalog.titleNeedsLanguages(id)) return Promise.resolve(true);
+    if (!needsMedia && !catalog.titleNeedsLanguages(id))
+      return Promise.resolve(true);
     let jobs = this.jobs.get(catalog);
-    if (!jobs) { jobs = new Map(); this.jobs.set(catalog, jobs); }
+    if (!jobs) {
+      jobs = new Map();
+      this.jobs.set(catalog, jobs);
+    }
     const existing = jobs.get(id);
     if (existing) {
       if (interactive) existing.interactive = true;
       return existing.promise;
     }
-    if ((this.retryAfter.get(catalog)?.get(id) ?? 0) > Date.now()) return Promise.resolve(false);
+    if ((this.retryAfter.get(catalog)?.get(id) ?? 0) > Date.now())
+      return Promise.resolve(false);
     let finish!: (complete: boolean) => void;
-    const promise = new Promise<boolean>((resolve) => { finish = resolve; });
+    const promise = new Promise<boolean>((resolve) => {
+      finish = resolve;
+    });
     const job = { catalog, id, kind, interactive, promise, finish };
     jobs.set(id, job);
     this.queue.push(job);
@@ -250,13 +272,17 @@ export class TmdbHydrationCoordinator {
   private pump(): void {
     while (this.running < this.workerCount && this.queue.length) {
       // Reserve regular opportunities for background work under sustained UI load.
-      const preferred = this.interactiveStreak < 8
-        ? this.queue.findIndex((job) => job.interactive)
-        : this.queue.findIndex((job) => !job.interactive);
+      const preferred =
+        this.interactiveStreak < 8
+          ? this.queue.findIndex((job) => job.interactive)
+          : this.queue.findIndex((job) => !job.interactive);
       const job = this.queue.splice(preferred < 0 ? 0 : preferred, 1)[0];
       this.interactiveStreak = job.interactive ? this.interactiveStreak + 1 : 0;
       this.running++;
-      void this.execute(job).finally(() => { this.running--; this.pump(); });
+      void this.execute(job).finally(() => {
+        this.running--;
+        this.pump();
+      });
     }
     if (!this.workerCount || shutdownSignal.aborted) {
       for (const job of this.queue.splice(0)) {
@@ -276,16 +302,25 @@ export class TmdbHydrationCoordinator {
         publishHydratedTitles([job.id]);
       } else if (job.catalog.titleNeedsLanguages(job.id)) {
         const media = await findTitleMedia(this.clients, job.id, job.kind);
-        await job.catalog.updatePosterUrlsQueued([{ id: job.id, languages: media.languages }]);
+        await job.catalog.updatePosterUrlsQueued([
+          { id: job.id, languages: media.languages },
+        ]);
         publishHydratedTitles([job.id]);
       }
-      complete = !job.catalog.titleNeedsMedia(job.id) && !job.catalog.titleNeedsLanguages(job.id);
+      complete =
+        !job.catalog.titleNeedsMedia(job.id) &&
+        !job.catalog.titleNeedsLanguages(job.id);
       if (complete) this.retryAfter.get(job.catalog)?.delete(job.id);
     } catch (error) {
       let retry = this.retryAfter.get(job.catalog);
-      if (!retry) { retry = new Map(); this.retryAfter.set(job.catalog, retry); }
+      if (!retry) {
+        retry = new Map();
+        this.retryAfter.set(job.catalog, retry);
+      }
       retry.set(job.id, Date.now() + 30_000);
-      log(`Failed ${job.id}: ${error instanceof Error ? error.message : "unknown error"}`);
+      log(
+        `Failed ${job.id}: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
     } finally {
       this.jobs.get(job.catalog)?.delete(job.id);
       job.finish(complete);
@@ -384,14 +419,23 @@ export async function enrichPosters(
 
   activeTmdbCoordinator = coordinator;
   let stop = false;
-  const onInterrupt = (): void => { stop = true; };
+  const onInterrupt = (): void => {
+    stop = true;
+  };
   if (options.handleSignals !== false) process.once("SIGINT", onInterrupt);
   try {
     while (!stop && !shutdownSignal.aborted) {
-      const pending = catalog.listTitlesNeedingPosters(pageSize, drainPriorityIds(), true);
+      const pending = catalog.listTitlesNeedingPosters(
+        pageSize,
+        drainPriorityIds(),
+        true,
+      );
       if (!pending.length) break;
-      const completed = await Promise.all(pending.map((title) =>
-        coordinator.hydrate(catalog, title.id, title.kind, false)));
+      const completed = await Promise.all(
+        pending.map((title) =>
+          coordinator.hydrate(catalog, title.id, title.kind, false),
+        ),
+      );
       stats.processed += completed.length;
       stats.errors += completed.filter((done) => !done).length;
       const rows = catalog.mediaFor(pending.map((title) => title.id));
@@ -399,12 +443,16 @@ export async function enrichPosters(
       stats.missing += rows.filter((row) => row.posterUrl === "").length;
       durableProcessed = catalog.hydrationStats().processed;
       options.onProgress?.(durableProcessed, hydration.total);
-      if (stats.errors) throw new Error(`${stats.errors} TMDb lookups failed. They will be retried.`);
+      if (stats.errors)
+        throw new Error(
+          `${stats.errors} TMDb lookups failed. They will be retried.`,
+        );
       await yieldEventLoop();
     }
     return stats;
   } finally {
-    if (options.handleSignals !== false) process.removeListener("SIGINT", onInterrupt);
+    if (options.handleSignals !== false)
+      process.removeListener("SIGINT", onInterrupt);
   }
 }
 
@@ -422,7 +470,10 @@ export async function fillTitles(
 > {
   const rows = catalog.mediaFor(ids).slice(0, 40);
   const coordinator = activeTmdbCoordinator ?? tryCreateTmdbCoordinator();
-  if (coordinator) await Promise.all(rows.map((row) => coordinator.hydrate(catalog, row.id, row.kind, true)));
+  if (coordinator)
+    await Promise.all(
+      rows.map((row) => coordinator.hydrate(catalog, row.id, row.kind, true)),
+    );
   return catalog.mediaFor(rows.map((row) => row.id)).map((row) => ({
     id: row.id,
     synopsis: row.synopsis,
@@ -704,7 +755,10 @@ async function scheduledTmdbFetch(
   await client.scheduler.acquire();
   try {
     client.requests += 1;
-    return await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.any([shutdownSignal, AbortSignal.timeout(20000)]) });
+    return await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.any([shutdownSignal, AbortSignal.timeout(20000)]),
+    });
   } finally {
     client.scheduler.release();
   }
@@ -746,7 +800,9 @@ export function prioritizePosterIds(ids: string[]): void {
 }
 
 let lastPosterError: string | null = null;
-export function posterEnrichmentError(): string | null { return lastPosterError; }
+export function posterEnrichmentError(): string | null {
+  return lastPosterError;
+}
 
 export function isPosterEnrichmentRunning(): boolean {
   return posterInflight != null;

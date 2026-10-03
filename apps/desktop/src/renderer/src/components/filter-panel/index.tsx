@@ -125,7 +125,9 @@ export default function FilterPanel({
         }))}
         onChange={(languages) =>
           patch({
-            excludeLanguages: languages.map((language) => String(language.id)).slice(0, 12),
+            excludeLanguages: languages
+              .map((language) => String(language.id))
+              .slice(0, 12),
           })
         }
         search={async (query) =>

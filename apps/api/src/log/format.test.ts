@@ -40,8 +40,14 @@ test("formatLine paints stone, amber, and green and leaves the message plain", (
     },
     true,
   );
-  assert.match(line, /^\x1b\[38;5;245m19:25:03\.412\x1b\[0m  \x1b\[38;5;214mcatalog\x1b\[0m  /);
-  assert.match(line, /  \x1b\[32minfo\x1b\[0m {3}Checking title\.basics\.tsv\.gz$/);
+  assert.match(
+    line,
+    /^\x1b\[38;5;245m19:25:03\.412\x1b\[0m  \x1b\[38;5;214mcatalog\x1b\[0m  /,
+  );
+  assert.match(
+    line,
+    /  \x1b\[32minfo\x1b\[0m {3}Checking title\.basics\.tsv\.gz$/,
+  );
   assert.doesNotMatch(line, /Checking title\.basics\.tsv\.gz\x1b/);
 });
 

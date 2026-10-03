@@ -48,7 +48,10 @@ export default function SettingsView({
   const [catalogApiUrl, setCatalogApiUrl] = useState(settings.catalogApiUrl);
   const [serviceRequired, setServiceRequired] = useState(true);
   useEffect(() => {
-    void window.api.backgroundService.getStatus().then((status) => setServiceRequired(status.supported)).catch(() => undefined);
+    void window.api.backgroundService
+      .getStatus()
+      .then((status) => setServiceRequired(status.supported))
+      .catch(() => undefined);
   }, []);
   const [region, setRegion] = useState(settings.region);
   const [mode, setMode] = useState<RankingMode>(settings.rankingMode);
@@ -216,7 +219,8 @@ export default function SettingsView({
             </div>
           ) : null}
           <p className="text-xs leading-[1.45] text-pretty text-muted">
-            Posters, synopses, and age ratings fill in from TMDb while you browse.
+            Posters, synopses, and age ratings fill in from TMDb while you
+            browse.
           </p>
           <TmdbHealth />
           <BackgroundService />
@@ -225,35 +229,35 @@ export default function SettingsView({
           <div className="border border-line p-4.5">
             <h3 className="kicker">Ratings import</h3>
             <p className="text-xs leading-[1.45] text-pretty text-muted">
-              Export your ratings from IMDb, then choose the CSV. Imported titles
-              are marked watched.
+              Export your ratings from IMDb, then choose the CSV. Imported
+              titles are marked watched.
             </p>
             <div className="mb-3 flex flex-wrap gap-2">
-            <button
-              className={btn("primary")}
-              disabled={busy}
-              onClick={() => void importCsv()}
-            >
-              {busy ? "Importing…" : "Import ratings.csv"}
-            </button>
-            <button
-              className={btn()}
-              onClick={async () => {
-                await window.api.exportLibrary();
-              }}
-            >
-              Export library JSON
-            </button>
-            <button
-              className={btn("danger")}
-              onClick={async () => {
-                if (confirm("Clear local ratings, watchlist, and skips?")) {
-                  onLibraryChange(await window.api.clearLibrary());
-                }
-              }}
-            >
-              Clear library
-            </button>
+              <button
+                className={btn("primary")}
+                disabled={busy}
+                onClick={() => void importCsv()}
+              >
+                {busy ? "Importing…" : "Import ratings.csv"}
+              </button>
+              <button
+                className={btn()}
+                onClick={async () => {
+                  await window.api.exportLibrary();
+                }}
+              >
+                Export library JSON
+              </button>
+              <button
+                className={btn("danger")}
+                onClick={async () => {
+                  if (confirm("Clear local ratings, watchlist, and skips?")) {
+                    onLibraryChange(await window.api.clearLibrary());
+                  }
+                }}
+              >
+                Clear library
+              </button>
             </div>
             {progress ? (
               <div>
@@ -268,9 +272,9 @@ export default function SettingsView({
                   />
                 </div>
                 <div className="text-xs leading-[1.45] text-muted tabular">
-                  {progress.current}/{progress.total} {progress.title} · imported{" "}
-                  {progress.imported} · skipped {progress.skipped} · errors{" "}
-                  {progress.errors}
+                  {progress.current}/{progress.total} {progress.title} ·
+                  imported {progress.imported} · skipped {progress.skipped} ·
+                  errors {progress.errors}
                 </div>
               </div>
             ) : null}

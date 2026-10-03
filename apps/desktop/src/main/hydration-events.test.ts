@@ -56,6 +56,8 @@ test("builds the local hydration event endpoint", () => {
 
 test("preserves validated title completion IDs for visible refresh", () => {
   const parser = createHydrationEventParser();
-  const [event] = parser.push(`event: hydration\ndata: ${JSON.stringify({ processed: 1, total: 100, percent: 1, complete: false, message: "Loading", completedIds: ["tt0000001", "invalid", 4] })}\n\n`);
+  const [event] = parser.push(
+    `event: hydration\ndata: ${JSON.stringify({ processed: 1, total: 100, percent: 1, complete: false, message: "Loading", completedIds: ["tt0000001", "invalid", 4] })}\n\n`,
+  );
   assert.deepEqual(event.completedIds, ["tt0000001"]);
 });

@@ -17,9 +17,8 @@ process.env.IMDB_DATA_DIR = dataDir;
 const { buildCatalogTitles } = await import("./run-build.js");
 const { titleDumpUrls } = await import("./download-dumps.js");
 const { DATASET_FILE } = await import("../config.js");
-const { CatalogDatabase: CatalogDatabaseCtor } = await import(
-  "../catalog/index.js"
-);
+const { CatalogDatabase: CatalogDatabaseCtor } =
+  await import("../catalog/index.js");
 
 const BASICS_FILE = "title.basics.tsv.gz";
 const urls = titleDumpUrls();
@@ -99,7 +98,10 @@ function seedUsableCatalog(
   catalog.setTitleDumpFingerprint(options.fingerprint);
 }
 
-type ProbeResult = { etag?: string | null; lastModified?: string | null } | null;
+type ProbeResult = {
+  etag?: string | null;
+  lastModified?: string | null;
+} | null;
 
 interface FetchHandlers {
   head: (url: string) => ProbeResult;
@@ -121,11 +123,14 @@ function installFetch(handlers: FetchHandlers): void {
       if (!result) return new Response(null, { status: 500 });
       const headers = new Headers();
       if (result.etag) headers.set("etag", result.etag);
-      if (result.lastModified) headers.set("last-modified", result.lastModified);
+      if (result.lastModified)
+        headers.set("last-modified", result.lastModified);
       return new Response(null, { status: 200, headers });
     }
     if (!handlers.get) {
-      throw new Error(`Unexpected download request (no GET handler installed): ${url}`);
+      throw new Error(
+        `Unexpected download request (no GET handler installed): ${url}`,
+      );
     }
     const body = handlers.get(url);
     return new Response(new Uint8Array(body), {
@@ -155,7 +160,10 @@ test("partial probe failure does not set titlesUpdateAvailable", async () => {
     BASICS_HEADER,
     "tt0000001\tmovie\tExisting Title\tExisting Title\t0\t1999\t\\N\t100\tDrama",
   ]);
-  seedUsableCatalog(catalog, { id: "tt0000001", fingerprint: "etag-r1\netag-b1" });
+  seedUsableCatalog(catalog, {
+    id: "tt0000001",
+    fingerprint: "etag-r1\netag-b1",
+  });
 
   installFetch({
     head: (url) => {
@@ -225,7 +233,8 @@ test("force still downloads and reconciles", async () => {
       return null;
     },
     get: (url) => {
-      if (url === urls.ratings) return gzipTsv([RATINGS_HEADER, "tt0000002\t7.5\t500"]);
+      if (url === urls.ratings)
+        return gzipTsv([RATINGS_HEADER, "tt0000002\t7.5\t500"]);
       if (url === urls.basics) {
         return gzipTsv([
           BASICS_HEADER,
@@ -238,7 +247,11 @@ test("force still downloads and reconciles", async () => {
 
   const result = await buildCatalogTitles(catalog, { force: true });
 
-  assert.equal(result.unchanged, undefined, "force must always reconcile, not early-return");
+  assert.equal(
+    result.unchanged,
+    undefined,
+    "force must always reconcile, not early-return",
+  );
   assert.equal(catalog.title("tt0000002")?.title, "New Title");
   assert.equal(catalog.titlesUpdateAvailable(), false);
   catalog.close();
@@ -254,7 +267,8 @@ test("an empty catalogue still ingests", async () => {
       return null;
     },
     get: (url) => {
-      if (url === urls.ratings) return gzipTsv([RATINGS_HEADER, "tt0000009\t9.0\t200"]);
+      if (url === urls.ratings)
+        return gzipTsv([RATINGS_HEADER, "tt0000009\t9.0\t200"]);
       if (url === urls.basics) {
         return gzipTsv([
           BASICS_HEADER,

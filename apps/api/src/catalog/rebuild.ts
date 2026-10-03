@@ -161,9 +161,7 @@ export function creditSignatures(db: Database.Database): Map<string, string> {
     list.push(`${row.role}:${row.nconst}`);
     signatures.set(row.title_id, list);
   }
-  return new Map(
-    [...signatures].map(([id, parts]) => [id, parts.join("|")]),
-  );
+  return new Map([...signatures].map(([id, parts]) => [id, parts.join("|")]));
 }
 
 export function replaceTitleCredits(

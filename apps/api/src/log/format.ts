@@ -1,12 +1,7 @@
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogChannel = "catalog" | "posters" | "ratings" | "http" | "api";
 export type CatalogPhase =
-  | "download"
-  | "reconcile"
-  | "credits"
-  | "posters"
-  | "startup"
-  | "shutdown";
+  "download" | "reconcile" | "credits" | "posters" | "startup" | "shutdown";
 
 export interface LogFields {
   time: Date;
@@ -32,7 +27,9 @@ const LEVEL_COLOR: Record<LogLevel, string> = {
 };
 
 export function padColumn(value: string, width: number): string {
-  return value.length >= width ? value.slice(0, width) : value.padEnd(width, " ");
+  return value.length >= width
+    ? value.slice(0, width)
+    : value.padEnd(width, " ");
 }
 
 export function formatClock(time: Date): string {

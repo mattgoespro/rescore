@@ -1,6 +1,8 @@
 import type { JSX } from "react";
 
-export default function ValueChips<T extends { id: string | number; name: string }>({
+export default function ValueChips<
+  T extends { id: string | number; name: string },
+>({
   values,
   onRemove,
 }: {

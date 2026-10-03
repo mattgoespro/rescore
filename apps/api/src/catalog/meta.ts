@@ -70,7 +70,9 @@ export function flagIsSet(db: Database.Database, key: string): boolean {
 
 export function readiness(db: Database.Database): CatalogReadiness {
   const titleCount = (
-    db.prepare("SELECT count(*) AS count FROM titles").get() as { count: number }
+    db.prepare("SELECT count(*) AS count FROM titles").get() as {
+      count: number;
+    }
   ).count;
   const builtAt = readCatalogMeta(db).builtAt;
   const titlesReady = titleCount > 0 && Boolean(builtAt);

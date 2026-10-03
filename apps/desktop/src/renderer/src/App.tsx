@@ -152,12 +152,17 @@ export default function App(): JSX.Element {
     let complete = false;
     const loadDetails = async (): Promise<void> => {
       try {
-        const movie = await window.api.movie(selected.imdbId, selected.mediaType);
+        const movie = await window.api.movie(
+          selected.imdbId,
+          selected.mediaType,
+        );
         if (!cancelled) {
           setDetails(movie);
           if (movie) detailsCache.current.set(key, movie);
         }
-      } catch { if (!cancelled) setDetails(null); }
+      } catch {
+        if (!cancelled) setDetails(null);
+      }
     };
     setDetails(detailsCache.current.get(key) ?? null);
     void loadDetails();
@@ -168,8 +173,11 @@ export default function App(): JSX.Element {
         const rows = await window.api.fillMedia([selected.imdbId]);
         complete = rows[0]?.hydrationComplete === true;
         if (!cancelled) await loadDetails();
-      } catch { /* Existing detail remains available while metadata retries. */ }
-      finally { filling = false; }
+      } catch {
+        /* Existing detail remains available while metadata retries. */
+      } finally {
+        filling = false;
+      }
     };
     void fill();
     const unsubscribe = window.api.onCatalogStatus((status) => {
@@ -179,7 +187,11 @@ export default function App(): JSX.Element {
       }
     });
     const timer = window.setInterval(() => void fill(), 30_000);
-    return () => { cancelled = true; unsubscribe(); window.clearInterval(timer); };
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      window.clearInterval(timer);
+    };
   }, [selected]);
 
   async function saveSettings(patch: Partial<Settings>): Promise<void> {
@@ -333,12 +345,19 @@ export default function App(): JSX.Element {
               />
             </div>
           ) : null}
-          {!catalogBusy && catalogStatus?.tmdbHydration && !catalogStatus.tmdbHydration.complete && (
-            <p role="status" className="mx-4 my-2 shrink-0 text-xs text-muted">
-              {catalogStatus.tmdbHydration.message || "Metadata loads as you browse."}
-              {" "}{catalogStatus.tmdbHydration.processed.toLocaleString()} / {catalogStatus.tmdbHydration.total.toLocaleString()}
-            </p>
-          )}
+          {!catalogBusy &&
+            catalogStatus?.tmdbHydration &&
+            !catalogStatus.tmdbHydration.complete && (
+              <p
+                role="status"
+                className="mx-4 my-2 shrink-0 text-xs text-muted"
+              >
+                {catalogStatus.tmdbHydration.message ||
+                  "Metadata loads as you browse."}{" "}
+                {catalogStatus.tmdbHydration.processed.toLocaleString()} /{" "}
+                {catalogStatus.tmdbHydration.total.toLocaleString()}
+              </p>
+            )}
           {view === "settings" ? (
             <SettingsView
               settings={settings}

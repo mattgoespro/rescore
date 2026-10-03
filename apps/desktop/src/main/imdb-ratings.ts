@@ -31,14 +31,17 @@ export class ImdbRatingsClient {
     try {
       for (let index = 0; index < unique.length; index += 200) {
         const chunk = unique.slice(index, index + 200);
-        const response = await catalogFetch(`${effectiveCatalogUrl(this.baseUrl)}/ratings`, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
+        const response = await catalogFetch(
+          `${effectiveCatalogUrl(this.baseUrl)}/ratings`,
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ ids: chunk }),
           },
-          body: JSON.stringify({ ids: chunk }),
-        });
+        );
         if (!response.ok) return found;
         const data = (await response.json()) as RatingsResponse;
         for (const [id, row] of Object.entries(data.ratings ?? {})) {

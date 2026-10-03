@@ -1,20 +1,24 @@
-import { randomBytes } from "node:crypto";
-import { effectiveCatalogUrl, serviceConnection, matchesServiceHealth } from "./catalog-connection";
-import { serviceOwnsCatalog } from "./background-service";
-import { catalogFetch } from "./catalog-connection";
+import { is } from "@electron-toolkit/utils";
+import { app, type BrowserWindow } from "electron";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { app, type BrowserWindow } from "electron";
-import { is } from "@electron-toolkit/utils";
 import {
   DEFAULT_CATALOG_API_URL,
   type CatalogPhase,
   type CatalogStatus,
 } from "../shared/types";
-import { shouldRestartHungChild, shouldSpawnReplacement } from "./api-watch";
 import { planApiLaunch } from "./api-launch";
+import { shouldRestartHungChild, shouldSpawnReplacement } from "./api-watch";
+import { serviceOwnsCatalog } from "./background-service";
+import {
+  catalogFetch,
+  effectiveCatalogUrl,
+  matchesServiceHealth,
+  serviceConnection,
+} from "./catalog-connection";
 import { shouldFinishCatalogPoll } from "./catalog-poll";
 import { shouldTerminateCatalogApi } from "./catalog-reload";
 import {
@@ -100,12 +104,21 @@ export function createCatalogRuntime(
     if (shouldTerminateCatalogApi({ ownsApi: child != null })) {
       try {
         await fetch(new URL("/internal/shutdown", catalogUrl(store)), {
-          method: "POST", headers: { Authorization: `Bearer ${controlToken}` },
-          signal: AbortSignal.timeout(5000), redirect: "error",
+          method: "POST",
+          headers: { Authorization: `Bearer ${controlToken}` },
+          signal: AbortSignal.timeout(5000),
+          redirect: "error",
         });
         const deadline = Date.now() + 30_000;
-        while (child?.exitCode == null && child?.signalCode == null && Date.now() < deadline) await sleep(100);
-      } catch { /* Process may already have exited. */ }
+        while (
+          child?.exitCode == null &&
+          child?.signalCode == null &&
+          Date.now() < deadline
+        )
+          await sleep(100);
+      } catch {
+        /* Process may already have exited. */
+      }
       await killProcessTree(child);
     }
   }
@@ -129,7 +142,13 @@ export function createCatalogRuntime(
       if (generation !== gen || quitting) return;
       if (!reachable) {
         if (serviceOwnsCatalog()) {
-          publish({ ...current, phase: "error", error: "Catalogue service unavailable. Open Settings for details and Retry.", message: "The required catalogue service is unavailable." });
+          publish({
+            ...current,
+            phase: "error",
+            error:
+              "Catalogue service unavailable. Open Settings for details and Retry.",
+            message: "The required catalogue service is unavailable.",
+          });
           return;
         }
         if (!spawned || spawned.exitCode != null) {
@@ -246,7 +265,12 @@ export function createCatalogRuntime(
       restartAttempts = 0;
       const next = statusFromHealth(health);
       publish(next);
-      if (shouldFinishCatalogPoll({ phase: next.phase, catalogUsable: next.catalogUsable })) {
+      if (
+        shouldFinishCatalogPoll({
+          phase: next.phase,
+          catalogUsable: next.catalogUsable,
+        })
+      ) {
         return;
       }
       await sleep(next.download ? 200 : POLL_MS);
@@ -352,7 +376,13 @@ export function createCatalogRuntime(
   async function recoverApi(baseUrl: string, gen: number): Promise<void> {
     if (generation !== gen || quitting || recovering) return;
     if (serviceOwnsCatalog()) {
-      publish({ ...current, phase: "error", error: "Background service unavailable", message: "Background catalogue service is unavailable. Use Retry in Settings." });
+      publish({
+        ...current,
+        phase: "error",
+        error: "Background service unavailable",
+        message:
+          "Background catalogue service is unavailable. Use Retry in Settings.",
+      });
       return;
     }
     recovering = true;
@@ -425,7 +455,11 @@ export function createCatalogRuntime(
   function spawnApi(
     baseUrl: string,
   ): { ok: true; child: ChildProcess } | { ok: false; message: string } {
-    if (serviceOwnsCatalog()) return { ok: false, message: "Catalogue is owned by the Windows service." };
+    if (serviceOwnsCatalog())
+      return {
+        ok: false,
+        message: "Catalogue is owned by the Windows service.",
+      };
     const plan = planApiLaunch(
       {
         dev: is.dev,
@@ -635,7 +669,12 @@ async function canReach(baseUrl: string): Promise<boolean> {
       signal: AbortSignal.timeout(1500),
     });
     const expected = serviceConnection();
-    if (serviceOwnsCatalog()) return !!expected && response.ok && matchesServiceHealth(await response.json(), expected);
+    if (serviceOwnsCatalog())
+      return (
+        !!expected &&
+        response.ok &&
+        matchesServiceHealth(await response.json(), expected)
+      );
     return response.status < 500 || response.status === 503;
   } catch {
     return false;
@@ -650,7 +689,11 @@ async function readHealth(baseUrl: string): Promise<HealthPayload | null> {
     });
     const health = await response.json();
     const expected = serviceConnection();
-    if (serviceOwnsCatalog() && (!expected || !matchesServiceHealth(health, expected))) return null;
+    if (
+      serviceOwnsCatalog() &&
+      (!expected || !matchesServiceHealth(health, expected))
+    )
+      return null;
     return health as HealthPayload;
   } catch {
     return null;

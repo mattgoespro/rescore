@@ -172,12 +172,9 @@ export default function Discover({
     }
   }
 
-
   function canLoadMore(): boolean {
     return (
-      !loadingRef.current &&
-      !loadingMoreRef.current &&
-      lastPageFullRef.current
+      !loadingRef.current && !loadingMoreRef.current && lastPageFullRef.current
     );
   }
 
@@ -245,7 +242,10 @@ export default function Discover({
     history.find((entry) => matchesSearchHistory(filters, entry))?.id ?? null;
 
   return (
-    <section ref={containerRef} className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[280px_minmax(0,1fr)_minmax(280px,400px)] inspect:grid-rows-none">
+    <section
+      ref={containerRef}
+      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[280px_minmax(0,1fr)_minmax(280px,400px)] inspect:grid-rows-none"
+    >
       <FilterPanel
         filters={filters}
         setFilters={setFilters}
@@ -337,21 +337,23 @@ export default function Discover({
                       : "flex flex-col",
                   )}
                 >
-                  {items.map((movie) => mergeTitleMedia(movie, media)).map((movie, index) => (
-                    <MovieCard
-                      key={titleKey(movie)}
-                      movie={movie}
-                      active={selectedId === titleKey(movie)}
-                      layout={layout}
-                      entering={entering}
-                      enterDelay={enterDelayMs(
-                        index,
-                        layout === "grid" ? gridCols : 1,
-                        layout === "grid" ? 36 : 18,
-                      )}
-                      onOpen={handleCardOpen}
-                    />
-                  ))}
+                  {items
+                    .map((movie) => mergeTitleMedia(movie, media))
+                    .map((movie, index) => (
+                      <MovieCard
+                        key={titleKey(movie)}
+                        movie={movie}
+                        active={selectedId === titleKey(movie)}
+                        layout={layout}
+                        entering={entering}
+                        enterDelay={enterDelayMs(
+                          index,
+                          layout === "grid" ? gridCols : 1,
+                          layout === "grid" ? 36 : 18,
+                        )}
+                        onOpen={handleCardOpen}
+                      />
+                    ))}
                 </div>
               </InfiniteScroll>
             ) : null}

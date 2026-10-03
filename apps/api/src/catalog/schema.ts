@@ -136,7 +136,9 @@ export function dropFtsTriggers(db: Database.Database): void {
 }
 
 export function restoreFtsTriggers(db: Database.Database): void {
-  db.exec(`${FTS_INSERT_TRIGGER}; ${FTS_DELETE_TRIGGER}; ${FTS_UPDATE_TRIGGER}`);
+  db.exec(
+    `${FTS_INSERT_TRIGGER}; ${FTS_DELETE_TRIGGER}; ${FTS_UPDATE_TRIGGER}`,
+  );
 }
 
 export function rebuildFtsIndex(db: Database.Database): void {
@@ -153,7 +155,9 @@ export function applyMigrations(db: Database.Database): void {
   migrations.forEach((sql, index) => {
     const version = index + 1;
     if (
-      db.prepare("SELECT 1 FROM schema_migrations WHERE version = ?").get(version)
+      db
+        .prepare("SELECT 1 FROM schema_migrations WHERE version = ?")
+        .get(version)
     ) {
       return;
     }

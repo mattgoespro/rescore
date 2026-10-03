@@ -58,9 +58,7 @@ export async function downloadTitleDumps(
 export async function downloadCreditDumps(
   force = false,
 ): Promise<CreditDumpFiles> {
-  const dumps = (
-    ["crew", "principals", "names"] as const
-  ).map((key) => ({
+  const dumps = (["crew", "principals", "names"] as const).map((key) => ({
     key,
     name: TITLE_FILES[key],
     url: `${IMDB_DATASETS_BASE}/${TITLE_FILES[key]}`,

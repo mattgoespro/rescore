@@ -10,7 +10,8 @@ export function tmdbHealthPercent(
   if (total <= 0 || filled <= 0) return { label: "0%", width: 0, value: 0 };
   const exact = (filled / total) * 100;
   const value = Math.round(exact);
-  if (value === 0) return { label: "<1%", width: Math.max(exact, 0.8), value: 1 };
+  if (value === 0)
+    return { label: "<1%", width: Math.max(exact, 0.8), value: 1 };
   return { label: `${value}%`, width: exact, value };
 }
 
@@ -31,7 +32,11 @@ export function isCatalogUiBlocked(
   } | null,
 ): boolean {
   if (!status) return true;
-  if (status.phase === "error" || status.phase === "starting" || status.phase === "building") {
+  if (
+    status.phase === "error" ||
+    status.phase === "starting" ||
+    status.phase === "building"
+  ) {
     return true;
   }
   return status.catalogUsable !== true;

@@ -61,7 +61,6 @@ export default function ForYou({
     }
   }
 
-
   useEffect(() => {
     void load();
   }, [rankingMode]);
@@ -74,7 +73,9 @@ export default function ForYou({
 
   const ready = (result?.profile ?? profile)?.ready;
 
-  const movies = (result?.movies ?? []).map((movie) => mergeTitleMedia(movie, media));
+  const movies = (result?.movies ?? []).map((movie) =>
+    mergeTitleMedia(movie, media),
+  );
   const refreshing = loading && movies.length > 0;
 
   return (

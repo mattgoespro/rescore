@@ -1,8 +1,5 @@
 import type { JSX } from "react";
-import {
-  SORT_OPTIONS,
-  type DiscoverFilters,
-} from "../../../../shared/types";
+import { SORT_OPTIONS, type DiscoverFilters } from "../../../../shared/types";
 import Select from "../select";
 import Field from "./field";
 

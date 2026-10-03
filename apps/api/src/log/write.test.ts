@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { emit, emitDownload, resetDownloadLine, type LineSink } from "./write.js";
+import {
+  emit,
+  emitDownload,
+  resetDownloadLine,
+  type LineSink,
+} from "./write.js";
 
 function capture(isTTY: boolean): { sink: LineSink; chunks: string[] } {
   const chunks: string[] = [];
@@ -30,7 +35,10 @@ test("emit writes one plain line when the sink is not a TTY", () => {
   const { sink, chunks } = capture(false);
   emit(info, sink);
   assert.equal(chunks.length, 1);
-  assert.match(chunks[0] ?? "", /  catalog  download   info   Checking title\.ratings\.tsv\.gz\n$/);
+  assert.match(
+    chunks[0] ?? "",
+    /  catalog  download   info   Checking title\.ratings\.tsv\.gz\n$/,
+  );
   assert.doesNotMatch(chunks[0] ?? "", /\x1b/);
 });
 
@@ -51,21 +59,36 @@ test("warn passes the default info threshold", () => {
 
 test("a TTY download redraws with carriage return and the next line breaks first", () => {
   const { sink, chunks } = capture(true);
-  emitDownload({ ...info, message: "Downloading title.ratings.tsv.gz" }, false, sink);
-  emitDownload({ ...info, message: "Downloading title.ratings.tsv.gz complete" }, true, sink);
+  emitDownload(
+    { ...info, message: "Downloading title.ratings.tsv.gz" },
+    false,
+    sink,
+  );
+  emitDownload(
+    { ...info, message: "Downloading title.ratings.tsv.gz complete" },
+    true,
+    sink,
+  );
   emit({ ...info, phase: "reconcile", message: "Loading IMDb ratings" }, sink);
   assert.match(chunks[0] ?? "", /^\r/);
   assert.doesNotMatch(chunks[0] ?? "", /\n$/);
   assert.match(chunks[1] ?? "", /^\r/);
   assert.match(chunks[1] ?? "", /\n$/);
-  assert.match(chunks[2] ?? "", /catalog.*reconcile.*info.*Loading IMDb ratings\n$/);
+  assert.match(
+    chunks[2] ?? "",
+    /catalog.*reconcile.*info.*Loading IMDb ratings\n$/,
+  );
 });
 
 test("a non-TTY download logs start and completion only as full lines", () => {
   const { sink, chunks } = capture(false);
   emitDownload(info, false, sink);
   emitDownload({ ...info, message: "still going" }, false, sink);
-  emitDownload({ ...info, message: "Downloading title.ratings.tsv.gz complete" }, true, sink);
+  emitDownload(
+    { ...info, message: "Downloading title.ratings.tsv.gz complete" },
+    true,
+    sink,
+  );
   assert.equal(chunks.length, 2);
   assert.match(chunks[0] ?? "", /Checking title\.ratings\.tsv\.gz\n$/);
   assert.match(chunks[1] ?? "", /complete\n$/);

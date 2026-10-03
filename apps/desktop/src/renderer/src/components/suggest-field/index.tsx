@@ -1,8 +1,16 @@
-import { useEffect, useId, useState, type JSX, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+} from "react";
 import Suggestions from "./suggestions";
 import ValueChips from "./value-chips";
 
-export default function SuggestField<T extends { id: string | number; name: string }>({
+export default function SuggestField<
+  T extends { id: string | number; name: string },
+>({
   label,
   hint,
   placeholder,
@@ -43,7 +51,8 @@ export default function SuggestField<T extends { id: string | number; name: stri
   }, [hits]);
 
   function add(item: T): void {
-    if (!values.some((value) => value.id === item.id)) onChange([...values, item]);
+    if (!values.some((value) => value.id === item.id))
+      onChange([...values, item]);
     setQuery("");
     setHits([]);
   }
@@ -97,12 +106,7 @@ export default function SuggestField<T extends { id: string | number; name: stri
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <Suggestions
-          id={listId}
-          hits={hits}
-          active={active}
-          onSelect={add}
-        />
+        <Suggestions id={listId} hits={hits} active={active} onSelect={add} />
       </div>
       <ValueChips
         values={values}

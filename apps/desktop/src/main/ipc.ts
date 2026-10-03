@@ -1,5 +1,9 @@
 import { effectiveCatalogUrl } from "./catalog-connection";
-import { BackgroundService, serviceOwnsCatalog, serviceRequired } from "./background-service";
+import {
+  BackgroundService,
+  serviceOwnsCatalog,
+  serviceRequired,
+} from "./background-service";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -36,12 +40,26 @@ let getWindow: () => BrowserWindow | null;
 let catalog: CatalogRuntime;
 
 function trustedServiceSender(event: Electron.IpcMainInvokeEvent): boolean {
-  if (event.sender !== getWindow()?.webContents || event.senderFrame !== event.sender.mainFrame) return false;
+  if (
+    event.sender !== getWindow()?.webContents ||
+    event.senderFrame !== event.sender.mainFrame
+  )
+    return false;
   try {
     const url = new URL(event.senderFrame.url);
-    if (app.isPackaged) return url.protocol === "file:" && fileURLToPath(url).toLowerCase() === resolve(__dirname, "../renderer/index.html").toLowerCase();
-    return !!process.env.ELECTRON_RENDERER_URL && url.origin === new URL(process.env.ELECTRON_RENDERER_URL).origin;
-  } catch { return false; }
+    if (app.isPackaged)
+      return (
+        url.protocol === "file:" &&
+        fileURLToPath(url).toLowerCase() ===
+          resolve(__dirname, "../renderer/index.html").toLowerCase()
+      );
+    return (
+      !!process.env.ELECTRON_RENDERER_URL &&
+      url.origin === new URL(process.env.ELECTRON_RENDERER_URL).origin
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function registerIpc(
@@ -54,22 +72,32 @@ export function registerIpc(
   getWindow = windowGetter;
   catalog = catalogRuntime;
   const serviceAction = (event: Electron.IpcMainInvokeEvent) => {
-    if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+    if (!trustedServiceSender(event))
+      throw new Error("Untrusted service request");
     return backgroundService.ensureRunning();
   };
   ipcMain.handle("background-service:status", (event) => {
-    if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+    if (!trustedServiceSender(event))
+      throw new Error("Untrusted service request");
     return backgroundService.getStatus();
   });
   ipcMain.handle("background-service:retry", (event) => serviceAction(event));
   ipcMain.handle("background-service:logs", (event) => {
-    if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+    if (!trustedServiceSender(event))
+      throw new Error("Untrusted service request");
     return backgroundService.openLogs();
   });
   ipcMain.handle("settings:get", () => store.getSettings());
   ipcMain.handle("settings:set", (_event, patch: Partial<Settings>) => {
     const previousUrl = store.getSettings().catalogApiUrl;
-    if (serviceOwnsCatalog() && patch.catalogApiUrl !== undefined && patch.catalogApiUrl !== previousUrl) throw new Error("Packaged Windows builds require the local catalogue service.");
+    if (
+      serviceOwnsCatalog() &&
+      patch.catalogApiUrl !== undefined &&
+      patch.catalogApiUrl !== previousUrl
+    )
+      throw new Error(
+        "Packaged Windows builds require the local catalogue service.",
+      );
     const next = store.setSettings(patch);
     if (next.catalogApiUrl !== previousUrl) catalog.retry();
     else if (!isAppearanceOnlyPatch(patch))
@@ -87,7 +115,8 @@ export function registerIpc(
   );
   ipcMain.handle("catalog:retry", async (event) => {
     if (serviceRequired()) {
-      if (!trustedServiceSender(event)) throw new Error("Untrusted service request");
+      if (!trustedServiceSender(event))
+        throw new Error("Untrusted service request");
       await backgroundService.ensureRunning();
     }
     catalog.retry();

@@ -21,7 +21,8 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
         ? error.message
         : "Request failed";
   if (status === 500) {
-    const id = typeof res.locals.requestId === "string" ? res.locals.requestId : "----";
+    const id =
+      typeof res.locals.requestId === "string" ? res.locals.requestId : "----";
     const detail = error instanceof Error ? error.message : String(error);
     const stack =
       process.env.LOG_LEVEL === "debug" && error instanceof Error && error.stack

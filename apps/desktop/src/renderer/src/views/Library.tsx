@@ -35,7 +35,6 @@ export default function Library({
     );
   }, [library, tab]);
 
-
   const avg = average(
     library.filter((e) => e.rating != null).map((e) => e.rating as number),
   );
@@ -98,92 +97,92 @@ export default function Library({
         </div>
       ) : (
         <div className="flex flex-col">
-          {rows.map((entry) => mergeTitleMedia(entry, media)).map((entry) => (
-            <div
-              className={rankedRow(
-                selectedId === titleKey(entry),
-                "relative isolate",
-              )}
-              key={titleKey(entry)}
-              data-imdb-id={entry.imdbId}
-            >
-              <button
-                type="button"
-                className="absolute inset-0 z-1 border-0 bg-transparent p-0"
-                aria-label={`Open ${entry.title}`}
-                onClick={() =>
-                  onOpen({
-                    mediaType: entry.mediaType ?? "movie",
-                    titleKind:
-                      entry.titleKind ??
-                      (entry.mediaType === "tv" ? "tv" : "movie"),
-                    imdbId: entry.imdbId,
-                    title: entry.title,
-                    overview: entry.overview ?? "",
-                    posterPath: entry.posterPath ?? null,
-                    backdropPath: entry.backdropPath ?? null,
-                    releaseDate: entry.releaseDate ?? "",
-                    year: entry.year,
-                    genreIds: entry.genreIds,
-                    originalLanguage: entry.originalLanguage ?? "",
-                    popularity: 0,
-                    voteAverage: entry.voteAverage,
-                    voteCount: entry.voteCount,
-                    adult: false,
-                    runtime: entry.runtime,
-                    certification: entry.certification,
-                    directorIds: entry.directorIds,
-                    directorNames: entry.directorNames,
-                    castIds: entry.castIds,
-                    castNames: entry.castNames,
-                  })
-                }
-              />
-              <div className="tabular text-center text-xl font-bold tracking-title text-accent">
-                {entry.rating ?? "–"}
-              </div>
-              {posterUrl(entry.posterPath, "w185") ? (
-                <img
-                  className={rankedThumb()}
-                  src={posterUrl(entry.posterPath, "w185") ?? ""}
-                  alt=""
-                />
-              ) : (
-                <div className={rankedThumb()} />
-              )}
-              <div>
-                <h3 className="mt-0 mb-1 text-[15px] font-650 tracking-tightish">
-                  {entry.title}
-                  <AgeCaption
-                    rating={entry.certification}
-                  />
-                </h3>
-                <div className="text-xs leading-[1.45] text-muted tabular">
-                  {entry.year} · {titleKindLabel(entry.titleKind)} ·{" "}
-                  {entry.status} ·{" "}
-                  {entry.genreIds
-                    .map((id) => genreMap.get(id))
-                    .filter(Boolean)
-                    .slice(0, 3)
-                    .join(" · ")}
-                </div>
-              </div>
-              <button
-                className={`${btn("ghost")} relative z-2`}
-                onClick={async (event) => {
-                  event.stopPropagation();
-                  onChange(
-                    await window.api.removeLibrary(
-                      entry.imdbId,
-                      entry.mediaType,
-                    ),
-                  );
-                }}
+          {rows
+            .map((entry) => mergeTitleMedia(entry, media))
+            .map((entry) => (
+              <div
+                className={rankedRow(
+                  selectedId === titleKey(entry),
+                  "relative isolate",
+                )}
+                key={titleKey(entry)}
+                data-imdb-id={entry.imdbId}
               >
-                Remove
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  className="absolute inset-0 z-1 border-0 bg-transparent p-0"
+                  aria-label={`Open ${entry.title}`}
+                  onClick={() =>
+                    onOpen({
+                      mediaType: entry.mediaType ?? "movie",
+                      titleKind:
+                        entry.titleKind ??
+                        (entry.mediaType === "tv" ? "tv" : "movie"),
+                      imdbId: entry.imdbId,
+                      title: entry.title,
+                      overview: entry.overview ?? "",
+                      posterPath: entry.posterPath ?? null,
+                      backdropPath: entry.backdropPath ?? null,
+                      releaseDate: entry.releaseDate ?? "",
+                      year: entry.year,
+                      genreIds: entry.genreIds,
+                      originalLanguage: entry.originalLanguage ?? "",
+                      popularity: 0,
+                      voteAverage: entry.voteAverage,
+                      voteCount: entry.voteCount,
+                      adult: false,
+                      runtime: entry.runtime,
+                      certification: entry.certification,
+                      directorIds: entry.directorIds,
+                      directorNames: entry.directorNames,
+                      castIds: entry.castIds,
+                      castNames: entry.castNames,
+                    })
+                  }
+                />
+                <div className="tabular text-center text-xl font-bold tracking-title text-accent">
+                  {entry.rating ?? "–"}
+                </div>
+                {posterUrl(entry.posterPath, "w185") ? (
+                  <img
+                    className={rankedThumb()}
+                    src={posterUrl(entry.posterPath, "w185") ?? ""}
+                    alt=""
+                  />
+                ) : (
+                  <div className={rankedThumb()} />
+                )}
+                <div>
+                  <h3 className="mt-0 mb-1 text-[15px] font-650 tracking-tightish">
+                    {entry.title}
+                    <AgeCaption rating={entry.certification} />
+                  </h3>
+                  <div className="text-xs leading-[1.45] text-muted tabular">
+                    {entry.year} · {titleKindLabel(entry.titleKind)} ·{" "}
+                    {entry.status} ·{" "}
+                    {entry.genreIds
+                      .map((id) => genreMap.get(id))
+                      .filter(Boolean)
+                      .slice(0, 3)
+                      .join(" · ")}
+                  </div>
+                </div>
+                <button
+                  className={`${btn("ghost")} relative z-2`}
+                  onClick={async (event) => {
+                    event.stopPropagation();
+                    onChange(
+                      await window.api.removeLibrary(
+                        entry.imdbId,
+                        entry.mediaType,
+                      ),
+                    );
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
         </div>
       )}
     </section>

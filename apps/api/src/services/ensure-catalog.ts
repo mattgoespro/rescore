@@ -1,4 +1,8 @@
-import { trackWork, shutdownSignal, cancellableDelay } from "./runtime-lifecycle.js";
+import {
+  trackWork,
+  shutdownSignal,
+  cancellableDelay,
+} from "./runtime-lifecycle.js";
 import { emit } from "../log/write.js";
 import {
   buildCatalogTitles,
@@ -118,9 +122,7 @@ export function isCatalogUsable(input: {
   tmdbReady?: boolean;
 }): boolean {
   return (
-    input.titlesReady &&
-    input.creditsReady &&
-    input.creditsFailed !== true
+    input.titlesReady && input.creditsReady && input.creditsFailed !== true
   );
 }
 
@@ -343,51 +345,82 @@ async function runEnsure(
 let hydrationWork: Promise<void> | null = null;
 function hydrateInBackground(catalog: CatalogDatabase): Promise<void> {
   if (hydrationWork) return hydrationWork;
-  hydrationWork = trackWork((async () => {
-    const { startPosterEnrichment, posterEnrichmentError } = await import("./tmdb-posters.js");
-    let attempt = 0;
-    let retryAt: number | null = null;
-    let previous = catalog.hydrationStats().processed;
-    let previousAt = Date.now();
-    const report = (): void => {
-      const stats = catalog.hydrationStats();
-      const now = Date.now();
-      const rate = Math.max(0, stats.processed - previous) / Math.max(0.001, (now - previousAt) / 1000);
-      const error = posterEnrichmentError();
-      const state = stats.complete ? "complete" : shutdownSignal.aborted ? "stopping"
-        : retryAt !== null ? `retry in ${Math.max(0, Math.ceil((retryAt - now) / 1000))}s` : "active";
-      emit({ channel: "posters", phase: "posters", level: "info",
-        message: `Progress ${stats.processed.toLocaleString("en-US")}/${stats.total.toLocaleString("en-US")} | ${rate.toFixed(1)} titles/s | ${state} | last error: ${error ?? "none"}` });
-      previous = stats.processed;
-      previousAt = now;
-    };
-    const heartbeat = setInterval(report, 30_000);
-    heartbeat.unref();
-    try {
-      while (!shutdownSignal.aborted) {
-        retryAt = null;
-        const publish = (): void => {
-          const stats = catalog.hydrationStats();
-          publishTmdbHydration({ ...stats, message: stats.complete
-            ? "TMDb hydration complete."
-            : posterEnrichmentError() ?? "Loading metadata in the background. You can keep browsing." });
-        };
-        await startPosterEnrichment(catalog, { onProgress: publish });
-        publish();
-        if (catalog.hydrationStats().complete) return;
-        const delay = Math.min(15 * 60_000, 30_000 * 2 ** Math.min(attempt++, 5));
-        retryAt = Date.now() + delay;
+  hydrationWork = trackWork(
+    (async () => {
+      const { startPosterEnrichment, posterEnrichmentError } =
+        await import("./tmdb-posters.js");
+      let attempt = 0;
+      let retryAt: number | null = null;
+      let previous = catalog.hydrationStats().processed;
+      let previousAt = Date.now();
+      const report = (): void => {
+        const stats = catalog.hydrationStats();
+        const now = Date.now();
+        const rate =
+          Math.max(0, stats.processed - previous) /
+          Math.max(0.001, (now - previousAt) / 1000);
+        const error = posterEnrichmentError();
+        const state = stats.complete
+          ? "complete"
+          : shutdownSignal.aborted
+            ? "stopping"
+            : retryAt !== null
+              ? `retry in ${Math.max(0, Math.ceil((retryAt - now) / 1000))}s`
+              : "active";
+        emit({
+          channel: "posters",
+          phase: "posters",
+          level: "info",
+          message: `Progress ${stats.processed.toLocaleString("en-US")}/${stats.total.toLocaleString("en-US")} | ${rate.toFixed(1)} titles/s | ${state} | last error: ${error ?? "none"}`,
+        });
+        previous = stats.processed;
+        previousAt = now;
+      };
+      const heartbeat = setInterval(report, 30_000);
+      heartbeat.unref();
+      try {
+        while (!shutdownSignal.aborted) {
+          retryAt = null;
+          const publish = (): void => {
+            const stats = catalog.hydrationStats();
+            publishTmdbHydration({
+              ...stats,
+              message: stats.complete
+                ? "TMDb hydration complete."
+                : (posterEnrichmentError() ??
+                  "Loading metadata in the background. You can keep browsing."),
+            });
+          };
+          await startPosterEnrichment(catalog, { onProgress: publish });
+          publish();
+          if (catalog.hydrationStats().complete) return;
+          const delay = Math.min(
+            15 * 60_000,
+            30_000 * 2 ** Math.min(attempt++, 5),
+          );
+          retryAt = Date.now() + delay;
+          report();
+          await cancellableDelay(delay);
+        }
+      } finally {
+        clearInterval(heartbeat);
         report();
-        await cancellableDelay(delay);
       }
-    } finally {
-      clearInterval(heartbeat);
-      report();
-    }
-  })().catch((error: unknown) => {
-    if (!shutdownSignal.aborted) publishTmdbHydration({ ...catalog.hydrationStats(),
-      message: error instanceof Error ? error.message : "Metadata lookup failed. Browse to retry a title." });
-  }).finally(() => { hydrationWork = null; }));
+    })()
+      .catch((error: unknown) => {
+        if (!shutdownSignal.aborted)
+          publishTmdbHydration({
+            ...catalog.hydrationStats(),
+            message:
+              error instanceof Error
+                ? error.message
+                : "Metadata lookup failed. Browse to retry a title.",
+          });
+      })
+      .finally(() => {
+        hydrationWork = null;
+      }),
+  );
   return hydrationWork;
 }
 
@@ -402,7 +435,11 @@ export function publishHydratedTitles(completedIds: string[]): void {
     const ids = [...completedTitles];
     completedTitles.clear();
     for (let offset = 0; offset < ids.length; offset += 400) {
-      for (const listener of tmdbHydrationSubscribers) listener({ ...readTmdbHydration(), completedIds: ids.slice(offset, offset + 400) });
+      for (const listener of tmdbHydrationSubscribers)
+        listener({
+          ...readTmdbHydration(),
+          completedIds: ids.slice(offset, offset + 400),
+        });
     }
   }, 100).unref();
 }

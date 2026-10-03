@@ -52,7 +52,9 @@ export class CatalogClient {
         synopses: number;
         certifications: number;
       };
-    }>("/v1/catalog/tmdb-health", undefined, "health").then((body) => body.data);
+    }>("/v1/catalog/tmdb-health", undefined, "health").then(
+      (body) => body.data,
+    );
   }
 
   async configured(): Promise<boolean> {
@@ -74,9 +76,13 @@ export class CatalogClient {
     query?: Record<string, string | number | undefined>,
     kind: RequestKind = "search",
   ): Promise<T> {
-    const url = new URL(path, this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`);
+    const url = new URL(
+      path,
+      this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
+    );
     for (const [key, value] of Object.entries(query ?? {})) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
+      if (value != null && value !== "")
+        url.searchParams.set(key, String(value));
     }
     const { retries, timeoutMs } = REQUESTS[kind];
     let lastError: CatalogError | null = null;
@@ -93,12 +99,19 @@ export class CatalogClient {
         continue;
       }
       if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: string } | null;
-        throw new CatalogError(body?.error ?? `Catalog request failed (${response.status})`, response.status);
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new CatalogError(
+          body?.error ?? `Catalog request failed (${response.status})`,
+          response.status,
+        );
       }
       return response.json() as Promise<T>;
     }
-    throw lastError ?? new CatalogError("Cannot reach the local catalog API.", 0);
+    throw (
+      lastError ?? new CatalogError("Cannot reach the local catalog API.", 0)
+    );
   }
 
   async discover(filters: DiscoverFilters): Promise<PagedMovies> {
@@ -141,12 +154,20 @@ export class CatalogClient {
     if (!ids.length) return [];
     const genres = await this.genres();
     const wanted = new Set(ids);
-    return genres.filter((genre) => wanted.has(genre.id)).map((genre) => genre.name);
+    return genres
+      .filter((genre) => wanted.has(genre.id))
+      .map((genre) => genre.name);
   }
 
   async findByImdb(imdbId: string): Promise<MovieSummary | null> {
     try {
-      return toSummary((await this.request<{ data: TitleDto }>(`/v1/titles/${encodeURIComponent(imdbId)}`)).data);
+      return toSummary(
+        (
+          await this.request<{ data: TitleDto }>(
+            `/v1/titles/${encodeURIComponent(imdbId)}`,
+          )
+        ).data,
+      );
     } catch (error) {
       if (error instanceof CatalogError && error.status === 404) return null;
       throw error;
@@ -154,34 +175,55 @@ export class CatalogClient {
   }
 
   async listLibrary(): Promise<LibraryEntry[]> {
-    const response = await this.request<{ data: LibraryEntryDto[] }>("/v1/library");
+    const response = await this.request<{ data: LibraryEntryDto[] }>(
+      "/v1/library",
+    );
     return response.data.map(({ title, status, personalRating, updatedAt }) =>
       toLibraryEntry(title, status, personalRating ?? undefined, updatedAt),
     );
   }
 
-  async saveLibrary(movie: MovieSummary, status: WatchStatus, rating?: number): Promise<void> {
-    const url = new URL(`/v1/library/${encodeURIComponent(movie.imdbId)}`, this.baseUrl);
+  async saveLibrary(
+    movie: MovieSummary,
+    status: WatchStatus,
+    rating?: number,
+  ): Promise<void> {
+    const url = new URL(
+      `/v1/library/${encodeURIComponent(movie.imdbId)}`,
+      this.baseUrl,
+    );
     const response = await catalogFetch(url, {
       method: "PUT",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ status, personalRating: rating ?? null }),
       signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
     });
-    if (!response.ok) throw new CatalogError(`Could not save library entry (${response.status})`, response.status);
+    if (!response.ok)
+      throw new CatalogError(
+        `Could not save library entry (${response.status})`,
+        response.status,
+      );
   }
 
   async removeLibrary(imdbId: string): Promise<void> {
-    const response = await catalogFetch(new URL(`/v1/library/${encodeURIComponent(imdbId)}`, this.baseUrl), {
-      method: "DELETE",
-      signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
-    });
-    if (!response.ok && response.status !== 404) throw new CatalogError(`Could not remove library entry (${response.status})`, response.status);
+    const response = await catalogFetch(
+      new URL(`/v1/library/${encodeURIComponent(imdbId)}`, this.baseUrl),
+      {
+        method: "DELETE",
+        signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
+      },
+    );
+    if (!response.ok && response.status !== 404)
+      throw new CatalogError(
+        `Could not remove library entry (${response.status})`,
+        response.status,
+      );
   }
 
-  async fillMedia(
-    ids: string[],
-  ): Promise<
+  async fillMedia(ids: string[]): Promise<
     Array<{
       id: string;
       synopsis: string | null;
@@ -217,7 +259,7 @@ export class CatalogClient {
         synopsis: string | null;
         posterUrl: string | null;
         certification: string | null;
-      hydrationComplete: boolean;
+        hydrationComplete: boolean;
       }>;
     };
     return body.data;
@@ -225,10 +267,16 @@ export class CatalogClient {
 
   async enrichPosters(ids: string[]): Promise<void> {
     if (!ids.length) return;
-    const url = new URL("/v1/catalog/enrich-posters", this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`);
+    const url = new URL(
+      "/v1/catalog/enrich-posters",
+      this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
+    );
     await catalogFetch(url, {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ ids }),
       signal: AbortSignal.timeout(4000),
     }).catch(() => undefined);
@@ -246,7 +294,8 @@ export class CatalogClient {
       pageSize: 40,
       limit: 40,
       query: filters.query || undefined,
-      kind: filters.titleKind === "miniseries" ? "miniseries" : filters.titleKind,
+      kind:
+        filters.titleKind === "miniseries" ? "miniseries" : filters.titleKind,
       yearMin: filters.yearMin ?? undefined,
       yearMax: filters.yearMax ?? undefined,
       ratingMin: filters.ratingMin || undefined,
@@ -254,7 +303,9 @@ export class CatalogClient {
       runtimeMin: filters.runtimeMin ?? undefined,
       runtimeMax: filters.runtimeMax ?? undefined,
       genre: genreNames.length ? genreNames.join(",") : undefined,
-      withoutGenre: withoutGenreNames.length ? withoutGenreNames.join(",") : undefined,
+      withoutGenre: withoutGenreNames.length
+        ? withoutGenreNames.join(",")
+        : undefined,
       withoutLanguage: filters.excludeLanguages.length
         ? languageQueryCodes(filters.excludeLanguages).join(",")
         : undefined,
@@ -266,47 +317,89 @@ export class CatalogClient {
       cursor: filters.cursor ?? undefined,
     };
   }
-
 }
 
 export function genreId(name: string): number {
-  return [...name.toLowerCase()].reduce((hash, char) => ((hash * 31 + char.charCodeAt(0)) >>> 0), 7);
+  return [...name.toLowerCase()].reduce(
+    (hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0,
+    7,
+  );
 }
 
 function toSummary(title: TitleDto): MovieSummary {
   const kind = title.kind.toLowerCase();
-  const titleKind = kind.includes("mini") ? "miniseries" : kind.includes("tv") || kind.includes("series") ? "tv" : "movie";
+  const titleKind = kind.includes("mini")
+    ? "miniseries"
+    : kind.includes("tv") || kind.includes("series")
+      ? "tv"
+      : "movie";
   return {
-    imdbId: title.id.toLowerCase(), mediaType: titleKind === "movie" ? "movie" : "tv", titleKind,
-    title: title.title, originalTitle: title.originalTitle ?? undefined, overview: title.synopsis ?? "",
-    posterPath: title.posterUrl, backdropPath: null, releaseDate: title.year ? `${title.year}-01-01` : "",
-    year: title.year ?? undefined, genreIds: title.genres.map(genreId),
-    originalLanguage: title.languages?.[0] ?? "", languages: title.languages ?? [], popularity: 0,
-    voteAverage: title.imdbRating ?? 0, voteCount: title.imdbVotes ?? 0, adult: false,
+    imdbId: title.id.toLowerCase(),
+    mediaType: titleKind === "movie" ? "movie" : "tv",
+    titleKind,
+    title: title.title,
+    originalTitle: title.originalTitle ?? undefined,
+    overview: title.synopsis ?? "",
+    posterPath: title.posterUrl,
+    backdropPath: null,
+    releaseDate: title.year ? `${title.year}-01-01` : "",
+    year: title.year ?? undefined,
+    genreIds: title.genres.map(genreId),
+    originalLanguage: title.languages?.[0] ?? "",
+    languages: title.languages ?? [],
+    popularity: 0,
+    voteAverage: title.imdbRating ?? 0,
+    voteCount: title.imdbVotes ?? 0,
+    adult: false,
     certification: title.certification || undefined,
-    runtime: title.runtimeMinutes ?? undefined, directorIds: title.directors.map(genreId),
-    directorNames: title.directors, castIds: title.cast.map(genreId), castNames: title.cast,
+    runtime: title.runtimeMinutes ?? undefined,
+    directorIds: title.directors.map(genreId),
+    directorNames: title.directors,
+    castIds: title.cast.map(genreId),
+    castNames: title.cast,
   };
 }
 
 function toDetails(title: TitleDto): MovieDetails {
   const summary = toSummary(title);
   return {
-    ...summary, genres: title.genres.map((name) => ({ id: genreId(name), name })),
+    ...summary,
+    genres: title.genres.map((name) => ({ id: genreId(name), name })),
     directors: title.directors.map((name) => ({ id: genreId(name), name })),
-    cast: title.cast.map((name, order) => ({ id: genreId(name), name, character: "", order, profilePath: null })),
+    cast: title.cast.map((name, order) => ({
+      id: genreId(name),
+      name,
+      character: "",
+      order,
+      profilePath: null,
+    })),
     keywords: [],
   };
 }
 
-function toLibraryEntry(title: TitleDto, status: WatchStatus, rating: number | undefined, updatedAt: string): LibraryEntry {
+function toLibraryEntry(
+  title: TitleDto,
+  status: WatchStatus,
+  rating: number | undefined,
+  updatedAt: string,
+): LibraryEntry {
   const movie = toSummary(title);
-  return { ...movie, status, rating, updatedAt, directorIds: movie.directorIds ?? [], directorNames: movie.directorNames ?? [], castIds: movie.castIds ?? [], castNames: movie.castNames ?? [] };
+  return {
+    ...movie,
+    status,
+    rating,
+    updatedAt,
+    directorIds: movie.directorIds ?? [],
+    directorNames: movie.directorNames ?? [],
+    castIds: movie.castIds ?? [],
+    castNames: movie.castNames ?? [],
+  };
 }
 
 function sortFor(sort: string): string {
   if (sort.includes("vote_average")) return "rating";
-  if (sort.includes("vote_count") || sort.includes("popularity")) return "votes";
+  if (sort.includes("vote_count") || sort.includes("popularity"))
+    return "votes";
   if (sort.includes("release_date")) return "year";
   return sort === "match" ? "votes" : "title";
 }

@@ -15,15 +15,27 @@ import type { RatingsStore } from "./services/ratings-store.js";
 
 const localhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
-export function createApp(store: RatingsStore, catalog: CatalogDatabase, stop?: () => void): express.Express {
+export function createApp(
+  store: RatingsStore,
+  catalog: CatalogDatabase,
+  stop?: () => void,
+): express.Express {
   const app = express();
   if (serviceConfig) app.use(runtimeAuth(serviceConfig.token));
-  if (stop) app.post("/internal/shutdown", runtimeAuth(process.env.RESCORE_CONTROL_TOKEN ?? ""), (_req, res) => {
-    res.json({ ok: true });
-    setImmediate(stop);
-  });
+  if (stop)
+    app.post(
+      "/internal/shutdown",
+      runtimeAuth(process.env.RESCORE_CONTROL_TOKEN ?? ""),
+      (_req, res) => {
+        res.json({ ok: true });
+        setImmediate(stop);
+      },
+    );
   app.use((_req, res, next) => {
-    if (shutdownSignal.aborted) { res.status(503).json({ error: "Catalogue is stopping" }); return; }
+    if (shutdownSignal.aborted) {
+      res.status(503).json({ error: "Catalogue is stopping" });
+      return;
+    }
     next();
   });
 

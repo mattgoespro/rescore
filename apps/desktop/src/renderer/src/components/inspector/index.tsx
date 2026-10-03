@@ -76,9 +76,7 @@ export default function Inspector({
   const runtime = formatRuntime(details?.runtime ?? movie.runtime);
   const seasons = formatSeasons(details?.seasonCount ?? movie.seasonCount);
   const languages = formatLanguages(
-    details?.imdbId === movie.imdbId
-      ? details.languages
-      : movie.languages,
+    details?.imdbId === movie.imdbId ? details.languages : movie.languages,
   );
   const matchValue =
     match ?? ("match" in movie ? (movie as { match?: number }).match : null);

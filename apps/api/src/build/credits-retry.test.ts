@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  recoverCreditsFailure,
-  shouldRetryCredits,
-} from "./credits-retry.js";
+import { recoverCreditsFailure, shouldRetryCredits } from "./credits-retry.js";
 
 test("credits retry once after a failure and not after success", () => {
   assert.equal(shouldRetryCredits(0, false), true);

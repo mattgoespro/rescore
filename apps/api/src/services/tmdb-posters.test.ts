@@ -82,16 +82,26 @@ test("interactive requests join active work and overtake queued background title
   const catalog = new CatalogDatabase(":memory:");
   const ids = ["tt0000001", "tt0000002", "tt0000003"];
   catalog.upsertTitles(ids.map((id) => ({ id, title: id, kind: "movie" })));
-  const coordinator = new TmdbHydrationCoordinator(["test"], { requestsPerSecond: 1000, concurrency: 1 });
+  const coordinator = new TmdbHydrationCoordinator(["test"], {
+    requestsPerSecond: 1000,
+    concurrency: 1,
+  });
   const calls: string[] = [];
   let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   let started!: () => void;
-  const firstStarted = new Promise<void>((resolve) => { started = resolve; });
+  const firstStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   t.mock.method(globalThis, "fetch", async (input: URL) => {
     const id = input.pathname.split("/").at(-1)!;
     calls.push(id);
-    if (id === ids[0]) { started(); await gate; }
+    if (id === ids[0]) {
+      started();
+      await gate;
+    }
     return Response.json({ movie_results: [], tv_results: [] });
   });
   try {
@@ -102,13 +112,27 @@ test("interactive requests join active work and overtake queued background title
     assert.equal(coordinator.hydrate(catalog, ids[0], "movie", true), first);
     assert.equal(coordinator.hydrate(catalog, ids[2], "movie", true), third);
     release();
-    assert.deepEqual(await Promise.all([first, second, third]), [true, true, true]);
+    assert.deepEqual(await Promise.all([first, second, third]), [
+      true,
+      true,
+      true,
+    ]);
     assert.deepEqual(calls, [ids[0], ids[2], ids[1]]);
-    assert.equal(catalog.hydrationStats().complete, true, "missing provider values are persisted as resolved");
-    const restarted = new TmdbHydrationCoordinator(["test"], { requestsPerSecond: 1000, concurrency: 1 });
+    assert.equal(
+      catalog.hydrationStats().complete,
+      true,
+      "missing provider values are persisted as resolved",
+    );
+    const restarted = new TmdbHydrationCoordinator(["test"], {
+      requestsPerSecond: 1000,
+      concurrency: 1,
+    });
     await restarted.hydrate(catalog, ids[0], "movie", false);
     assert.equal(calls.length, 3, "durable completion skips another lookup");
-  } finally { release(); catalog.close(); }
+  } finally {
+    release();
+    catalog.close();
+  }
 });
 
 test("hydration distributes title lookups across configured TMDb keys", async () => {

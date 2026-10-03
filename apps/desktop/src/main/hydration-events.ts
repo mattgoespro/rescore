@@ -57,7 +57,16 @@ function toHydrationProgress(value: unknown): TmdbHydrationProgress | null {
     return null;
   }
   return {
-    ...(Array.isArray(input.completedIds) ? { completedIds: input.completedIds.filter((id): id is string => typeof id === "string" && /^tt\d+$/.test(id)).slice(0, 400) } : {}),
+    ...(Array.isArray(input.completedIds)
+      ? {
+          completedIds: input.completedIds
+            .filter(
+              (id): id is string =>
+                typeof id === "string" && /^tt\d+$/.test(id),
+            )
+            .slice(0, 400),
+        }
+      : {}),
     processed,
     total,
     percent: Math.min(100, percent),

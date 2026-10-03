@@ -18,9 +18,17 @@ let mainWindow: BrowserWindow | null = null;
 let catalogRuntime: CatalogRuntime | null = null;
 let stopping = false;
 
-protocol.registerSchemesAsPrivileged([{ scheme: "rescore-media", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "rescore-media",
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+]);
 if (!app.requestSingleInstanceLock()) app.quit();
-app.on("second-instance", () => { mainWindow?.show(); mainWindow?.focus(); });
+app.on("second-instance", () => {
+  mainWindow?.show();
+  mainWindow?.focus();
+});
 
 const IMAGE_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -89,14 +97,32 @@ app.whenReady().then(async () => {
   const store = new AppStore();
   protocol.handle("rescore-media", async (request) => {
     const url = new URL(request.url);
-    if (request.method !== "GET" || url.hostname !== "catalog" || url.pathname !== "/v1/media" || !url.searchParams.has("src")) return new Response(null, { status: 400 });
-    const target = new URL("/v1/media", effectiveCatalogUrl(store.getSettings().catalogApiUrl));
+    if (
+      request.method !== "GET" ||
+      url.hostname !== "catalog" ||
+      url.pathname !== "/v1/media" ||
+      !url.searchParams.has("src")
+    )
+      return new Response(null, { status: 400 });
+    const target = new URL(
+      "/v1/media",
+      effectiveCatalogUrl(store.getSettings().catalogApiUrl),
+    );
     target.searchParams.set("src", url.searchParams.get("src")!);
-    try { return await catalogFetch(target, { signal: AbortSignal.timeout(30_000) }); }
-    catch { return new Response(null, { status: 503 }); }
+    try {
+      return await catalogFetch(target, {
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      return new Response(null, { status: 503 });
+    }
   });
   const backgroundService = new BackgroundService();
-  try { await backgroundService.initialize(); } catch (error) { console.error("[service]", error); }
+  try {
+    await backgroundService.initialize();
+  } catch (error) {
+    console.error("[service]", error);
+  }
   catalogRuntime = createCatalogRuntime(store, () => mainWindow);
   backgroundService.attach(catalogRuntime);
   registerIpc(store, () => mainWindow, catalogRuntime, backgroundService);

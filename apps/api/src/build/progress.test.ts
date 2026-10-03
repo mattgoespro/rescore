@@ -12,7 +12,10 @@ test("log sends the plain sentence to the sink and a film-strip line to the writ
   log("Reconciled 482,500 titles", "reconcile", sink);
   setProgressSink(undefined);
   assert.deepEqual(seen, ["Reconciled 482,500 titles"]);
-  assert.match(chunks[0] ?? "", /  catalog  reconcile  info   Reconciled 482,500 titles\n$/);
+  assert.match(
+    chunks[0] ?? "",
+    /  catalog  reconcile  info   Reconciled 482,500 titles\n$/,
+  );
   assert.doesNotMatch(seen[0] ?? "", /\x1b|catalog  reconcile/);
 });
 
@@ -33,8 +36,14 @@ test("mid-download updates the sink every time and redraws once on a TTY", () =>
     },
   };
   reportDownload(base, sink);
-  reportDownload({ ...base, download: { ...base.download, receivedBytes: 50 } }, sink);
-  reportDownload({ ...base, download: { ...base.download, receivedBytes: 100 } }, sink);
+  reportDownload(
+    { ...base, download: { ...base.download, receivedBytes: 50 } },
+    sink,
+  );
+  reportDownload(
+    { ...base, download: { ...base.download, receivedBytes: 100 } },
+    sink,
+  );
   setProgressSink(undefined);
   assert.deepEqual(seen, [0, 50, 100]);
   assert.equal(chunks.filter((chunk) => chunk.startsWith("\r")).length, 3);

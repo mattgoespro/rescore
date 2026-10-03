@@ -51,10 +51,7 @@ import {
   upsertRatingsSync,
   upsertTitleRows,
 } from "./rebuild.js";
-import {
-  applyMigrations,
-  TMDB_HYDRATION_PENDING_SQL,
-} from "./schema.js";
+import { applyMigrations, TMDB_HYDRATION_PENDING_SQL } from "./schema.js";
 import {
   personKey,
   type CatalogMeta,
@@ -76,11 +73,11 @@ export class CatalogDatabase {
     this.releaseOwnership = acquireCatalogOwnership(path);
     let opened: Database.Database | undefined;
     try {
-    this.db = opened = new Database(path);
-    this.db.pragma("foreign_keys = ON");
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("busy_timeout = 15000");
-    applyMigrations(this.db);
+      this.db = opened = new Database(path);
+      this.db.pragma("foreign_keys = ON");
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("busy_timeout = 15000");
+      applyMigrations(this.db);
     } catch (error) {
       opened?.close();
       this.releaseOwnership();
@@ -89,7 +86,8 @@ export class CatalogDatabase {
   }
 
   upsertTitles(titles: CatalogTitleInput[]): number {
-    const upsert = this.db.prepare(`INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at)
+    const upsert = this.db
+      .prepare(`INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at)
       VALUES (@id,@title,@originalTitle,@kind,@year,@runtimeMinutes,@synopsis,@posterUrl,@imdbRating,@imdbVotes,@bayesianScore,@updatedAt)
       ON CONFLICT(id) DO UPDATE SET title=excluded.title,original_title=excluded.original_title,kind=excluded.kind,year=excluded.year,runtime_minutes=excluded.runtime_minutes,synopsis=excluded.synopsis,poster_url=excluded.poster_url,updated_at=excluded.updated_at`);
     const clearGenres = this.db.prepare(
@@ -142,7 +140,9 @@ export class CatalogDatabase {
     return titles.length;
   }
 
-  upsertRatings(ratings: Map<string, { rating: number; votes: number }>): number {
+  upsertRatings(
+    ratings: Map<string, { rating: number; votes: number }>,
+  ): number {
     if (ratings.size <= 5_000) return upsertRatingsSync(this.db, ratings);
     void upsertRatingsChunked(this.db, ratings);
     return ratings.size;
@@ -163,8 +163,7 @@ export class CatalogDatabase {
     return Object.fromEntries(
       ids.map((id) => {
         const row = select.get(id.toLowerCase()) as
-          | { imdb_rating: number | null; imdb_votes: number | null }
-          | undefined;
+          { imdb_rating: number | null; imdb_votes: number | null } | undefined;
         return [
           id,
           row?.imdb_rating == null || row.imdb_votes == null
@@ -261,7 +260,9 @@ LIMIT ?`,
     synopsis: string | null;
     certification: string | null;
   }> {
-    const wanted = [...new Set(ids.map((id) => id.toLowerCase()))].filter(Boolean);
+    const wanted = [...new Set(ids.map((id) => id.toLowerCase()))].filter(
+      Boolean,
+    );
     if (!wanted.length) return [];
     const placeholders = wanted.map(() => "?").join(",");
     return this.db
@@ -326,7 +327,9 @@ LIMIT ?`,
 
   createImport(id: string, kind: ImportStatusDto["kind"]): void {
     this.db
-      .prepare("INSERT INTO imports(id,kind,status,started_at) VALUES(?,?,'running',?)")
+      .prepare(
+        "INSERT INTO imports(id,kind,status,started_at) VALUES(?,?,'running',?)",
+      )
       .run(id, kind, now());
   }
 
@@ -344,7 +347,9 @@ LIMIT ?`,
   }
 
   importStatus(id: string): ImportStatusDto | null {
-    const row = this.db.prepare("SELECT * FROM imports WHERE id = ?").get(id) as
+    const row = this.db
+      .prepare("SELECT * FROM imports WHERE id = ?")
+      .get(id) as
       | {
           id: string;
           kind: ImportStatusDto["kind"];
@@ -439,7 +444,8 @@ LIMIT ?`,
           )
           .all(...wanted) as Array<{ id: string; kind: string }>)
       : [];
-    if (!fillRest || prioritized.length >= limit) return prioritized.slice(0, limit);
+    if (!fillRest || prioritized.length >= limit)
+      return prioritized.slice(0, limit);
     const exclude = new Set(prioritized.map((row) => row.id));
     const rest = this.db
       .prepare(
@@ -503,9 +509,11 @@ LIMIT ?`,
         });
         if (row.languages) {
           clearLanguages.run(row.id);
-          normalizeLanguageCodes(row.languages).forEach((language, position) => {
-            addLanguage.run(row.id, language, position);
-          });
+          normalizeLanguageCodes(row.languages).forEach(
+            (language, position) => {
+              addLanguage.run(row.id, language, position);
+            },
+          );
           markLanguagesChecked.run(row.id);
         }
       }
@@ -532,7 +540,11 @@ LIMIT ?`,
     return readCatalogMeta(this.db);
   }
 
-  setCatalogMeta(meta: { builtAt: string; revision: string; source: string }): void {
+  setCatalogMeta(meta: {
+    builtAt: string;
+    revision: string;
+    source: string;
+  }): void {
     writeCatalogMeta(this.db, meta);
   }
 
@@ -679,7 +691,11 @@ LIMIT ?`,
   }
 
   close(): void {
-    try { this.db.close(); } finally { this.releaseOwnership(); }
+    try {
+      this.db.close();
+    } finally {
+      this.releaseOwnership();
+    }
   }
 
   isHealthy(): boolean {

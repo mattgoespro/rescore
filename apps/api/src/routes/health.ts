@@ -10,7 +10,10 @@ import {
 import type { RatingsStore } from "../services/ratings-store.js";
 import type { HealthResponse } from "../types.js";
 
-export function healthRouter(store: RatingsStore, catalog: CatalogDatabase): Router {
+export function healthRouter(
+  store: RatingsStore,
+  catalog: CatalogDatabase,
+): Router {
   const router = Router();
 
   router.get("/", (_req, res) => {
@@ -24,11 +27,7 @@ export function healthRouter(store: RatingsStore, catalog: CatalogDatabase): Rou
       catalogId: serviceConfig?.catalogId ?? null,
       runtimeVersion: serviceConfig?.runtimeVersion ?? null,
       ok: true,
-      ready: catalogHealthReady(
-        titleCount,
-        runtime.phase,
-        runtime.titlesReady,
-      ),
+      ready: catalogHealthReady(titleCount, runtime.phase, runtime.titlesReady),
       building,
       catalogPhase: runtime.phase,
       catalogMessage: runtime.message,

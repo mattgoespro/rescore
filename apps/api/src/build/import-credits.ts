@@ -3,11 +3,7 @@ import type { CatalogDatabase, CatalogPersonRow } from "../catalog/index.js";
 import { imdbValue, readTsvRows } from "../services/gzip-tsv.js";
 import { trimCredits } from "./parse-helpers.js";
 import { log } from "./progress.js";
-import {
-  MAX_CAST,
-  MAX_DIRECTORS,
-  type Credit,
-} from "./types.js";
+import { MAX_CAST, MAX_DIRECTORS, type Credit } from "./types.js";
 
 export async function importCrew(
   file: string,
@@ -136,7 +132,10 @@ export async function insertCredits(
   }
   let written = 0;
   for (const titleId of kept) {
-    if (++written % 1000 === 0) { await new Promise<void>((resolve) => setImmediate(resolve)); shutdownSignal.throwIfAborted(); }
+    if (++written % 1000 === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      shutdownSignal.throwIfAborted();
+    }
     const rows = byTitle.get(titleId) ?? [];
     if (creditSignature(rows) === (existing.get(titleId) ?? "")) continue;
     catalog.replaceTitleCredits(titleId, rows);

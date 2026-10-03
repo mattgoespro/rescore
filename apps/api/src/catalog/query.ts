@@ -6,10 +6,7 @@ import type {
   TitleDto,
   TitleListResponse,
 } from "../catalog-types.js";
-import {
-  readFacetsCache,
-  writeFacetsCache,
-} from "./facets-cache.js";
+import { readFacetsCache, writeFacetsCache } from "./facets-cache.js";
 import { getMetaValue } from "./meta.js";
 import { hydrateTitles } from "./hydrate.js";
 import { IMDB_ID, type TitleQuery, type TitleRow } from "./types.js";
@@ -112,28 +109,58 @@ function seekColumns(
   switch (sort) {
     case "rating":
       return [
-        { expr: "t.imdb_rating", direction: order, value: cursor.rating, param: "cursorRating" },
-        { expr: "t.imdb_votes", direction: order, value: cursor.votes, param: "cursorVotes" },
+        {
+          expr: "t.imdb_rating",
+          direction: order,
+          value: cursor.rating,
+          param: "cursorRating",
+        },
+        {
+          expr: "t.imdb_votes",
+          direction: order,
+          value: cursor.votes,
+          param: "cursorVotes",
+        },
         idColumn,
       ];
     case "votes":
       return [
-        { expr: "t.imdb_votes", direction: order, value: cursor.votes, param: "cursorVotes" },
+        {
+          expr: "t.imdb_votes",
+          direction: order,
+          value: cursor.votes,
+          param: "cursorVotes",
+        },
         idColumn,
       ];
     case "year":
       return [
-        { expr: "t.year", direction: order, value: cursor.year, param: "cursorYear" },
+        {
+          expr: "t.year",
+          direction: order,
+          value: cursor.year,
+          param: "cursorYear",
+        },
         idColumn,
       ];
     case "updatedAt":
       return [
-        { expr: "t.updated_at", direction: order, value: cursor.updatedAt, param: "cursorUpdatedAt" },
+        {
+          expr: "t.updated_at",
+          direction: order,
+          value: cursor.updatedAt,
+          param: "cursorUpdatedAt",
+        },
         idColumn,
       ];
     case "title":
       return [
-        { expr: "t.title COLLATE NOCASE", direction: order, value: cursor.title, param: "cursorTitle" },
+        {
+          expr: "t.title COLLATE NOCASE",
+          direction: order,
+          value: cursor.title,
+          param: "cursorTitle",
+        },
         idColumn,
       ];
   }
@@ -194,8 +221,12 @@ function buildKeysetCondition(
     const pivot = columns[i]!;
     const after = afterClause(pivot, params);
     if (after === null) continue;
-    const equalities = columns.slice(0, i).map((column) => sameClause(column, params));
-    branches.push(equalities.length ? `(${equalities.join(" AND ")} AND ${after})` : after);
+    const equalities = columns
+      .slice(0, i)
+      .map((column) => sameClause(column, params));
+    branches.push(
+      equalities.length ? `(${equalities.join(" AND ")} AND ${after})` : after,
+    );
   }
   return branches.length ? `(${branches.join(" OR ")})` : "0=1";
 }
@@ -231,7 +262,10 @@ function computeNextCursor(
   const peekParams: Record<string, string | number> = { ...params };
   const peekCondition = mergeCondition(
     condition,
-    buildKeysetCondition(seekColumns(query.sort, order, rowCursor(lastRow)), peekParams),
+    buildKeysetCondition(
+      seekColumns(query.sort, order, rowCursor(lastRow)),
+      peekParams,
+    ),
   );
   const hasMore = db
     .prepare(`SELECT 1 AS found FROM ${from} ${peekCondition} LIMIT 1`)
@@ -295,7 +329,15 @@ export function listTitles(
     total = offset + rows.length + 1;
   }
 
-  const nextCursor = computeNextCursor(db, query, order, condition, params, from, rows);
+  const nextCursor = computeNextCursor(
+    db,
+    query,
+    order,
+    condition,
+    params,
+    from,
+    rows,
+  );
 
   return {
     data: hydrateTitles(db, rows),
@@ -381,9 +423,7 @@ export function listForYouCandidates(
 function hasSkippedTitles(db: Database.Database): boolean {
   return Boolean(
     db
-      .prepare(
-        "SELECT 1 FROM library_entries WHERE status = 'skipped' LIMIT 1",
-      )
+      .prepare("SELECT 1 FROM library_entries WHERE status = 'skipped' LIMIT 1")
       .get(),
   );
 }

@@ -56,7 +56,9 @@ test(
     };
     let tmdbRequests = 0;
     let releaseMetadata!: () => void;
-    const metadataGate = new Promise<void>((resolve) => { releaseMetadata = resolve; });
+    const metadataGate = new Promise<void>((resolve) => {
+      releaseMetadata = resolve;
+    });
     let stallDownloads = false;
     let stalledDownloads = 0;
     const upstream = createServer((req, res) => {
@@ -64,7 +66,9 @@ test(
       if (path.startsWith("find/")) {
         tmdbRequests++;
         res.setHeader("Content-Type", "application/json");
-        void metadataGate.then(() => res.end(JSON.stringify({ movie_results: [], tv_results: [] })));
+        void metadataGate.then(() =>
+          res.end(JSON.stringify({ movie_results: [], tv_results: [] })),
+        );
       } else if (files[path]) {
         const body = gzipSync(
           files[path] +
@@ -176,30 +180,64 @@ test(
         401,
       );
       assert.equal((await fetch(`${url}/v1/titles`, { headers })).status, 200);
-      assert.equal((health.tmdbHydration as { complete: boolean }).complete, false,
-        "Browsing must be ready while TMDb is stalled");
-      const detail = await fetch(`${url}/v1/titles/tt0000001`, { headers, signal: AbortSignal.timeout(2000) });
-      assert.equal(detail.status, 200, "Details return existing data without waiting for TMDb");
+      assert.equal(
+        (health.tmdbHydration as { complete: boolean }).complete,
+        false,
+        "Browsing must be ready while TMDb is stalled",
+      );
+      const detail = await fetch(`${url}/v1/titles/tt0000001`, {
+        headers,
+        signal: AbortSignal.timeout(2000),
+      });
+      assert.equal(
+        detail.status,
+        200,
+        "Details return existing data without waiting for TMDb",
+      );
       const progressDeadline = Date.now() + 35_000;
-      while ((output.match(/Progress 0\/1/g)?.length ?? 0) < 2 && Date.now() < progressDeadline) {
+      while (
+        (output.match(/Progress 0\/1/g)?.length ?? 0) < 2 &&
+        Date.now() < progressDeadline
+      ) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      assert.ok((output.match(/Progress 0\/1/g)?.length ?? 0) >= 2,
-        `Stdout must report the retry transition and periodic heartbeat: ${output}`);
-      assert.match(output, /Progress 0\/1 \| 0\.0 titles\/s \| retry in \d+s \| last error: 1 TMDb lookups failed/);
+      assert.ok(
+        (output.match(/Progress 0\/1/g)?.length ?? 0) >= 2,
+        `Stdout must report the retry transition and periodic heartbeat: ${output}`,
+      );
+      assert.match(
+        output,
+        /Progress 0\/1 \| 0\.0 titles\/s \| retry in \d+s \| last error: 1 TMDb lookups failed/,
+      );
       releaseMetadata();
       const completionDeadline = Date.now() + 40_000;
-      while (!/Progress 1\/1 .*complete/.test(output) && Date.now() < completionDeadline) {
+      while (
+        !/Progress 1\/1 .*complete/.test(output) &&
+        Date.now() < completionDeadline
+      ) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      const filling = fetch(`${url}/v1/catalog/fill`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ ids: ["tt0000001"] }) });
-      const filled = await (await filling).json() as { data: Array<{ hydrationComplete: boolean }> };
+      const filling = fetch(`${url}/v1/catalog/fill`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: ["tt0000001"] }),
+      });
+      const filled = (await (await filling).json()) as {
+        data: Array<{ hydrationComplete: boolean }>;
+      };
       assert.equal(filled.data[0].hydrationComplete, true);
-      assert.equal(tmdbRequests, 2, "Timed-out work retries once; detail and visible requests share background work");
+      assert.equal(
+        tmdbRequests,
+        2,
+        "Timed-out work retries once; detail and visible requests share background work",
+      );
       const lookups = tmdbRequests;
       await stop();
-      assert.match(output, /Progress 1\/1 \| [\d.]+ titles\/s \| complete \| last error: none/,
-        "Hydration completion must emit a final stdout report");
+      assert.match(
+        output,
+        /Progress 1\/1 \| [\d.]+ titles\/s \| complete \| last error: none/,
+        "Hydration completion must emit a final stdout report",
+      );
       const db = new Database(join(config.dataDir, "catalog.sqlite"), {
         readonly: true,
       });
