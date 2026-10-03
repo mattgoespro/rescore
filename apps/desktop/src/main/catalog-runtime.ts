@@ -17,6 +17,7 @@ import {
   shouldSpawnReplacement,
 } from "./api-watch";
 import { serviceOwnsCatalog } from "./background-service";
+import { catalogOwner, catalogUnreachableStep } from "./catalog-owner";
 import {
   catalogFetch,
   effectiveCatalogUrl,
@@ -145,7 +146,10 @@ export function createCatalogRuntime(
       const reachable = await canReach(baseUrl);
       if (generation !== gen || quitting) return;
       if (!reachable) {
-        if (serviceOwnsCatalog()) {
+        if (
+          catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) ===
+          "refuse"
+        ) {
           publish({
             ...current,
             phase: "error",
@@ -381,7 +385,9 @@ export function createCatalogRuntime(
 
   async function recoverApi(baseUrl: string, gen: number): Promise<void> {
     if (generation !== gen || quitting || recovering) return;
-    if (serviceOwnsCatalog()) {
+    if (
+      catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) === "refuse"
+    ) {
       publish({
         ...current,
         phase: "error",
@@ -461,7 +467,7 @@ export function createCatalogRuntime(
   function spawnApi(
     baseUrl: string,
   ): { ok: true; child: ChildProcess } | { ok: false; message: string } {
-    if (serviceOwnsCatalog())
+    if (catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) === "refuse")
       return {
         ok: false,
         message: "Catalogue is owned by the Windows service.",

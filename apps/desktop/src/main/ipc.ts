@@ -1,4 +1,5 @@
 import { effectiveCatalogUrl } from "./catalog-connection";
+import { catalogOwner, catalogUrlChangeAllowed } from "./catalog-owner";
 import {
   BackgroundService,
   serviceOwnsCatalog,
@@ -93,7 +94,7 @@ export function registerIpc(
   ipcMain.handle("settings:set", (_event, patch: Partial<Settings>) => {
     const previousUrl = store.getSettings().catalogApiUrl;
     if (
-      serviceOwnsCatalog() &&
+      !catalogUrlChangeAllowed(catalogOwner(serviceOwnsCatalog())) &&
       patch.catalogApiUrl !== undefined &&
       patch.catalogApiUrl !== previousUrl
     )
