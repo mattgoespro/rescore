@@ -8,6 +8,7 @@ export interface PagedMovies {
   totalResults: number;
   results: RankedMovie[];
   nextCursor: string | null;
+  canLoadMore: boolean;
 }
 
 export interface RankReason {

@@ -1,5 +1,5 @@
 import { catalogFetch } from "./catalog-connection";
-import { discoverQueryParams } from "./discover-slice";
+import { DISCOVER_PAGE_SIZE, discoverQueryParams } from "./discover-slice";
 import type {
   DiscoverFilters,
   Genre,
@@ -119,12 +119,14 @@ export class CatalogClient {
     const query = await this.discoverQuery(filters);
     const response = await this.request<TitleListResponse>("/v1/titles", query);
     const results = response.data.map(toSummary);
+    const nextCursor = response.pagination.nextCursor ?? null;
     return {
       page: response.pagination.page,
       totalPages: response.pagination.totalPages,
       totalResults: response.pagination.total,
       results: results.map((movie) => ({ ...movie, match: 0, reasons: [] })),
-      nextCursor: response.pagination.nextCursor ?? null,
+      nextCursor,
+      canLoadMore: results.length >= DISCOVER_PAGE_SIZE && nextCursor !== null,
     };
   }
 

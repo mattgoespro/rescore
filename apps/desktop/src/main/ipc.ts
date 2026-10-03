@@ -24,6 +24,7 @@ import {
 } from "../shared/types";
 import { genreId, movieFromTitle } from "../shared/movie";
 import { CatalogClient, CatalogError } from "./catalog-client";
+import { loadDiscoverSlice } from "./discover-slice";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
 import type { SearchHistoryInput } from "../shared/search-history";
@@ -136,6 +137,7 @@ export function registerIpc(
         totalResults: 0,
         results: [],
         nextCursor: null,
+        canLoadMore: false,
       },
       () => discover(filters),
     ),
@@ -246,21 +248,35 @@ function emptyForYou(): ForYouResult {
 }
 
 async function discover(filters: DiscoverFilters) {
-  const page = await getClient().discover(filters);
-  if (filters.sortBy !== "match") return page;
+  const mode = filters.cursor == null ? "replace" : "append";
+  const cursor = filters.cursor ?? null;
+  if (filters.sortBy !== "match") {
+    return loadDiscoverSlice({
+      filters,
+      mode,
+      cursor,
+      ratedCount: 0,
+      fetchPage: (pageFilters) => getClient().discover(pageFilters),
+      rankPage: (movies) => movies,
+    });
+  }
   const { library, genres } = await matchContext();
   const profile = buildProfile(library, genres);
-  if (profile.ratedCount < 3) return page;
   const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
-  return {
-    ...page,
-    results: sortMovies(
-      page.results.map((movie) =>
-        scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
+  return loadDiscoverSlice({
+    filters,
+    mode,
+    cursor,
+    ratedCount: profile.ratedCount,
+    fetchPage: (pageFilters) => getClient().discover(pageFilters),
+    rankPage: (movies) =>
+      sortMovies(
+        movies.map((movie) =>
+          scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
+        ),
+        "match",
       ),
-      "match",
-    ),
-  };
+  });
 }
 
 async function upsertLibrary({

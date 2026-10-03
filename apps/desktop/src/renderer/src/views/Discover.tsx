@@ -35,7 +35,6 @@ import { IconGrid, IconList } from "../components/icons";
 import { enterDelayMs, gridColumnCount } from "../motion";
 import { cn } from "../lib/cn";
 import { segmentedCell, segmentedGroup } from "../lib/ui";
-import { canLoadMoreFromPage } from "../../../main/discover-paging";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
@@ -142,11 +141,7 @@ export default function Discover({
       }
       setPage(data.page);
       cursorRef.current = data.nextCursor;
-      lastPageFullRef.current = canLoadMoreFromPage(
-        data.results.length,
-        40,
-        data.nextCursor,
-      );
+      lastPageFullRef.current = data.canLoadMore;
       setItems((prev) => {
         if (replace) return data.results;
         return [...prev, ...data.results];

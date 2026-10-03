@@ -1,5 +1,5 @@
 import { languageQueryCodes } from "../shared/languages";
-import type { DiscoverFilters } from "../shared/types";
+import type { DiscoverFilters, PagedMovies, RankedMovie } from "../shared/types";
 
 export const DISCOVER_PAGE_SIZE = 40;
 
@@ -50,4 +50,32 @@ function sortFor(sort: string): string {
 
 function orderFor(sort: string): string {
   return sort.includes(".asc") ? "asc" : sort === "title" ? "asc" : "desc";
+}
+
+export async function loadDiscoverSlice(input: {
+  filters: DiscoverFilters;
+  mode: "replace" | "append";
+  cursor: string | null;
+  ratedCount: number;
+  fetchPage: (filters: DiscoverFilters) => Promise<PagedMovies>;
+  rankPage: (movies: RankedMovie[]) => RankedMovie[];
+}): Promise<PagedMovies> {
+  const filters: DiscoverFilters = {
+    ...input.filters,
+    page: 1,
+    cursor: input.mode === "replace" ? null : input.cursor,
+  };
+  const fetched = await input.fetchPage(filters);
+  const canLoadMore =
+    fetched.results.length >= DISCOVER_PAGE_SIZE && fetched.nextCursor !== null;
+  const results =
+    filters.sortBy === "match" && input.ratedCount >= 3
+      ? input.rankPage(fetched.results)
+      : fetched.results;
+  return {
+    ...fetched,
+    results,
+    nextCursor: fetched.nextCursor,
+    canLoadMore,
+  };
 }
