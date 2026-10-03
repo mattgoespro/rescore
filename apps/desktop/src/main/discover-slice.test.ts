@@ -25,6 +25,14 @@ test("discover query omits the rating ceiling and fixes the page size", () => {
   assert.equal("votesMin" in params, false);
 });
 
+test("a lowered rating ceiling is sent", () => {
+  const params = discoverQueryParams(
+    { ...defaultFilters(), ratingMax: 8 },
+    { genres: [], withoutGenres: [] },
+  );
+  assert.equal(params.ratingMax, 8);
+});
+
 function summary(imdbId: string): RankedMovie {
   return {
     imdbId,

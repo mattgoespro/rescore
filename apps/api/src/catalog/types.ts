@@ -25,6 +25,7 @@ export interface TitleQuery {
   yearMin?: number;
   yearMax?: number;
   ratingMin?: number;
+  ratingMax?: number;
   votesMin?: number;
   hideWatched?: boolean;
   hideWatchlist?: boolean;

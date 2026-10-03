@@ -92,6 +92,7 @@ const listQuery = z
     yearMin: optionalInteger(1870, 3000),
     yearMax: optionalInteger(1870, 3000),
     ratingMin: z.coerce.number().min(0).max(10).optional(),
+    ratingMax: z.coerce.number().min(0).max(10).optional(),
     votesMin: optionalInteger(0, 2_000_000_000),
     runtimeMin: optionalInteger(1, 2000),
     runtimeMax: optionalInteger(1, 2000),

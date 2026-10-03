@@ -518,6 +518,10 @@ function buildWhere(
       params[field.match(/@(\w+)/)?.[1] ?? ""] = value;
     }
   }
+  if (query.ratingMax !== undefined) {
+    where.push("(t.imdb_rating IS NULL OR t.imdb_rating <= @ratingMax)");
+    params.ratingMax = query.ratingMax;
+  }
   if (hasSkippedTitles(db)) {
     where.push(
       "NOT EXISTS (SELECT 1 FROM library_entries skipped WHERE skipped.title_id=t.id AND skipped.status='skipped')",

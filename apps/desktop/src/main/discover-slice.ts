@@ -17,6 +17,7 @@ export function discoverQueryParams(
     yearMin: filters.yearMin ?? undefined,
     yearMax: filters.yearMax ?? undefined,
     ratingMin: filters.ratingMin || undefined,
+    ratingMax: filters.ratingMax < 10 ? filters.ratingMax : undefined,
     votesMin: filters.voteCountMin || undefined,
     runtimeMin: filters.runtimeMin ?? undefined,
     runtimeMax: filters.runtimeMax ?? undefined,
