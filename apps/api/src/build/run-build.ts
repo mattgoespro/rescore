@@ -18,6 +18,7 @@ import {
   insertCredits,
 } from "./import-credits.js";
 import { log, setProgressSink } from "./progress.js";
+import { withCreditsWrite } from "./rebuild-window.js";
 import type {
   CatalogBuildOptions,
   CatalogBuildResult,
@@ -261,9 +262,7 @@ async function runBuildCredits(
   const cast = new Map<string, Credit[]>();
   const neededNames = new Set<string>();
 
-  catalog.setCreditsInProgress(true);
-  catalog.startCreditsRebuild();
-  try {
+  await withCreditsWrite(catalog, async () => {
     log("Reading title.crew", "credits");
     await importCrew(files.crew, kept, directors, neededNames);
     log("Reading title.principals", "credits");
@@ -275,17 +274,8 @@ async function runBuildCredits(
     for (const [nconst, name] of known) names.set(nconst, name);
     log("Writing credits", "credits");
     await insertCredits(catalog, directors, cast, names, kept);
-  } catch (error) {
-    catalog.finishCreditsRebuild();
-    catalog.setCreditsInProgress(false);
-    throw error;
-  }
-
-  catalog.finishCreditsRebuild();
-  catalog.setCreditsReady(true);
-  catalog.setCreditsFailed(false);
+  });
   catalog.setCreditsDumpFingerprint(fingerprint);
-  catalog.setCreditsInProgress(false);
   log("Credits ready", "credits");
   void catalog.queueAnalyze("title_people");
 }

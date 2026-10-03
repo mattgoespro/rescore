@@ -8,6 +8,7 @@ import {
 } from "./parse-helpers.js";
 import { log } from "./progress.js";
 import { yieldEventLoop } from "../catalog/work-queue.js";
+import { withTitleIngest } from "./rebuild-window.js";
 import { TITLE_BATCH } from "./types.js";
 
 export async function importBasics(
@@ -59,13 +60,5 @@ export async function ingestTitles(
   file: string,
   ratings: Map<string, { rating: number; votes: number }>,
 ): Promise<number> {
-  catalog.startTitleIngest();
-  try {
-    const imported = await importBasics(catalog, file, ratings);
-    catalog.finishTitleIngest();
-    return imported;
-  } catch (error) {
-    catalog.abortTitleIngest();
-    throw error;
-  }
+  return withTitleIngest(catalog, () => importBasics(catalog, file, ratings));
 }
