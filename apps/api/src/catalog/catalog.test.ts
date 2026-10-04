@@ -543,6 +543,55 @@ test("GET title returns immediately with a null poster", async () => {
   }
 });
 
+test("a title read does not enqueue poster hydration", async () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0133093",
+    title: "The Matrix",
+    rating: 8.7,
+    votes: 1000,
+  });
+  const previousKeys = process.env.TMDB_API_KEYS;
+  const previousKey = process.env.TMDB_API_KEY;
+  const originalFetch = globalThis.fetch;
+  let fetches = 0;
+  process.env.TMDB_API_KEYS = "title-read-key";
+  delete process.env.TMDB_API_KEY;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("127.0.0.1") || url.includes("localhost"))
+      return originalFetch(input, init);
+    fetches += 1;
+    return Response.json({ movie_results: [], tv_results: [] });
+  };
+  const server = createApp(new RatingsStore(catalog), catalog).listen(0);
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  try {
+    const { port } = server.address() as AddressInfo;
+    const response = await fetch(
+      `http://127.0.0.1:${port}/v1/titles/tt0133093`,
+    );
+    const body = (await response.json()) as {
+      data: { id: string; posterUrl: string | null };
+    };
+    assert.equal(response.status, 200);
+    assert.equal(body.data.id, "tt0133093");
+    assert.equal(body.data.posterUrl, null);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fetches, 0);
+  } finally {
+    if (previousKeys === undefined) delete process.env.TMDB_API_KEYS;
+    else process.env.TMDB_API_KEYS = previousKeys;
+    if (previousKey === undefined) delete process.env.TMDB_API_KEY;
+    else process.env.TMDB_API_KEY = previousKey;
+    globalThis.fetch = originalFetch;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    catalog.close();
+  }
+});
+
 test("votes sort pages with a cursor instead of offset", () => {
   const catalog = openCatalog();
   seedTitle(catalog, { id: "tt0000001", title: "Low", rating: 7, votes: 10 });

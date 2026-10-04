@@ -163,21 +163,21 @@ Run: `node --import tsx --test --test-name-pattern "library write" apps/api/src/
 - `coordinator.hydrate` is called from that function only, outside the coordinator class.
 - `GET /titles/:id` returns `{ data: title }` and does not call it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Catalogue test: with `TMDB_API_KEYS` set and `fetch` counting calls, `GET /v1/titles/:id` returns the title and the fetch count stays 0.
 
 Poster test: two `admitTitleHydration` calls for one in-flight title return the same promise, and `fillTitles` during an in-flight background pass does not add a second fetch.
 
-- [ ] **Step 2: Run the tests and confirm they fail**
+- [x] **Step 2: Run the tests and confirm they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Remove the title-route admission. `fillTitles`, `enrichPosters`, and `enrichOneTitle` call `admitTitleHydration`.
 
-- [ ] **Step 4: Run the new tests and the existing poster tests**
+- [x] **Step 4: Run the new tests and the existing poster tests**
 
-- [ ] **Step 5: Commit** `fix: keep title reads from enqueueing poster hydration`
+- [x] **Step 5: Commit** `fix: keep title reads from enqueueing poster hydration`
 
 ### Task 5: Discover total
 

@@ -8,8 +8,10 @@ import {
   tmdbRequestsPerSecond,
 } from "../config.js";
 import {
+  admitTitleHydration,
   enrichPosters,
   enrichOneTitle,
+  fillTitles,
   formatEnrichmentProgress,
   MISSING_TMDB_KEY_MESSAGE,
   pickMovieCertification,
@@ -446,6 +448,52 @@ test("a finished title receives language details without replacing its poster", 
     assert.equal(catalog.titleNeedsLanguages("tt0000001"), false);
   } finally {
     globalThis.fetch = originalFetch;
+    catalog.close();
+  }
+});
+
+test("fill and the background pass share one poster admission", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetches = 0;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  globalThis.fetch = async () => {
+    fetches += 1;
+    await gate;
+    return Response.json({ movie_results: [], tv_results: [] });
+  };
+  const previousKeys = process.env.TMDB_API_KEYS;
+  const previousKey = process.env.TMDB_API_KEY;
+  process.env.TMDB_API_KEYS = "admit-key";
+  delete process.env.TMDB_API_KEY;
+  const catalog = new CatalogDatabase(":memory:");
+  catalog.upsertTitles([{ id: "tt0000001", title: "Film", kind: "movie" }]);
+  let first: Promise<boolean> | undefined;
+  let filling: Promise<unknown> | undefined;
+  try {
+    first = admitTitleHydration(catalog, "tt0000001", "movie", false);
+    const second = admitTitleHydration(catalog, "tt0000001", "movie", true);
+    assert.equal(second, first);
+    filling = fillTitles(catalog, ["tt0000001"]);
+    const deadline = Date.now() + 2_000;
+    while (fetches < 1 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(fetches, 1);
+    release();
+    await first;
+    await filling;
+  } finally {
+    release();
+    await first?.catch(() => undefined);
+    await filling?.catch(() => undefined);
+    globalThis.fetch = originalFetch;
+    if (previousKeys === undefined) delete process.env.TMDB_API_KEYS;
+    else process.env.TMDB_API_KEYS = previousKeys;
+    if (previousKey === undefined) delete process.env.TMDB_API_KEY;
+    else process.env.TMDB_API_KEY = previousKey;
     catalog.close();
   }
 });

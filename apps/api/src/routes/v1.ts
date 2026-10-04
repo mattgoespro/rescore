@@ -13,7 +13,6 @@ import type { RatingsStore } from "../services/ratings-store.js";
 import { mediaHandler } from "./media.js";
 import { forYouHandler } from "./for-you.js";
 import {
-  enrichOneTitle,
   fillTitles,
   isPosterEnrichmentRunning,
 } from "../services/tmdb-posters.js";
@@ -195,13 +194,10 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     const { q, role } = peopleQuery.parse(req.query);
     return res.json({ data: db.searchPeople(q, role) });
   });
-  router.get("/titles/:id", async (req, res) => {
+  router.get("/titles/:id", (req, res) => {
     const id = titleId.parse(req.params.id);
     const title = db.title(id);
     if (!title) return res.status(404).json({ error: "Title not found" });
-    if (db.titleNeedsMedia(id)) {
-      void enrichOneTitle(db, id, title.kind);
-    }
     return res.json({ data: title });
   });
   router.get("/facets", (_req, res) => res.json(db.facets()));

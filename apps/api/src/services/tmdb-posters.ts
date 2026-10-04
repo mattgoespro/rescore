@@ -423,7 +423,7 @@ export async function enrichPosters(
       if (!pending.length) break;
       const completed = await Promise.all(
         pending.map((title) =>
-          coordinator.hydrate(catalog, title.id, title.kind, false),
+          admitTitleHydration(catalog, title.id, title.kind, false),
         ),
       );
       stats.processed += completed.length;
@@ -459,11 +459,9 @@ export async function fillTitles(
   }>
 > {
   const rows = catalog.mediaFor(ids).slice(0, 40);
-  const coordinator = activeTmdbCoordinator ?? tryCreateTmdbCoordinator();
-  if (coordinator)
-    await Promise.all(
-      rows.map((row) => coordinator.hydrate(catalog, row.id, row.kind, true)),
-    );
+  await Promise.all(
+    rows.map((row) => admitTitleHydration(catalog, row.id, row.kind, true)),
+  );
   return catalog.mediaFor(rows.map((row) => row.id)).map((row) => ({
     id: row.id,
     synopsis: row.synopsis,
@@ -561,13 +559,23 @@ async function findTitleMediaWithClient(
   throw lastError ?? new Error("TMDB rate limit exceeded");
 }
 
+export function admitTitleHydration(
+  catalog: CatalogDatabase,
+  id: string,
+  kind: string,
+  interactive: boolean,
+): Promise<boolean> {
+  const coordinator = activeTmdbCoordinator ?? tryCreateTmdbCoordinator();
+  if (!coordinator) return Promise.resolve(false);
+  return coordinator.hydrate(catalog, id, kind, interactive);
+}
+
 export async function enrichOneTitle(
   catalog: CatalogDatabase,
   id: string,
   kind: string,
-  coordinator = activeTmdbCoordinator ?? tryCreateTmdbCoordinator(),
 ): Promise<void> {
-  if (coordinator) await coordinator.hydrate(catalog, id, kind, true);
+  await admitTitleHydration(catalog, id, kind, true);
 }
 
 interface TmdbTitleFacts {
