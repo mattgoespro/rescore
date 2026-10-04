@@ -27,6 +27,10 @@ import {
 import { shouldFinishCatalogPoll } from "./catalog-poll";
 import { shouldTerminateCatalogApi } from "./catalog-reload";
 import {
+  catalogStatusSnapshot,
+  type CatalogStatusChange,
+} from "./catalog-status-snapshot";
+import {
   createHydrationEventParser,
   hydrationEventsUrl,
 } from "./hydration-events";
@@ -84,9 +88,9 @@ export function createCatalogRuntime(
   let recovering = false;
   let hydrationEventsAbort: AbortController | null = null;
 
-  const publish = (next: CatalogStatus): void => {
-    current = next;
-    getWindow()?.webContents.send("catalog:status", next);
+  const publish = (change: CatalogStatusChange): void => {
+    current = catalogStatusSnapshot(current, change);
+    getWindow()?.webContents.send("catalog:status", current);
   };
 
   const run = (gen: number): void => {
@@ -102,7 +106,7 @@ export function createCatalogRuntime(
   };
 
   const announce = (message: string): void => {
-    publish({ ...current, phase: "starting", message, error: null });
+    publish({ phase: "starting", message, error: null });
   };
 
   async function stop(): Promise<void> {
@@ -137,13 +141,8 @@ export function createCatalogRuntime(
     publish({
       phase: "starting",
       message: "Starting the local catalog…",
-      titleCount: 0,
-      builtAt: null,
       error: null,
       download: null,
-      titlesUpdateAvailable: false,
-      creditsFailed: false,
-      catalogUsable: false,
     });
 
     const baseUrl = catalogUrl(store);
@@ -156,7 +155,6 @@ export function createCatalogRuntime(
           "refuse"
         ) {
           publish({
-            ...current,
             phase: "error",
             error:
               "Catalogue service unavailable. Open Settings for details and Retry.",
@@ -173,13 +171,7 @@ export function createCatalogRuntime(
             publish({
               phase: "error",
               message: started.message,
-              titleCount: 0,
-              builtAt: null,
               error: started.message,
-              download: null,
-              titlesUpdateAvailable: false,
-              creditsFailed: false,
-              catalogUsable: false,
             });
             return;
           }
@@ -188,13 +180,7 @@ export function createCatalogRuntime(
         publish({
           phase: "starting",
           message: "Waiting for the catalog API…",
-          titleCount: 0,
-          builtAt: null,
           error: null,
-          download: null,
-          titlesUpdateAvailable: false,
-          creditsFailed: false,
-          catalogUsable: false,
         });
       }
 
@@ -204,13 +190,7 @@ export function createCatalogRuntime(
         publish({
           phase: "error",
           message: unreachableMessage(),
-          titleCount: 0,
-          builtAt: null,
           error: "Catalog API did not become reachable.",
-          download: null,
-          titlesUpdateAvailable: false,
-          creditsFailed: false,
-          catalogUsable: false,
         });
         return;
       }
@@ -265,13 +245,8 @@ export function createCatalogRuntime(
         publish({
           phase: "starting",
           message: "Waiting for the catalog API…",
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
           error: null,
           download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-          catalogUsable: current.catalogUsable,
         });
         await sleep(POLL_MS);
         continue;
@@ -337,7 +312,11 @@ export function createCatalogRuntime(
                 decoder.decode(chunk.value, { stream: true }),
               )) {
                 if (generation !== gen || quitting) return;
-                publish({ ...current, tmdbHydration: hydration });
+                publish({
+                  phase: current.phase,
+                  message: current.message,
+                  tmdbHydration: hydration,
+                });
               }
             }
           } finally {
@@ -394,7 +373,6 @@ export function createCatalogRuntime(
       catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) === "refuse"
     ) {
       publish({
-        ...current,
         phase: "error",
         error: "Background service unavailable",
         message:
@@ -415,13 +393,7 @@ export function createCatalogRuntime(
           phase: "error",
           message:
             "The catalog API stopped repeatedly. Use Retry on the loader.",
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
           error: "Catalog API did not stay running.",
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-          catalogUsable: current.catalogUsable,
         });
         return;
       }
@@ -429,13 +401,8 @@ export function createCatalogRuntime(
       publish({
         phase: "starting",
         message: "Catalog API stopped; restarting…",
-        titleCount: current.titleCount,
-        builtAt: current.builtAt,
         error: null,
         download: null,
-        titlesUpdateAvailable: current.titlesUpdateAvailable,
-        creditsFailed: current.creditsFailed,
-        catalogUsable: current.catalogUsable,
       });
       await sleep(Math.min(800 * 2 ** (restartAttempts - 1), 8000));
       if (generation !== gen || quitting) return;
@@ -453,13 +420,7 @@ export function createCatalogRuntime(
         publish({
           phase: "error",
           message: unreachableMessage(),
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
           error: "Catalog API did not become reachable.",
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-          catalogUsable: current.catalogUsable,
         });
         return;
       }
@@ -534,13 +495,8 @@ export function createCatalogRuntime(
     publish({
       phase: "building",
       message: "Rebuilding catalog from IMDb datasets…",
-      titleCount: current.titleCount,
-      builtAt: current.builtAt,
       error: null,
       download: null,
-      titlesUpdateAvailable: current.titlesUpdateAvailable,
-      creditsFailed: current.creditsFailed,
-      catalogUsable: current.catalogUsable,
     });
     void runRebuild(generation);
     return current;
@@ -554,13 +510,7 @@ export function createCatalogRuntime(
         publish({
           phase: "error",
           message: unreachableMessage(),
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
           error: "Catalog API did not become reachable.",
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-          catalogUsable: current.catalogUsable,
         });
         return;
       }
@@ -584,13 +534,7 @@ export function createCatalogRuntime(
         publish({
           phase: "error",
           message: body?.error ?? "Could not start a catalog rebuild.",
-          titleCount: current.titleCount,
-          builtAt: current.builtAt,
           error: body?.error ?? `Catalog rebuild failed (${response.status})`,
-          download: null,
-          titlesUpdateAvailable: current.titlesUpdateAvailable,
-          creditsFailed: current.creditsFailed,
-          catalogUsable: current.catalogUsable,
         });
         return;
       }
@@ -603,13 +547,7 @@ export function createCatalogRuntime(
       publish({
         phase: "error",
         message: "Catalog rebuild failed.",
-        titleCount: current.titleCount,
-        builtAt: current.builtAt,
         error: message,
-        download: null,
-        titlesUpdateAvailable: current.titlesUpdateAvailable,
-        creditsFailed: current.creditsFailed,
-        catalogUsable: current.catalogUsable,
       });
     }
   }

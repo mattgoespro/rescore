@@ -56,23 +56,23 @@
 - Produces: `catalogStatusSnapshot(current: CatalogStatus, change: { phase: CatalogPhase; message: string } & Partial<Omit<CatalogStatus, "phase" | "message">>): CatalogStatus`
 - Omitted fields stay. `null` on `error`, `download`, or `builtAt` replaces the previous value. `0` replaces `titleCount`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `catalog-status-snapshot.test.ts`: a ready status with `titleCount` 482500, `titlesReady`, `creditsReady`, and `tmdbHydration` keeps those fields when the change is only `{ phase: "starting", message: "Catalog API stopped; restarting…", error: null }`. A `{ phase: "building", message: "Rebuilding catalog from IMDb datasets…", error: null, download: null }` stays `building`, and `isCatalogUiBlocked` of that result is true. An explicit `titleCount: 12` replaces the count.
 
-- [ ] **Step 2: Run the test and confirm it fails**
+- [x] **Step 2: Run the test and confirm it fails**
 
 Run: `node --import tsx --test --test-name-pattern "status snapshot" apps/desktop/src/main/catalog-status-snapshot.test.ts`
 
 Expected: FAIL, module missing.
 
-- [ ] **Step 3: Implement the snapshot and point `publish` at it**
+- [x] **Step 3: Implement the snapshot and point `publish` at it**
 
 `publish` sends the merged status. Callers pass phase, message, and only fields that change. `statusFromHealth` is still published whole. Hydration events pass the current phase and message plus `tmdbHydration`.
 
-- [ ] **Step 4: Run the test and confirm it passes**
+- [x] **Step 4: Run the test and confirm it passes**
 
-- [ ] **Step 5: Commit** `fix: keep catalogue status fields across restarts`
+- [x] **Step 5: Commit** `fix: keep catalogue status fields across restarts`
 
 ### Task 2: Taste
 
