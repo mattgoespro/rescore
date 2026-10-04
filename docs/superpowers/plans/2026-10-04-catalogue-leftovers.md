@@ -132,21 +132,21 @@ Run: `node --import tsx --test --test-name-pattern "taste" apps/desktop/src/main
   - `clearLibrary(): LibraryEntryDto[]`
 - Desktop `library:clear` calls `clearLibrary` once and returns `[]` to the view.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `catalog.test.ts`: save of one title among three returns that title's rating and note, and `listLibrary` still has three. `deleteLibrary` returns the removed row, and a second delete returns null. `clearLibrary` returns both removed ids and leaves the Library empty. These fail because delete returns a boolean and `clearLibrary` is missing.
 
-- [ ] **Step 2: Run the tests and confirm they fail**
+- [x] **Step 2: Run the tests and confirm they fail**
 
 Run: `node --import tsx --test --test-name-pattern "library write" apps/api/src/catalog/catalog.test.ts`
 
-- [ ] **Step 3: Implement the writes and the clear route**
+- [x] **Step 3: Implement the writes and the clear route**
 
 `DELETE /v1/library` returns `{ data: affected }`. The desktop client calls it. `library:clear` no longer lists and deletes one by one.
 
-- [ ] **Step 4: Run the library write tests and the existing catalogue tests that save Library rows**
+- [x] **Step 4: Run the library write tests and the existing catalogue tests that save Library rows**
 
-- [ ] **Step 5: Commit** `fix: return Library rows from the write`
+- [x] **Step 5: Commit** `fix: return Library rows from the write`
 
 ### Task 4: Title read
 

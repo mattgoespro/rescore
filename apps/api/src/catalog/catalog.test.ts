@@ -903,3 +903,64 @@ test("complete media still leaves a title pending until languages are checked", 
   assert.deepEqual(catalog.listTitlesNeedingPosters(10, [], true), []);
   catalog.close();
 });
+
+test("library write returns the saved row and leaves the other rows", () => {
+  const catalog = openCatalog();
+  for (const [id, title] of [
+    ["tt0000001", "One"],
+    ["tt0000002", "Two"],
+    ["tt0000003", "Three"],
+  ] as const) {
+    seedTitle(catalog, { id, title, rating: 7, votes: 1000 });
+  }
+  catalog.saveLibrary("tt0000001", "watched", 8, null);
+  catalog.saveLibrary("tt0000003", "skipped", null, null);
+  const saved = catalog.saveLibrary("tt0000002", "watchlist", 6, "later");
+  assert.equal(saved?.title.id, "tt0000002");
+  assert.equal(saved?.status, "watchlist");
+  assert.equal(saved?.personalRating, 6);
+  assert.equal(saved?.note, "later");
+  assert.equal(catalog.listLibrary().length, 3);
+  catalog.close();
+});
+
+test("library write remove returns the removed row", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Watched",
+    rating: 8,
+    votes: 1000,
+  });
+  catalog.saveLibrary("tt0000001", "watched", 8, "seen");
+  const removed = catalog.deleteLibrary("tt0000001");
+  assert.equal(removed?.title.id, "tt0000001");
+  assert.equal(removed?.status, "watched");
+  assert.equal(removed?.personalRating, 8);
+  assert.equal(removed?.note, "seen");
+  assert.equal(catalog.listLibrary().length, 0);
+  assert.equal(catalog.deleteLibrary("tt0000001"), null);
+  catalog.close();
+});
+
+test("library write clear returns every removed row", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "One",
+    rating: 8,
+    votes: 1000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Two",
+    rating: 7,
+    votes: 1000,
+  });
+  catalog.saveLibrary("tt0000001", "watched", 8, null);
+  catalog.saveLibrary("tt0000002", "watchlist", null, null);
+  const removed = catalog.clearLibrary().map((entry) => entry.title.id);
+  assert.deepEqual(removed.sort(), ["tt0000001", "tt0000002"]);
+  assert.equal(catalog.listLibrary().length, 0);
+  catalog.close();
+});

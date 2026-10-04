@@ -283,6 +283,9 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     if (!entry) return res.status(404).json({ error: "Title not found" });
     return res.json({ data: entry });
   });
+  router.delete("/library", (_req, res) => {
+    return res.json({ data: db.clearLibrary() });
+  });
   router.delete("/library/:id", (req, res) => {
     if (!db.deleteLibrary(titleId.parse(req.params.id)))
       return res.status(404).json({ error: "Library entry not found" });

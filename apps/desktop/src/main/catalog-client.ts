@@ -211,6 +211,23 @@ export class CatalogClient {
       );
   }
 
+  async clearLibrary(): Promise<LibraryEntry[]> {
+    const response = await catalogFetch(new URL("/v1/library", this.baseUrl), {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
+    });
+    if (!response.ok)
+      throw new CatalogError(
+        `Could not clear the library (${response.status})`,
+        response.status,
+      );
+    const body = (await response.json()) as { data: LibraryEntryDto[] };
+    return body.data.map(({ title, status, personalRating, updatedAt }) =>
+      toLibraryEntry(title, status, personalRating ?? undefined, updatedAt),
+    );
+  }
+
   async removeLibrary(imdbId: string): Promise<void> {
     const response = await catalogFetch(
       new URL(`/v1/library/${encodeURIComponent(imdbId)}`, this.baseUrl),

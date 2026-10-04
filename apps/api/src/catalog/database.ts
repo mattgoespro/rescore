@@ -27,6 +27,7 @@ import {
   facets,
   invalidateCountCache,
   listForYouCandidates,
+  libraryEntriesFromWrites,
   listLibrary,
   listTitles,
   titleById,
@@ -62,6 +63,14 @@ import {
   type TitleQuery,
 } from "./types.js";
 import { mediaWorkQueue } from "./work-queue.js";
+
+type LibraryWriteRow = {
+  title_id: string;
+  status: LibraryStatus;
+  personal_rating: number | null;
+  note: string | null;
+  updated_at: string;
+};
 
 export class CatalogDatabase {
   private readonly db: Database.Database;
@@ -297,26 +306,41 @@ LIMIT ?`,
     personalRating: number | null,
     note: string | null,
   ): LibraryEntryDto | null {
-    if (!this.title(id)) return null;
-    this.db
+    const titleId = id.toLowerCase();
+    const exists = this.db
+      .prepare("SELECT 1 AS found FROM titles WHERE id = ?")
+      .get(titleId);
+    if (!exists) return null;
+    const row = this.db
       .prepare(
-        `INSERT INTO library_entries(title_id,status,personal_rating,note,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(title_id) DO UPDATE SET status=excluded.status,personal_rating=excluded.personal_rating,note=excluded.note,updated_at=excluded.updated_at`,
+        `INSERT INTO library_entries(title_id,status,personal_rating,note,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(title_id) DO UPDATE SET status=excluded.status,personal_rating=excluded.personal_rating,note=excluded.note,updated_at=excluded.updated_at RETURNING title_id, status, personal_rating, note, updated_at`,
       )
-      .run(id.toLowerCase(), status, personalRating, note, now());
+      .get(titleId, status, personalRating, note, now()) as
+      LibraryWriteRow | undefined;
     this.bumpLibrarySkipRev();
-    return (
-      this.listLibrary().find((entry) => entry.title.id === id.toLowerCase()) ??
-      null
-    );
+    return row ? (libraryEntriesFromWrites(this.db, [row])[0] ?? null) : null;
   }
 
-  deleteLibrary(id: string): boolean {
-    const changed =
-      this.db
-        .prepare("DELETE FROM library_entries WHERE title_id = ?")
-        .run(id.toLowerCase()).changes > 0;
-    if (changed) this.bumpLibrarySkipRev();
-    return changed;
+  deleteLibrary(id: string): LibraryEntryDto | null {
+    const row = this.db
+      .prepare(
+        "DELETE FROM library_entries WHERE title_id = ? RETURNING title_id, status, personal_rating, note, updated_at",
+      )
+      .get(id.toLowerCase()) as LibraryWriteRow | undefined;
+    if (!row) return null;
+    this.bumpLibrarySkipRev();
+    return libraryEntriesFromWrites(this.db, [row])[0] ?? null;
+  }
+
+  clearLibrary(): LibraryEntryDto[] {
+    const rows = this.db
+      .prepare(
+        "DELETE FROM library_entries RETURNING title_id, status, personal_rating, note, updated_at",
+      )
+      .all() as LibraryWriteRow[];
+    if (!rows.length) return [];
+    this.bumpLibrarySkipRev();
+    return libraryEntriesFromWrites(this.db, rows);
   }
 
   private bumpLibrarySkipRev(): void {

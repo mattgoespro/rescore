@@ -378,6 +378,40 @@ export function facets(db: Database.Database): FacetsResponse {
   });
 }
 
+export function libraryEntriesFromWrites(
+  db: Database.Database,
+  rows: Array<{
+    title_id: string;
+    status: LibraryStatus;
+    personal_rating: number | null;
+    note: string | null;
+    updated_at: string;
+  }>,
+): LibraryEntryDto[] {
+  if (!rows.length) return [];
+  const ids = rows.map((row) => row.title_id);
+  const placeholders = ids.map(() => "?").join(",");
+  const titleRows = db
+    .prepare(`SELECT * FROM titles WHERE id IN (${placeholders})`)
+    .all(...ids) as TitleRow[];
+  const titles = new Map(
+    hydrateTitles(db, titleRows).map((title) => [title.id, title]),
+  );
+  return rows.flatMap((row) => {
+    const title = titles.get(row.title_id);
+    if (!title) return [];
+    return [
+      {
+        title,
+        status: row.status,
+        personalRating: row.personal_rating,
+        note: row.note,
+        updatedAt: row.updated_at,
+      },
+    ];
+  });
+}
+
 export function listLibrary(
   db: Database.Database,
   status?: LibraryStatus,

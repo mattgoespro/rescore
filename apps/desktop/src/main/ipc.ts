@@ -169,10 +169,7 @@ export function registerIpc(
   );
   ipcMain.handle("library:clear", () =>
     withLibraryWrite(taste, async () => {
-      const entries = await getClient().listLibrary();
-      await Promise.all(
-        entries.map((entry) => getClient().removeLibrary(entry.imdbId)),
-      );
+      await getClient().clearLibrary();
       return [];
     }),
   );
