@@ -156,6 +156,18 @@ export function buildProfile(
   return profile;
 }
 
+export function tasteReady(ratedCount: number): boolean {
+  return ratedCount >= 3;
+}
+
+export function tasteRanked<T>(
+  ratedCount: number,
+  movies: T[],
+  rank: (movies: T[]) => T[],
+): T[] {
+  return tasteReady(ratedCount) ? rank(movies) : movies;
+}
+
 export function publicProfile(profile: InternalProfile): TasteProfile {
   return {
     ratedCount: profile.ratedCount,
@@ -170,7 +182,7 @@ export function publicProfile(profile: InternalProfile): TasteProfile {
     topCast: topAffinities(profile.cast, 5),
     topLanguages: topAffinities(profile.languages, 4),
     recentGenreIds: profile.recentGenreIds,
-    ready: profile.ratedCount >= 3,
+    ready: tasteReady(profile.ratedCount),
   };
 }
 

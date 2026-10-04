@@ -94,23 +94,23 @@ Expected: FAIL, module missing.
   - `createTasteCache<T>()` with `read` and `drop`
   - `withLibraryWrite<T>(cache: { drop(): void }, write: () => Promise<T>): Promise<T>` drops the cache after the write, including when the write throws
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `taste-cache.test.ts`: two reads load once; `drop` makes the next read load again; `withLibraryWrite` drops even when the write throws.
 
 A ranking test in the same file, or `ranking` covered from `taste-cache.test.ts`: `tasteReady(2)` is false, `tasteReady(3)` is true, and `tasteRanked` does not call `rank` at 2. `publicProfile` of two rated Library rows has `ready: false`; three has `ready: true`.
 
-- [ ] **Step 2: Run the tests and confirm they fail**
+- [x] **Step 2: Run the tests and confirm they fail**
 
 Run: `node --import tsx --test --test-name-pattern "taste" apps/desktop/src/main/taste-cache.test.ts`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `publicProfile.ready` uses `tasteReady`. `loadDiscoverSlice` uses `tasteRanked` when `sortBy === "match"`. `forYou` uses `tasteRanked` and otherwise keeps catalogue order with `match: 0`. Upsert, remove, clear, and each CSV save go through `withLibraryWrite`.
 
-- [ ] **Step 4: Run taste tests and the existing discover-slice tests**
+- [x] **Step 4: Run taste tests and the existing discover-slice tests**
 
-- [ ] **Step 5: Commit** `fix: drop cached taste on every Library write`
+- [x] **Step 5: Commit** `fix: drop cached taste on every Library write`
 
 ### Task 3: Library write
 

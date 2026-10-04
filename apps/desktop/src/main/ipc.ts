@@ -20,6 +20,7 @@ import {
   type MovieDetails,
   type MovieEnrichment,
   type MovieSummary,
+  type RankReason,
   type Settings,
   type WatchStatus,
 } from "../shared/types";
@@ -34,7 +35,9 @@ import {
   describeProfile,
   publicProfile,
   scoreMovie,
+  tasteRanked,
 } from "./ranking";
+import { createTasteCache, withLibraryWrite } from "./taste-cache";
 import type { AppStore } from "./store";
 import { applyWindowChrome } from "./window-chrome";
 
@@ -156,21 +159,23 @@ export function registerIpc(
     withCatalog([], () => getClient().listLibrary()),
   );
   ipcMain.handle("library:upsert", (_event, payload: LibraryUpsert) =>
-    upsertLibrary(payload),
+    withLibraryWrite(taste, () => upsertLibrary(payload)),
   );
-  ipcMain.handle("library:remove", async (_event, imdbId: string) => {
-    await getClient().removeLibrary(imdbId);
-    matchCache = null;
-    return getClient().listLibrary();
-  });
-  ipcMain.handle("library:clear", async () => {
-    const entries = await getClient().listLibrary();
-    await Promise.all(
-      entries.map((entry) => getClient().removeLibrary(entry.imdbId)),
-    );
-    matchCache = null;
-    return [];
-  });
+  ipcMain.handle("library:remove", (_event, imdbId: string) =>
+    withLibraryWrite(taste, async () => {
+      await getClient().removeLibrary(imdbId);
+      return getClient().listLibrary();
+    }),
+  );
+  ipcMain.handle("library:clear", () =>
+    withLibraryWrite(taste, async () => {
+      const entries = await getClient().listLibrary();
+      await Promise.all(
+        entries.map((entry) => getClient().removeLibrary(entry.imdbId)),
+      );
+      return [];
+    }),
+  );
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
   ipcMain.handle("search-history:list", () => store.listSearchHistory());
@@ -200,22 +205,22 @@ interface LibraryUpsert {
 
 let catalogClient: CatalogClient | null = null;
 let catalogClientUrl = "";
-let matchCache: {
+const taste = createTasteCache<{
   library: LibraryEntry[];
   genres: { id: number; name: string }[];
-} | null = null;
+}>();
 
 async function matchContext(): Promise<{
   library: LibraryEntry[];
   genres: { id: number; name: string }[];
 }> {
-  if (matchCache) return matchCache;
-  const [library, genres] = await Promise.all([
-    getClient().listLibrary(),
-    getClient().genres(),
-  ]);
-  matchCache = { library, genres };
-  return matchCache;
+  return taste.read(async () => {
+    const [library, genres] = await Promise.all([
+      getClient().listLibrary(),
+      getClient().genres(),
+    ]);
+    return { library, genres };
+  });
 }
 
 function getClient(): CatalogClient {
@@ -286,7 +291,6 @@ async function upsertLibrary({
   rating,
 }: LibraryUpsert): Promise<LibraryEntry[]> {
   await getClient().saveLibrary(movie as MovieSummary, status, rating);
-  matchCache = null;
   return getClient().listLibrary();
 }
 
@@ -303,11 +307,20 @@ async function forYou(): Promise<ForYouResult> {
   const candidates = payload.candidates.map(toSummaryFromDto);
   const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
   const profile = buildProfile(library, genres);
-  const movies = sortMovies(
-    candidates.map((movie) =>
-      scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
-    ),
-    "match",
+  const movies = tasteRanked(
+    profile.ratedCount,
+    candidates.map((movie) => ({
+      ...movie,
+      match: 0,
+      reasons: [] as RankReason[],
+    })),
+    (rows) =>
+      sortMovies(
+        rows.map((movie) =>
+          scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
+        ),
+        "match",
+      ),
   ).slice(0, 40);
   return {
     profile: publicProfile(profile),
@@ -436,7 +449,9 @@ async function importImdbCsv(): Promise<ImportProgress> {
       const movie = await getClient().findByImdb(row.imdbId);
       if (!movie) progress.skipped++;
       else {
-        await getClient().saveLibrary(movie, "watched", row.rating);
+        await withLibraryWrite(taste, () =>
+          getClient().saveLibrary(movie, "watched", row.rating),
+        );
         progress.imported++;
       }
     } catch {

@@ -4,6 +4,7 @@ import type {
   PagedMovies,
   RankedMovie,
 } from "../shared/types";
+import { tasteRanked } from "./ranking";
 
 export const DISCOVER_PAGE_SIZE = 40;
 
@@ -73,8 +74,8 @@ export async function loadDiscoverSlice(input: {
   const canLoadMore =
     fetched.results.length >= DISCOVER_PAGE_SIZE && fetched.nextCursor !== null;
   const results =
-    filters.sortBy === "match" && input.ratedCount >= 3
-      ? input.rankPage(fetched.results)
+    filters.sortBy === "match"
+      ? tasteRanked(input.ratedCount, fetched.results, input.rankPage)
       : fetched.results;
   return {
     ...fetched,
