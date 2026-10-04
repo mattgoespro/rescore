@@ -55,6 +55,7 @@ interface HealthPayload {
 export interface CatalogRuntime {
   start(): void;
   retry(): void;
+  announce(message: string): void;
   rebuild(): CatalogStatus;
   status(): CatalogStatus;
   stop(): Promise<void>;
@@ -98,6 +99,10 @@ export function createCatalogRuntime(
     generation += 1;
     restartAttempts = 0;
     run(generation);
+  };
+
+  const announce = (message: string): void => {
+    publish({ ...current, phase: "starting", message, error: null });
   };
 
   async function stop(): Promise<void> {
@@ -612,6 +617,7 @@ export function createCatalogRuntime(
   return {
     start,
     retry: start,
+    announce,
     rebuild,
     status: () => current,
     stop,

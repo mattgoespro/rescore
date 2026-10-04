@@ -77,7 +77,7 @@ export function registerIpc(
   const serviceAction = (event: Electron.IpcMainInvokeEvent) => {
     if (!trustedServiceSender(event))
       throw new Error("Untrusted service request");
-    return backgroundService.ensureRunning();
+    return backgroundService.ensureRunning("repair");
   };
   ipcMain.handle("background-service:status", (event) => {
     if (!trustedServiceSender(event))
@@ -120,7 +120,7 @@ export function registerIpc(
     if (serviceRequired()) {
       if (!trustedServiceSender(event))
         throw new Error("Untrusted service request");
-      await backgroundService.ensureRunning();
+      await backgroundService.ensureRunning("repair");
     }
     catalog.retry();
     return catalog.status();

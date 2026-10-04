@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 import { app, shell } from "electron";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { BackgroundServiceStatus } from "../shared/background-service";
 import type { CatalogRuntime } from "./catalog-runtime";
+import {
+  elevationCommand,
+  serviceMaintenanceAction,
+  type ServiceLaunchIntent,
+} from "./service-launch";
 import {
   blockCatalogConnection,
   matchesServiceHealth,
@@ -226,19 +231,35 @@ export class BackgroundService {
     }
   }
 
-  ensureRunning(): Promise<BackgroundServiceStatus> {
+  ensureRunning(
+    intent: ServiceLaunchIntent = "launch",
+  ): Promise<BackgroundServiceStatus> {
     if (this.ensuring) return this.ensuring;
-    this.ensuring = this.runEnsureRunning().finally(() => {
+    this.ensuring = this.runEnsureRunning(intent).finally(() => {
       this.ensuring = null;
     });
     return this.ensuring;
   }
 
-  private async runEnsureRunning(): Promise<BackgroundServiceStatus> {
+  private async runEnsureRunning(
+    intent: ServiceLaunchIntent,
+  ): Promise<BackgroundServiceStatus> {
     if (!serviceRequired()) return this.getStatus();
     try {
       if (!this.sid) await this.initialize();
       const status = await this.getStatus();
+      if (
+        serviceMaintenanceAction({
+          intent,
+          state: status.state,
+          phase: null,
+          sameLocation: false,
+          hashMatches: false,
+          displayName: null,
+        }) === "none"
+      ) {
+        return status;
+      }
       const record = this.installation();
       const expectedHash = createHash("sha256")
         .update(
@@ -247,26 +268,36 @@ export class BackgroundService {
           ),
         )
         .digest("hex");
-      const sameLocation =
+      const sameLocation = Boolean(
         record &&
         resolve(record.desktopRoot).toLowerCase() ===
-          resolve(process.resourcesPath, "..").toLowerCase();
+          resolve(process.resourcesPath, "..").toLowerCase(),
+      );
+      const hashMatches =
+        record?.runtimeHash?.toLowerCase() === expectedHash &&
+        record?.activated !== false;
+      let displayName: string | null = null;
       if (
+        intent === "repair" &&
         status.state === "running" &&
         sameLocation &&
-        record?.activated !== false &&
-        record?.runtimeHash?.toLowerCase() === expectedHash
+        hashMatches &&
+        record
       ) {
-        const displayName = await powershell(
+        displayName = await powershell(
           `(Get-Service -Name ${quote(record.serviceName)} -ErrorAction Stop).DisplayName`,
         );
-        if (displayName === "Rescore API") return status;
       }
-      return await this.change(
-        status.state === "error" && record?.phase === "ready"
-          ? "Retry"
-          : "EnsureRunning",
-      );
+      const action = serviceMaintenanceAction({
+        intent,
+        state: status.state,
+        phase: record?.phase ?? null,
+        sameLocation,
+        hashMatches,
+        displayName,
+      });
+      if (action === "none") return status;
+      return await this.change(action);
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       blockCatalogConnection(true);
@@ -298,6 +329,10 @@ export class BackgroundService {
     this.busy = true;
     this.error = null;
     blockCatalogConnection(true);
+    const startedAt = Date.now();
+    this.runtime?.announce(
+      "Preparing the required catalogue service. Please keep Rescore open.",
+    );
     try {
       {
         const profile = await powershell(
@@ -323,13 +358,11 @@ export class BackgroundService {
       // Encoded command keeps paths and apostrophes out of shell argument parsing.
       const elevated = `& ${quote(script)} -Action ${action} -OwnerSid ${quote(this.sid)}; exit $LASTEXITCODE`;
       const encoded = Buffer.from(elevated, "utf16le").toString("base64");
-      await powershell(
-        `$ErrorActionPreference='Stop'; $p=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',${quote(encoded)}); if ($p.ExitCode -ne 0) { exit 1 }`,
-      );
+      await powershell(elevationCommand(encoded));
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       const errorFile = join(this.root, "last-error.txt");
-      if (existsSync(errorFile))
+      if (existsSync(errorFile) && statSync(errorFile).mtimeMs >= startedAt)
         this.error += ` ${readFileSync(errorFile, "utf8").slice(0, 1500)}`;
     } finally {
       this.busy = false;
