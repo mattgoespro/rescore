@@ -22,7 +22,7 @@ Every Library write drops the cached taste, including a ratings CSV import. Disc
 
 ## Discover total
 
-A Discover page is titles, a cursor, and whether another page exists. When the total was not counted and the page is full, the total is unknown. Unknown is not a number. The view does not print an unknown total, or the loaded page length, as the catalogue size. A short page still has an exact total. `discoverQueryParams` and `loadDiscoverSlice` stay the owners of the query record, the cursor, the page size of 40, match re-rank, and `canLoadMore`. The client does not keep a second `canLoadMore` definition.
+A Discover page is titles, a cursor, and whether another page exists. When the total was not counted and the page is full, the total is unknown. Unknown is not a number. The view does not print an unknown total, or the loaded page length, as the catalogue size. A short page has an exact total only when it was not reached through a cursor. A cursor forces offset 0, so a later short page stays unknown. `discoverQueryParams` and `loadDiscoverSlice` stay the owners of the query record, the cursor, the page size of 40, match re-rank, and `canLoadMore`. The client does not keep a second `canLoadMore` definition.
 
 ## Library visibility
 

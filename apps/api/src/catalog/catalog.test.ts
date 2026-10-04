@@ -379,6 +379,45 @@ test("includeTotal false still pages when the page is full", () => {
   catalog.close();
 });
 
+test("a short cursor page does not report its length as the catalogue size", () => {
+  const catalog = openCatalog();
+  for (let index = 1; index <= 5; index += 1) {
+    seedTitle(catalog, {
+      id: `tt000000${index}`,
+      title: `Title ${index}`,
+      rating: 7,
+      votes: 1000 + index,
+    });
+  }
+  const first = catalog.listTitles({
+    page: 1,
+    pageSize: 2,
+    sort: "title",
+    order: "asc",
+    includeTotal: false,
+  });
+  const second = catalog.listTitles({
+    page: 1,
+    pageSize: 2,
+    sort: "title",
+    order: "asc",
+    includeTotal: false,
+    cursor: first.pagination.nextCursor ?? undefined,
+  });
+  const last = catalog.listTitles({
+    page: 1,
+    pageSize: 2,
+    sort: "title",
+    order: "asc",
+    includeTotal: false,
+    cursor: second.pagination.nextCursor ?? undefined,
+  });
+  assert.equal(last.data.length, 1);
+  assert.equal(last.pagination.total, null);
+  assert.equal(last.pagination.nextCursor, null);
+  catalog.close();
+});
+
 test("includeTotal false reports the exact total when the page is short", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {
@@ -746,6 +785,58 @@ test("poster candidates stay limited to the requested ids", () => {
     rows.map((row) => row.id),
     ["tt0000001"],
   );
+  catalog.close();
+});
+
+test("library visibility keeps a watchlist title in For You and hides watched on Discover", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Watched",
+    rating: 8,
+    votes: 10_000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Watchlist",
+    rating: 8,
+    votes: 9_000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000003",
+    title: "Skipped",
+    rating: 8,
+    votes: 8_000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000004",
+    title: "Open",
+    rating: 8,
+    votes: 7_000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000005",
+    title: "Quiet",
+    rating: 8,
+    votes: 4_999,
+  });
+  catalog.saveLibrary("tt0000001", "watched", 8, null);
+  catalog.saveLibrary("tt0000002", "watchlist", null, null);
+  catalog.saveLibrary("tt0000003", "skipped", null, null);
+  const discover = catalog.listTitles({
+    page: 1,
+    pageSize: 10,
+    sort: "title",
+    order: "asc",
+    hideWatched: true,
+  });
+  const discoverIds = discover.data.map((title) => title.id);
+  assert.equal(discoverIds.includes("tt0000001"), false);
+  assert.equal(discoverIds.includes("tt0000003"), false);
+  assert.equal(discoverIds.includes("tt0000002"), true);
+  assert.equal(discoverIds.includes("tt0000004"), true);
+  const candidates = catalog.listForYouCandidates(50).map((title) => title.id);
+  assert.deepEqual(candidates, ["tt0000002", "tt0000004"]);
   catalog.close();
 });
 

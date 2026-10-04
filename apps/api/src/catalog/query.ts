@@ -9,6 +9,7 @@ import type {
 import { readFacetsCache, writeFacetsCache } from "./facets-cache.js";
 import { getMetaValue } from "./meta.js";
 import { hydrateTitles } from "./hydrate.js";
+import { excludedLibraryStatuses } from "./library-visibility.js";
 import { IMDB_ID, type TitleQuery, type TitleRow } from "./types.js";
 
 const countCache = new Map<string, number>();
@@ -323,7 +324,7 @@ export function listTitles(
     }
   } else if (cached != null) {
     total = cached;
-  } else if (rows.length < query.pageSize) {
+  } else if (!useCursor && rows.length < query.pageSize) {
     total = offset + rows.length;
   } else {
     total = null;
@@ -443,15 +444,23 @@ export function listForYouCandidates(
   db: Database.Database,
   limit: number,
 ): TitleDto[] {
+  const params: Record<string, string | number> = { limit };
+  const exclusion = libraryExclusionClause(
+    excludedLibraryStatuses({ kind: "forYou" }),
+    params,
+    db,
+  );
+  const where = ["t.imdb_votes >= 5000", exclusion]
+    .filter(Boolean)
+    .join(" AND ");
   const rows = db
     .prepare(
       `SELECT t.* FROM titles t
-       WHERE t.imdb_votes >= 5000
-         AND NOT EXISTS (SELECT 1 FROM library_entries e WHERE e.title_id=t.id AND e.status IN ('watched','skipped'))
+       WHERE ${where}
        ORDER BY t.imdb_votes DESC, t.id ASC
-       LIMIT ?`,
+       LIMIT @limit`,
     )
-    .all(limit) as TitleRow[];
+    .all(params) as TitleRow[];
   return hydrateTitles(db, rows);
 }
 
@@ -461,6 +470,23 @@ function hasSkippedTitles(db: Database.Database): boolean {
       .prepare("SELECT 1 FROM library_entries WHERE status = 'skipped' LIMIT 1")
       .get(),
   );
+}
+
+function libraryExclusionClause(
+  statuses: Array<"watched" | "watchlist" | "skipped">,
+  params: Record<string, string | number>,
+  db: Database.Database,
+): string | null {
+  const active = statuses.filter(
+    (status) => status !== "skipped" || hasSkippedTitles(db),
+  );
+  if (!active.length) return null;
+  const placeholders = active.map((status, index) => {
+    const key = `libraryStatus${index}`;
+    params[key] = status;
+    return `@${key}`;
+  });
+  return `NOT EXISTS (SELECT 1 FROM library_entries excluded WHERE excluded.title_id=t.id AND excluded.status IN (${placeholders.join(",")}))`;
 }
 
 function buildWhere(
@@ -557,21 +583,16 @@ function buildWhere(
     where.push("(t.imdb_rating IS NULL OR t.imdb_rating <= @ratingMax)");
     params.ratingMax = query.ratingMax;
   }
-  if (hasSkippedTitles(db)) {
-    where.push(
-      "NOT EXISTS (SELECT 1 FROM library_entries skipped WHERE skipped.title_id=t.id AND skipped.status='skipped')",
-    );
-  }
-  if (query.hideWatched) {
-    where.push(
-      "NOT EXISTS (SELECT 1 FROM library_entries watched WHERE watched.title_id=t.id AND watched.status='watched')",
-    );
-  }
-  if (query.hideWatchlist) {
-    where.push(
-      "NOT EXISTS (SELECT 1 FROM library_entries watchlist WHERE watchlist.title_id=t.id AND watchlist.status='watchlist')",
-    );
-  }
+  const exclusion = libraryExclusionClause(
+    excludedLibraryStatuses({
+      kind: "discover",
+      hideWatched: query.hideWatched,
+      hideWatchlist: query.hideWatchlist,
+    }),
+    params,
+    db,
+  );
+  if (exclusion) where.push(exclusion);
   return {
     condition: where.length ? `WHERE ${where.join(" AND ")}` : "",
     params,

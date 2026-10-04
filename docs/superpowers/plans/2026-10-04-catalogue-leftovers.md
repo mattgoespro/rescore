@@ -40,6 +40,7 @@
 - An unknown Discover total is `null`. The count label is empty. It is not the loaded page length.
 - Taste is ready at three rated titles. Below that, For You keeps catalogue order.
 - Poster admission is `admitTitleHydration` in the existing poster module. It is the only caller of `coordinator.hydrate` outside the coordinator. A title read does not call it.
+- A cursor page does not turn its row count into a total. Cursor paging forces offset 0, so a short later page is not the catalogue size.
 
 ---
 
@@ -231,32 +232,40 @@ Stop the `offset + rows.length + 1` sentinel. Client and `loadDiscoverSlice` bot
 - For You: `watched` and `skipped`, ignoring hide flags.
 - The vote floor in `listForYouCandidates` stays `t.imdb_votes >= 5000`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `library-visibility.test.ts` asserts the three status lists above. Catalogue test: a watchlist title with 9000 votes is a For You candidate; a title with 4999 votes is not; Discover with `hideWatched` omits a watched title and still omits a skipped title.
 
-- [ ] **Step 2: Run the tests and confirm the new module test fails**
+- [x] **Step 2: Run the tests and confirm the new module test fails**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `buildWhere` and `listForYouCandidates` ask `excludedLibraryStatuses` and emit one `NOT EXISTS` for those statuses. Keep the existing skip when no skipped row exists and skipped is the only extra predicate that would have been omitted.
 
-- [ ] **Step 4: Run the visibility tests and the existing skipped / for-you catalogue tests**
+- [x] **Step 4: Run the visibility tests and the existing skipped / for-you catalogue tests**
 
-- [ ] **Step 5: Commit** `fix: share Library status exclusion across Discover and For You`
+- [x] **Step 5: Commit** `fix: share Library status exclusion across Discover and For You`
 
-### Task 7: Follow-up review
+### Task 7: Follow-up — cursor page total
 
-- [ ] **Step 1: Re-read the modules this plan touched**
+Found while re-reading `listTitles`. A short page without a cursor still has an exact total (`offset + rows.length`). A cursor forces offset 0, so a short later page was reporting its own length. Discover would print that length as the catalogue size.
 
-`catalog-runtime`, `catalog-status-snapshot`, `ipc`, `taste-cache`, `ranking`, `discover-slice`, `query`, `database`, `tmdb-posters`, `v1`, `Discover.tsx`.
+- [x] **Step 1: Failing test** — five titles, page size 2, the last cursor page has one title and `total === null`. It failed with `total === 1`.
 
-- [ ] **Step 2: Apply the deletion test**
+- [x] **Step 2: Implement** — an uncounted total is exact only when the page is short and no cursor was used. Otherwise it stays null.
 
-Implement another candidate only when deleting it would scatter real complexity, the interface is nearly as large as the implementation, or a pure helper's callers still hide the bug. Skip speculative cleanups and anything in Global Constraints.
+- [x] **Step 3: Commit** `fix: keep a cursor page from posing as the catalogue size`
 
-- [ ] **Step 3: Record the stopping review in this file**
+### Stopping review
 
-What was looked at, and why nothing further shipped.
+Looked again at `catalog-runtime`, `catalog-status-snapshot`, `ipc`, `taste-cache`, `ranking`, `discover-slice`, `catalog-client`, `query`, `database`, `library-visibility`, `tmdb-posters`, `v1`, and `Discover.tsx` after the cursor fix.
 
-- [ ] **Step 4: Commit the review note if it is not already in the last code commit** `docs: record the catalogue leftover stopping review`
+Nothing further passed the deletion test without contradicting a locked decision.
+
+- A Library upsert still lists the Library once so the view can replace its list. The per-row cost was inside `saveLibrary`, and that now hydrates only the written title. Folding the view's list into the write would be a new seam for one caller.
+- Desktop clear still returns an empty Library to the view. The catalogue clear returns the removed rows in one delete. Parsing that body and discarding it is the view contract, not a second delete loop.
+- `discoverHasAnotherPage` stays. The client and `loadDiscoverSlice` both use it, so `canLoadMore` is one rule.
+- `libraryExclusionClause` stays in the catalogue query. `excludedLibraryStatuses` is the shared decision. Moving the SQL would not hide a caller bug.
+- Locked decisions were not reopened: credits windows, the TMDb scheduler, key pool, and coordinator, `ratingMax`, phase `building`, health identity, and the catalogue process.
+
+Stopped here.
