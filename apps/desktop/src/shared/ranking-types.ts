@@ -4,8 +4,8 @@ export type RankingMode = "balanced" | "same" | "diverse";
 
 export interface PagedMovies {
   page: number;
-  totalPages: number;
-  totalResults: number;
+  totalPages: number | null;
+  totalResults: number | null;
   results: RankedMovie[];
   nextCursor: string | null;
   canLoadMore: boolean;

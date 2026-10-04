@@ -309,7 +309,7 @@ export function listTitles(
       ...(useCursor ? {} : { offset }),
     }) as TitleRow[];
 
-  let total: number;
+  let total: number | null;
   if (includeTotal) {
     if (cached != null) {
       total = cached;
@@ -326,7 +326,7 @@ export function listTitles(
   } else if (rows.length < query.pageSize) {
     total = offset + rows.length;
   } else {
-    total = offset + rows.length + 1;
+    total = null;
   }
 
   const nextCursor = computeNextCursor(
@@ -345,7 +345,8 @@ export function listTitles(
       page: useCursor ? 1 : query.page,
       pageSize: query.pageSize,
       total,
-      totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      totalPages:
+        total == null ? null : Math.max(1, Math.ceil(total / query.pageSize)),
       nextCursor,
     },
   };

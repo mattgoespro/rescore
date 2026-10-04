@@ -201,19 +201,19 @@ Remove the title-route admission. `fillTitles`, `enrichPosters`, and `enrichOneT
   - `discoverCountLabel(total: number | null, searching: boolean): string`
 - A full uncounted page has `total: null`. A short page has `total === offset + rows.length`. Label is `""` when `total` is null and the view is not searching, `"Searching…"` while searching with no known total, `"No titles"` at 0, and `"N titles"` for a known positive total.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the full-page `includeTotal: false` assertion (`total === 3`) with `total === null` and a string `nextCursor`. Add a short page whose total is the row count. `discoverCountLabel(null, false)` is `""`. `discoverCountLabel(41, false)` is not used as a stand-in; `discoverCountLabel(12, false)` is `"12 titles"`.
 
-- [ ] **Step 2: Run the tests and confirm they fail**
+- [x] **Step 2: Run the tests and confirm they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Stop the `offset + rows.length + 1` sentinel. Client and `loadDiscoverSlice` both call `discoverHasAnotherPage`. The view stores `number | null` and prints `discoverCountLabel`. Do not invent a page count from a missing total.
 
-- [ ] **Step 4: Run the catalogue page tests, discover-slice tests, and discover-count tests**
+- [x] **Step 4: Run the catalogue page tests, discover-slice tests, and discover-count tests**
 
-- [ ] **Step 5: Commit** `fix: stop treating an unknown Discover total as the catalogue size`
+- [x] **Step 5: Commit** `fix: stop treating an unknown Discover total as the catalogue size`
 
 ### Task 6: Library visibility
 

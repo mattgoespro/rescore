@@ -34,6 +34,7 @@ import CatalogLoader from "../components/catalog-loader";
 import { IconGrid, IconList } from "../components/icons";
 import { enterDelayMs, gridColumnCount } from "../motion";
 import { cn } from "../lib/cn";
+import { discoverCountLabel } from "../lib/discover-count";
 import { segmentedCell, segmentedGroup } from "../lib/ui";
 
 const SEARCH_DEBOUNCE_MS = 400;
@@ -58,9 +59,7 @@ export default function Discover({
 }): JSX.Element {
   const { containerRef, media } = useVisibleMedia();
   const [items, setItems] = useState<RankedMovie[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
+  const [totalResults, setTotalResults] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [entering, setEntering] = useState(false);
   const [layout, setLayout] = useState<"list" | "grid">("list");
@@ -71,8 +70,6 @@ export default function Discover({
   const openedId = useRef<string | null>(null);
   const filtersRef = useRef(filters);
   const genresRef = useRef(genres);
-  const pageRef = useRef(1);
-  const totalPagesRef = useRef(1);
   const loadingRef = useRef(true);
   const loadingMoreRef = useRef(false);
   const lastPageFullRef = useRef(false);
@@ -80,8 +77,6 @@ export default function Discover({
   const historySession = useRef({ saved: false });
   filtersRef.current = filters;
   genresRef.current = genres;
-  pageRef.current = page;
-  totalPagesRef.current = totalPages;
   loadingRef.current = loading;
 
   const filterKey = useMemo(
@@ -127,19 +122,9 @@ export default function Discover({
         cursor: cursorRef.current,
       });
       if (id !== requestId.current) return;
-      pageRef.current = data.page;
-      if (replace || data.totalResults > 0) {
-        totalPagesRef.current = Math.max(1, data.totalPages);
-        setTotalPages(totalPagesRef.current);
-        setTotalResults(data.totalResults);
-      } else if (!data.results.length) {
-        totalPagesRef.current = pageRef.current;
-        setTotalPages(pageRef.current);
-      } else {
-        totalPagesRef.current = pageRef.current + 1;
-        setTotalPages(pageRef.current + 1);
-      }
-      setPage(data.page);
+      setTotalResults(
+        typeof data.totalResults === "number" ? data.totalResults : null,
+      );
       cursorRef.current = data.nextCursor;
       lastPageFullRef.current = data.canLoadMore;
       setItems((prev) => {
@@ -229,10 +214,7 @@ export default function Discover({
   }, [layout, items.length, entering]);
 
   const refreshing = loading && hasResults;
-  const countLabel = titleCount(
-    totalResults > 0 ? totalResults : items.length,
-    loading && !items.length,
-  );
+  const countLabel = discoverCountLabel(totalResults, loading && !items.length);
   const activeHistoryId =
     history.find((entry) => matchesSearchHistory(filters, entry))?.id ?? null;
 
@@ -363,10 +345,4 @@ export default function Discover({
       {inspector}
     </section>
   );
-}
-
-function titleCount(total: number, searching: boolean): string {
-  if (searching && total <= 0) return "Searching…";
-  if (total <= 0) return "No titles";
-  return `${total.toLocaleString()} titles`;
 }

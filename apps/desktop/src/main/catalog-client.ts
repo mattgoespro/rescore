@@ -1,5 +1,5 @@
 import { catalogFetch } from "./catalog-connection";
-import { DISCOVER_PAGE_SIZE, discoverQueryParams } from "./discover-slice";
+import { discoverHasAnotherPage, discoverQueryParams } from "./discover-slice";
 import type {
   DiscoverFilters,
   Genre,
@@ -126,7 +126,7 @@ export class CatalogClient {
       totalResults: response.pagination.total,
       results: results.map((movie) => ({ ...movie, match: 0, reasons: [] })),
       nextCursor,
-      canLoadMore: results.length >= DISCOVER_PAGE_SIZE && nextCursor !== null,
+      canLoadMore: discoverHasAnotherPage(results.length, nextCursor),
     };
   }
 

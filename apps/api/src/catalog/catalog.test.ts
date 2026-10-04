@@ -365,8 +365,6 @@ test("includeTotal false still pages when the page is full", () => {
       votes: 1000 + index,
     });
   }
-  // Cold cache: no prior includeTotal:true warm-up. Full page → short estimate
-  // (offset + rows + 1), not SELECT count(*).
   const page = catalog.listTitles({
     page: 1,
     pageSize: 2,
@@ -375,8 +373,36 @@ test("includeTotal false still pages when the page is full", () => {
     includeTotal: false,
   });
   assert.equal(page.data.length, 2);
-  assert.equal(page.pagination.total, 3);
-  assert.ok(page.pagination.totalPages >= 2);
+  assert.equal(page.pagination.total, null);
+  assert.equal(page.pagination.totalPages, null);
+  assert.equal(typeof page.pagination.nextCursor, "string");
+  catalog.close();
+});
+
+test("includeTotal false reports the exact total when the page is short", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Only",
+    rating: 7,
+    votes: 1000,
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "Pair",
+    rating: 7,
+    votes: 900,
+  });
+  const page = catalog.listTitles({
+    page: 1,
+    pageSize: 10,
+    sort: "title",
+    order: "asc",
+    includeTotal: false,
+  });
+  assert.equal(page.data.length, 2);
+  assert.equal(page.pagination.total, 2);
+  assert.equal(page.pagination.nextCursor, null);
   catalog.close();
 });
 

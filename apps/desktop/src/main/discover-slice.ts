@@ -8,6 +8,13 @@ import { tasteRanked } from "./ranking";
 
 export const DISCOVER_PAGE_SIZE = 40;
 
+export function discoverHasAnotherPage(
+  count: number,
+  nextCursor: string | null,
+): boolean {
+  return count >= DISCOVER_PAGE_SIZE && nextCursor !== null;
+}
+
 export function discoverQueryParams(
   filters: DiscoverFilters,
   names: { genres: string[]; withoutGenres: string[] },
@@ -71,8 +78,10 @@ export async function loadDiscoverSlice(input: {
     cursor: input.mode === "replace" ? null : input.cursor,
   };
   const fetched = await input.fetchPage(filters);
-  const canLoadMore =
-    fetched.results.length >= DISCOVER_PAGE_SIZE && fetched.nextCursor !== null;
+  const canLoadMore = discoverHasAnotherPage(
+    fetched.results.length,
+    fetched.nextCursor,
+  );
   const results =
     filters.sortBy === "match"
       ? tasteRanked(input.ratedCount, fetched.results, input.rankPage)

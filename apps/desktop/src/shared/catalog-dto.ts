@@ -21,8 +21,8 @@ export interface TitleListResponse {
   pagination: {
     page: number;
     pageSize: number;
-    total: number;
-    totalPages: number;
+    total: number | null;
+    totalPages: number | null;
     nextCursor: string | null;
   };
 }
