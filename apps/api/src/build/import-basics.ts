@@ -60,5 +60,17 @@ export async function ingestTitles(
   file: string,
   ratings: Map<string, { rating: number; votes: number }>,
 ): Promise<number> {
-  return withTitleIngest(catalog, () => importBasics(catalog, file, ratings));
+  const previousCount = catalog.titleCount();
+  return withTitleIngest(catalog, async () => {
+    const imported = await importBasics(catalog, file, ratings);
+    if (
+      imported === 0 ||
+      (previousCount >= 1000 && imported < previousCount / 2)
+    ) {
+      throw new Error(
+        "IMDb input contains unexpectedly few accepted titles; catalogue removals were cancelled.",
+      );
+    }
+    return imported;
+  });
 }

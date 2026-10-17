@@ -82,19 +82,19 @@ export default function BackgroundService(): JSX.Element {
       className="my-4 border-t border-line pt-4"
       aria-labelledby="background-service-heading"
     >
-      <h4
+      <h3
         id="background-service-heading"
         className="m-0 text-[13px] font-semibold"
       >
         Background catalogue service
-      </h4>
-      <p className="text-xs leading-[1.45] text-pretty text-muted">
+      </h3>
+      <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">
         Required on Windows. Starts when you open Rescore and keeps the catalog
         updated after you close it.
       </p>
       <p
         role="status"
-        className="text-xs leading-[1.45] text-muted"
+        className="text-xs leading-copy text-muted not-empty:mt-2"
         aria-busy={busy}
       >
         {action ??
@@ -103,10 +103,13 @@ export default function BackgroundService(): JSX.Element {
           ? ` · ${status.message}`
           : ""}
       </p>
-      <p role="alert" className="text-xs leading-[1.45] text-danger">
+      <p
+        role="alert"
+        className="text-xs leading-copy text-danger not-empty:mt-2"
+      >
         {error || (status?.state === "error" ? status.message : "")}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2.5">
         {status?.supported && status.state !== "running" && (
           <button
             type="button"

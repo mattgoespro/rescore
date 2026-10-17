@@ -10,7 +10,7 @@ export default function AgeCaption({
   return (
     <span
       className={cn(
-        "ml-1.5 inline-block align-middle rounded-sm border px-1 py-px text-[10px] font-650 tracking-[0.08em] text-shadow-none",
+        "ml-1.5 inline-block rounded-sm border px-1 py-px align-middle text-[10px] font-650 tracking-[0.08em] text-shadow-none",
         dangerSpectrumClass(rating),
       )}
     >

@@ -1,3 +1,4 @@
+import { libraryEntryFromDto } from "./catalog-mapping";
 import { catalogFetch } from "./catalog-connection";
 import { discoverHasAnotherPage, discoverQueryParams } from "./discover-slice";
 import type {
@@ -181,15 +182,14 @@ export class CatalogClient {
     const response = await this.request<{ data: LibraryEntryDto[] }>(
       "/v1/library",
     );
-    return response.data.map(({ title, status, personalRating, updatedAt }) =>
-      toLibraryEntry(title, status, personalRating ?? undefined, updatedAt),
-    );
+    return response.data.map(libraryEntryFromDto);
   }
 
   async saveLibrary(
     movie: MovieSummary,
     status: WatchStatus,
     rating?: number,
+    ratedAt?: string,
   ): Promise<void> {
     const url = new URL(
       `/v1/library/${encodeURIComponent(movie.imdbId)}`,
@@ -201,7 +201,7 @@ export class CatalogClient {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ status, personalRating: rating ?? null }),
+      body: JSON.stringify({ status, personalRating: rating, ratedAt }),
       signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
     });
     if (!response.ok)
@@ -223,9 +223,7 @@ export class CatalogClient {
         response.status,
       );
     const body = (await response.json()) as { data: LibraryEntryDto[] };
-    return body.data.map(({ title, status, personalRating, updatedAt }) =>
-      toLibraryEntry(title, status, personalRating ?? undefined, updatedAt),
-    );
+    return body.data.map(libraryEntryFromDto);
   }
 
   async removeLibrary(imdbId: string): Promise<void> {
@@ -334,25 +332,6 @@ function toDetails(title: TitleDto): MovieDetails {
       profilePath: null,
     })),
     keywords: [],
-  };
-}
-
-function toLibraryEntry(
-  title: TitleDto,
-  status: WatchStatus,
-  rating: number | undefined,
-  updatedAt: string,
-): LibraryEntry {
-  const movie = toSummary(title);
-  return {
-    ...movie,
-    status,
-    rating,
-    updatedAt,
-    directorIds: movie.directorIds ?? [],
-    directorNames: movie.directorNames ?? [],
-    castIds: movie.castIds ?? [],
-    castNames: movie.castNames ?? [],
   };
 }
 

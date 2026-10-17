@@ -18,7 +18,7 @@ export default function Header({
 }): JSX.Element {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="kicker min-w-0 text-[13px] leading-7">Filters</h3>
+      <h2 className="kicker min-w-0 text-[13px] leading-7">Filters</h2>
       <div className="flex shrink-0 items-center gap-1.5">
         <HistoryMenu
           entries={history}

@@ -52,7 +52,9 @@ npm run dev:desktop
 npm run build:win
 ```
 
-The NSIS setup lands in `apps/desktop/dist/`. Opening `IMDBrain.exe` starts a hidden catalog API (bundled Node 22, compiled `@imdbrain/api`) and stops it when the app quits. The first launch with an empty catalog builds titles from IMDb dumps, then hydrates credits and posters in the background. Later launches reuse `%APPDATA%/imdbrain/data/catalog.sqlite`.
+Setup is a wizard: Welcome, installation progress, and Finish. Rescore installs to `%ProgramFiles%\Rescore`, and the independent catalogue runtime installs to `%ProgramFiles%\Rescore Catalogue`. Finish includes **Launch Rescore**, unchecked. Setup registers the catalogue service and leaves it stopped. Desktop and Start Menu shortcuts are created. Reinstallation reuses matching service code and catalogue data; default uninstall retains the shared catalogue in ProgramData for a later reinstall. See [Windows lifecycle](docs/windows-lifecycle.md).
+
+The NSIS setup lands in `dist/`. Opening `IMDBrain.exe` starts a hidden catalog API (bundled Node 22, compiled `@imdbrain/api`) and stops it when the app quits. The first launch with an empty catalog builds titles from IMDb dumps, then hydrates credits and posters in the background. Later launches reuse `%APPDATA%/imdbrain/data/catalog.sqlite`.
 
 ## Ranking model
 

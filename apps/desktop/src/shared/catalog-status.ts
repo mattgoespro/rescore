@@ -9,6 +9,8 @@ export interface CatalogDownloadProgress {
 }
 
 export interface TmdbHydrationProgress {
+  posters?: number;
+  synopses?: number;
   completedIds?: string[];
   processed: number;
   total: number;

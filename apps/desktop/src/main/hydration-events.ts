@@ -47,6 +47,8 @@ function toHydrationProgress(value: unknown): TmdbHydrationProgress | null {
   const processed = numberValue(input.processed);
   const total = numberValue(input.total);
   const percent = numberValue(input.percent);
+  const posters = numberValue(input.posters);
+  const synopses = numberValue(input.synopses);
   if (
     processed == null ||
     total == null ||
@@ -57,6 +59,8 @@ function toHydrationProgress(value: unknown): TmdbHydrationProgress | null {
     return null;
   }
   return {
+    ...(posters !== null ? { posters } : {}),
+    ...(synopses !== null ? { synopses } : {}),
     ...(Array.isArray(input.completedIds)
       ? {
           completedIds: input.completedIds

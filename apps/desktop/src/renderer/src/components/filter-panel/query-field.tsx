@@ -12,8 +12,10 @@ export default function QueryField({
     <Field label="Title or IMDb ID">
       <input
         type="text"
+        name="titleQuery"
+        autoComplete="off"
         value={value}
-        placeholder="Heat, or tt0113277"
+        placeholder="Heat, or tt0113277…"
         onChange={(e) => onChange(e.target.value)}
       />
     </Field>

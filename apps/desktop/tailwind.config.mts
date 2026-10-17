@@ -65,6 +65,7 @@ export default {
           2: palette.accent2,
           soft: palette.accentSoft,
           ink: palette.accentInk,
+          text: "var(--imd-accent-text)",
         },
         danger: {
           DEFAULT: palette.danger,
@@ -120,7 +121,7 @@ export default {
         },
       },
       animation: {
-        catalog: "spin 0.7s linear infinite",
+        catalog: "catalog-spin 0.7s linear infinite",
         "result-in": "result-in 160ms ease both",
         fade: "fade 200ms ease",
       },

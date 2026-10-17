@@ -4,9 +4,11 @@ import { ratingCell } from "../../lib/ui";
 export default function RatingScale({
   rating,
   onRate,
+  disabled = false,
 }: {
   rating?: number;
   onRate: (n: number) => void;
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <div
@@ -18,6 +20,7 @@ export default function RatingScale({
         <button
           key={n}
           type="button"
+          disabled={disabled}
           role="radio"
           aria-label={`${n} out of 10`}
           aria-checked={rating === n}

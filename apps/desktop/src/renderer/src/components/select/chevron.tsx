@@ -10,7 +10,7 @@ export default function Chevron({
       viewBox="0 0 24 24"
       aria-hidden="true"
       className={cn(
-        "size-4 shrink-0 fill-none stroke-muted stroke-[1.75] [stroke-linecap:round] [stroke-linejoin:round]",
+        "size-4 shrink-0 fill-none stroke-muted stroke-icon [stroke-linecap:round] [stroke-linejoin:round]",
         className,
       )}
       {...props}

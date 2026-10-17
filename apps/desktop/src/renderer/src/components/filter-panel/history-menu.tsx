@@ -63,7 +63,10 @@ export default function HistoryMenu({
   useEffect(() => {
     if (!open) return;
     placeMenu();
-    queueMicrotask(() => menuRef.current?.focus());
+    queueMicrotask(() => {
+      const first = menuRef.current?.querySelector<HTMLButtonElement>("button");
+      (first ?? menuRef.current)?.focus();
+    });
     const onDoc = (event: MouseEvent): void => {
       const target = event.target as Node;
       if (
@@ -75,6 +78,7 @@ export default function HistoryMenu({
     };
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        event.stopPropagation();
         setOpen(false);
         buttonRef.current?.focus();
       }
@@ -113,7 +117,7 @@ export default function HistoryMenu({
         )}
         type="button"
         aria-label="Search history"
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((prev) => !prev)}
@@ -128,9 +132,30 @@ export default function HistoryMenu({
               ref={menuRef}
               id={id}
               className={overlayPanelClass}
-              role="menu"
+              role="dialog"
               aria-label="Search history"
               tabIndex={-1}
+              onKeyDown={(event) => {
+                if (event.key === "Tab") {
+                  const buttons = [
+                    ...(menuRef.current?.querySelectorAll<HTMLButtonElement>(
+                      "button",
+                    ) ?? []),
+                  ];
+                  const index = buttons.indexOf(
+                    document.activeElement as HTMLButtonElement,
+                  );
+                  if (
+                    buttons.length === 0 ||
+                    (event.shiftKey && index === 0) ||
+                    (!event.shiftKey && index === buttons.length - 1)
+                  ) {
+                    setOpen(false);
+                    buttonRef.current?.focus();
+                    if (event.shiftKey) event.preventDefault();
+                  }
+                }
+              }}
               style={{
                 top: menuPos.top,
                 left: menuPos.left,
@@ -140,7 +165,7 @@ export default function HistoryMenu({
             >
               {entries.length ? (
                 <>
-                  <p className="kicker sticky top-0 z-1 bg-raised px-2.5 py-2">
+                  <p className="sticky top-0 z-1 kicker bg-raised px-2.5 py-2">
                     Saved searches
                   </p>
                   {entries.map((entry) => (
@@ -158,7 +183,7 @@ export default function HistoryMenu({
                   ))}
                 </>
               ) : (
-                <p className="m-0 px-2.5 py-3 text-[12px] leading-[1.45] text-muted">
+                <p className="m-0 px-2.5 py-3 text-[12px] leading-copy text-muted">
                   No saved searches yet. Run a search with filters or a sort
                   other than the defaults to record it.
                 </p>

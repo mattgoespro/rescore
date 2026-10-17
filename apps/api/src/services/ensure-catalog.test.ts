@@ -7,7 +7,9 @@ import {
   progressPhase,
   readTmdbHydration,
   subscribeTmdbHydration,
+  refreshCatalogStatus,
 } from "./ensure-catalog.js";
+import { CatalogDatabase } from "../catalog/index.js";
 
 test("usable catalog stays ready during dump checks", () => {
   assert.equal(progressPhase(true), "ready");
@@ -104,4 +106,40 @@ test("TMDb hydration subscribers receive durable snapshots and can unsubscribe",
   });
 
   assert.deepEqual(snapshots, [25]);
+});
+
+test("completed lookups report actual poster and synopsis coverage", () => {
+  const catalog = new CatalogDatabase(":memory:");
+  try {
+    catalog.upsertTitles([
+      { id: "tt0000001", title: "Found", kind: "movie" },
+      { id: "tt0000002", title: "Missing", kind: "movie" },
+    ]);
+    catalog.updatePosterUrls([
+      {
+        id: "tt0000001",
+        posterUrl: "https://example.com/a.jpg",
+        synopsis: "Found",
+        certification: "",
+        languages: [],
+      },
+      {
+        id: "tt0000002",
+        posterUrl: null,
+        synopsis: null,
+        certification: "",
+        languages: [],
+      },
+    ]);
+    refreshCatalogStatus(catalog);
+    const progress = readTmdbHydration();
+    assert.equal(progress.complete, true);
+    assert.equal(progress.posters, 1);
+    assert.equal(progress.synopses, 1);
+    assert.match(progress.message, /lookups complete/i);
+    assert.match(progress.message, /Posters: 1\/2 \(50.0%\)/);
+    assert.match(progress.message, /Synopses: 1\/2 \(50.0%\)/);
+  } finally {
+    catalog.close();
+  }
 });

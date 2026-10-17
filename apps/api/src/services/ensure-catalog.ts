@@ -4,6 +4,7 @@ import {
   cancellableDelay,
 } from "./runtime-lifecycle.js";
 import { emit } from "../log/write.js";
+import { runMetadataRetries } from "./metadata-retries.js";
 import {
   buildCatalogTitles,
   startCreditsBuild,
@@ -66,6 +67,8 @@ export function subscribeTmdbHydration(
 }
 
 export function publishTmdbHydration(update: {
+  posters?: number;
+  synopses?: number;
   processed: number;
   total: number;
   complete: boolean;
@@ -75,6 +78,8 @@ export function publishTmdbHydration(update: {
   const total = Math.max(0, Math.floor(update.total));
   const complete = update.complete === true;
   tmdbHydration = {
+    ...(update.posters !== undefined ? { posters: update.posters } : {}),
+    ...(update.synopses !== undefined ? { synopses: update.synopses } : {}),
     processed,
     total,
     percent: complete
@@ -88,6 +93,37 @@ export function publishTmdbHydration(update: {
   for (const listener of tmdbHydrationSubscribers) {
     listener(readTmdbHydration());
   }
+}
+
+function coverageMessage(coverage: {
+  total: number;
+  posters: number;
+  synopses: number;
+}): string {
+  const count = (filled: number): string =>
+    `${filled.toLocaleString("en-US")}/${coverage.total.toLocaleString("en-US")} (${coverage.total > 0 ? ((filled / coverage.total) * 100).toFixed(1) : "0.0"}%)`;
+  return `Posters: ${count(coverage.posters)}. Synopses: ${count(coverage.synopses)}.`;
+}
+
+function publishCatalogHydration(
+  catalog: CatalogDatabase,
+  error?: string | null,
+): void {
+  const stats = catalog.hydrationStats();
+  const coverage = catalog.tmdbCoverage();
+  const complete = stats.complete && stats.total > 0;
+  const message =
+    error ??
+    (complete
+      ? "TMDb lookups complete."
+      : "Loading metadata in the background. You can keep browsing.");
+  publishTmdbHydration({
+    ...stats,
+    complete,
+    posters: coverage.posters,
+    synopses: coverage.synopses,
+    message: `${message} ${coverageMessage(coverage)}`,
+  });
 }
 
 export function catalogStatus(): CatalogStatusDto {
@@ -156,15 +192,7 @@ export function refreshCatalogStatus(
     return catalogStatus();
   }
   const ready = catalog.readiness();
-  const hydration = catalog.hydrationStats();
-  publishTmdbHydration({
-    processed: hydration.processed,
-    total: hydration.total,
-    complete: hydration.complete && hydration.total > 0,
-    message: hydration.complete
-      ? "TMDb hydration complete."
-      : "Loading posters, synopses, and age ratings…",
-  });
+  publishCatalogHydration(catalog);
   const usable = isCatalogUsable({
     titlesReady: ready.titlesReady,
     creditsReady: ready.creditsReady,
@@ -222,15 +250,7 @@ async function runEnsure(
   const titlesReusable = !options.force && catalogIsUsable(catalog);
   const imdbReady =
     titlesReusable && catalog.creditsReady() && !catalog.creditsFailed();
-  const initialHydration = catalog.hydrationStats();
-  publishTmdbHydration({
-    processed: initialHydration.processed,
-    total: initialHydration.total,
-    complete: initialHydration.complete && initialHydration.total > 0,
-    message: initialHydration.complete
-      ? "TMDb hydration complete."
-      : "Loading posters, synopses, and age ratings…",
-  });
+  publishCatalogHydration(catalog);
   const catalogReady = imdbReady;
   if (catalogReady) {
     if (catalog.isBuildInProgress()) {
@@ -325,6 +345,7 @@ async function runEnsure(
     });
     // Upkeep is tracked separately; browsing and ratings sync do not wait for TMDb.
     void hydrateInBackground(catalog);
+    startMetadataRetries(catalog);
     return result.unchanged ? null : result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -341,7 +362,34 @@ async function runEnsure(
 }
 
 let hydrationWork: Promise<void> | null = null;
-function hydrateInBackground(catalog: CatalogDatabase): Promise<void> {
+let metadataRetryWork: Promise<void> | null = null;
+function startMetadataRetries(catalog: CatalogDatabase): void {
+  if (metadataRetryWork) return;
+  metadataRetryWork = trackWork(
+    runMetadataRetries(
+      catalog,
+      (ids) => hydrateInBackground(catalog, ids),
+      () => !isCatalogBuilding() && hydrationWork === null,
+    )
+      .catch((error: unknown) => {
+        if (!shutdownSignal.aborted)
+          emit({
+            channel: "posters",
+            phase: "posters",
+            level: "warn",
+            message: `Metadata retries stopped: ${error instanceof Error ? error.message : String(error)}`,
+          });
+      })
+      .finally(() => {
+        metadataRetryWork = null;
+      }),
+  );
+}
+
+function hydrateInBackground(
+  catalog: CatalogDatabase,
+  ids: string[] = [],
+): Promise<void> {
   if (hydrationWork) return hydrationWork;
   hydrationWork = trackWork(
     (async () => {
@@ -353,6 +401,7 @@ function hydrateInBackground(catalog: CatalogDatabase): Promise<void> {
       let previousAt = Date.now();
       const report = (): void => {
         const stats = catalog.hydrationStats();
+        const coverage = catalog.tmdbCoverage();
         const now = Date.now();
         const rate =
           Math.max(0, stats.processed - previous) /
@@ -369,7 +418,7 @@ function hydrateInBackground(catalog: CatalogDatabase): Promise<void> {
           channel: "posters",
           phase: "posters",
           level: "info",
-          message: `Progress ${stats.processed.toLocaleString("en-US")}/${stats.total.toLocaleString("en-US")} | ${rate.toFixed(1)} titles/s | ${state} | last error: ${error ?? "none"}`,
+          message: `Progress ${stats.processed.toLocaleString("en-US")}/${stats.total.toLocaleString("en-US")} | ${rate.toFixed(1)} titles/s | ${state} | last error: ${error ?? "none"} | ${coverageMessage(coverage)}`,
         });
         previous = stats.processed;
         previousAt = now;
@@ -380,16 +429,10 @@ function hydrateInBackground(catalog: CatalogDatabase): Promise<void> {
         while (!shutdownSignal.aborted) {
           retryAt = null;
           const publish = (): void => {
-            const stats = catalog.hydrationStats();
-            publishTmdbHydration({
-              ...stats,
-              message: stats.complete
-                ? "TMDb hydration complete."
-                : (posterEnrichmentError() ??
-                  "Loading metadata in the background. You can keep browsing."),
-            });
+            publishCatalogHydration(catalog, posterEnrichmentError());
           };
-          await startPosterEnrichment(catalog, { onProgress: publish });
+          publish();
+          await startPosterEnrichment(catalog, { ids, onProgress: publish });
           publish();
           if (catalog.hydrationStats().complete) return;
           const delay = Math.min(
@@ -407,13 +450,12 @@ function hydrateInBackground(catalog: CatalogDatabase): Promise<void> {
     })()
       .catch((error: unknown) => {
         if (!shutdownSignal.aborted)
-          publishTmdbHydration({
-            ...catalog.hydrationStats(),
-            message:
-              error instanceof Error
-                ? error.message
-                : "Metadata lookup failed. Browse to retry a title.",
-          });
+          publishCatalogHydration(
+            catalog,
+            error instanceof Error
+              ? error.message
+              : "Metadata lookup failed. Browse to retry a title.",
+          );
       })
       .finally(() => {
         hydrationWork = null;

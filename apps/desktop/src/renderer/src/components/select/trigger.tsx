@@ -7,6 +7,7 @@ export default function Trigger({
   open,
   label,
   ariaLabel,
+  disabled = false,
   menuId,
   onClick,
   onKeyDown,
@@ -15,6 +16,7 @@ export default function Trigger({
   open: boolean;
   label: string;
   ariaLabel?: string;
+  disabled?: boolean;
   menuId: string;
   onClick: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
@@ -24,8 +26,9 @@ export default function Trigger({
       ref={buttonRef}
       id={`${menuId}-trigger`}
       type="button"
+      disabled={disabled}
       className={cn(
-        "field-control flex items-center justify-between gap-2.5 text-left text-ink",
+        "flex field-control items-center justify-between gap-2.5 text-left text-ink",
         open ? "border-accent" : "border-line focus-visible:border-accent",
       )}
       aria-label={ariaLabel}

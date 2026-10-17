@@ -64,7 +64,7 @@ export default function FilterPanel({
   }
 
   return (
-    <aside className="flex min-h-0 max-h-[28vh] flex-col gap-2.5 overflow-auto border-b border-line bg-transparent px-4.5 py-5 inspect:max-h-none inspect:border-r inspect:border-b-0">
+    <aside className="flex max-h-[28vh] min-h-0 flex-col gap-2.5 overflow-auto border-b border-line bg-transparent px-4.5 py-5 inspect:max-h-none inspect:border-r inspect:border-b-0">
       <Header
         onReset={() => setFilters(defaultFilters())}
         history={history}
@@ -126,7 +126,7 @@ export default function FilterPanel({
         onChange={(languages) =>
           patch({
             excludeLanguages: languages
-              .map((language) => String(language.id))
+              .map((language) => language.id)
               .slice(0, 12),
           })
         }

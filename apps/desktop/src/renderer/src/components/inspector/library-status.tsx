@@ -6,7 +6,7 @@ export default function LibraryStatus({
   status: string;
 }): JSX.Element {
   return (
-    <div className="text-[11px] tracking-[0.08em] text-accent uppercase">
+    <div className="text-[11px] tracking-[0.08em] text-accent-text uppercase">
       In library: {status}
     </div>
   );

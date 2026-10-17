@@ -9,6 +9,7 @@ export interface TitleDto {
   runtimeMinutes: number | null;
   synopsis: string | null;
   posterUrl: string | null;
+  posterStatus?: "pending" | "available" | "unavailable";
   certification: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
@@ -39,6 +40,7 @@ export interface LibraryEntryDto {
   title: TitleDto;
   status: LibraryStatus;
   personalRating: number | null;
+  ratedAt?: string | null;
   note: string | null;
   updatedAt: string;
 }

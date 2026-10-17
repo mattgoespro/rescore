@@ -53,7 +53,7 @@ const listQuery = z
         const genres = list.map((item) => String(item).trim()).filter(Boolean);
         return genres.length ? genres : undefined;
       },
-      z.array(z.string().trim().min(1).max(60)).max(8).optional(),
+      z.array(z.string().trim().min(1).max(60)).max(30).optional(),
     ),
     withoutLanguage: z.preprocess(
       (value) => {
@@ -174,6 +174,7 @@ const libraryBody = z
   .object({
     status: z.enum(["watched", "watchlist", "skipped"]),
     personalRating: z.number().min(0).max(10).nullable().optional(),
+    ratedAt: z.string().datetime().optional(),
     note: z.string().trim().max(2000).nullable().optional(),
   })
   .strict()
@@ -319,6 +320,11 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
 
 function toLibraryArgs(
   body: z.infer<typeof libraryBody>,
-): [z.infer<typeof libraryBody>["status"], number | null, string | null] {
-  return [body.status, body.personalRating ?? null, body.note ?? null];
+): [
+  z.infer<typeof libraryBody>["status"],
+  number | null | undefined,
+  string | null,
+  string | undefined,
+] {
+  return [body.status, body.personalRating, body.note ?? null, body.ratedAt];
 }

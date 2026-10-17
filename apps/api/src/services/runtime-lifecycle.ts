@@ -17,7 +17,10 @@ export async function drainWork(): Promise<void> {
   while (tasks.size) await Promise.allSettled([...tasks]);
 }
 
-export async function cancellableDelay(ms: number): Promise<void> {
+export async function cancellableDelay(
+  ms: number,
+  options: { unref?: boolean } = {},
+): Promise<void> {
   shutdownSignal.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const done = (): void => {
@@ -25,6 +28,7 @@ export async function cancellableDelay(ms: number): Promise<void> {
       resolve();
     };
     const timer = setTimeout(done, ms);
+    if (options.unref) timer.unref();
     const abort = (): void => {
       clearTimeout(timer);
       shutdownSignal.removeEventListener("abort", abort);

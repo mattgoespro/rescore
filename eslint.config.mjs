@@ -10,11 +10,18 @@ export default defineConfig([
   ...tseslint.configs.recommended,
   {
     rules: {
-      // Keep intentional framework and compatibility parameters in signatures.
+      // Keep intentional parameters and fields omitted through object rest.
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_" },
+        { argsIgnorePattern: "^_", ignoreRestSiblings: true },
       ],
+    },
+  },
+  {
+    files: ["**/*.cjs"],
+    rules: {
+      // CommonJS entry points are also loaded by Electron Builder through require.
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   {
@@ -31,12 +38,6 @@ export default defineConfig([
           ),
         ),
       },
-    },
-    rules: {
-      ...tailwindcss.configs.recommended.rules,
-      // v4 `leading-N` is spacing (rem), not a unitless multiplier. This rule
-      // rewrites `leading-[1.45]` to invalid `leading-1.45`.
-      "tailwindcss/no-unnecessary-arbitrary-value": "off",
     },
   },
 ]);

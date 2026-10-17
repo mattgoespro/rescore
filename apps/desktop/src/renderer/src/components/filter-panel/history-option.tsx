@@ -21,6 +21,7 @@ export default function HistoryOption({
   onRemove: () => void;
 }): JSX.Element {
   const rows = [
+    ...(entry.filters?.query ? [["Title", entry.filters.query]] : []),
     ["Title type", historyTitleKindLabel(entry.titleKind)],
     ["Genres", historyGenresLabel(entry.genres)],
     ["Years", historyYearsLabel(entry.yearMin, entry.yearMax)],
@@ -31,13 +32,12 @@ export default function HistoryOption({
   return (
     <div
       className={cn(
-        "flex items-start gap-0.5 rounded-lg [&:not(:last-child)]:mb-0.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-line [&:not(:last-child)]:pb-0.5",
+        "flex items-start gap-0.5 rounded-lg not-last:mb-0.5 not-last:border-b not-last:border-line not-last:pb-0.5",
         active ? "bg-accent-soft" : "bg-transparent hover:bg-wash-6",
       )}
     >
       <button
         type="button"
-        role="menuitem"
         className="min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2.5 py-2 text-left"
         onClick={onApply}
       >
@@ -47,12 +47,12 @@ export default function HistoryOption({
               key={label}
               className="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-x-2.5"
             >
-              <dt className="text-[11px] leading-[1.35] font-medium whitespace-nowrap text-faint">
+              <dt className="text-[11px] leading-detail font-medium whitespace-nowrap text-faint">
                 {label}
               </dt>
               <dd
                 className={cn(
-                  "m-0 min-w-0 text-[12px] leading-[1.35] break-words",
+                  "m-0 min-w-0 text-[12px] leading-detail wrap-break-word",
                   label === "Title type"
                     ? "font-semibold text-ink"
                     : "text-ink",
@@ -79,7 +79,7 @@ export default function HistoryOption({
         <svg
           viewBox="0 0 24 24"
           aria-hidden="true"
-          className="size-3.5 fill-none stroke-current stroke-[1.75] [stroke-linecap:round] [stroke-linejoin:round]"
+          className="size-3.5 fill-none stroke-current stroke-icon [stroke-linecap:round] [stroke-linejoin:round]"
         >
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>

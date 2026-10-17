@@ -11,7 +11,6 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('rescore-helper-test-' + [Guid]::N
 [void][IO.Directory]::CreateDirectory($temp)
 try {
   $binaryRoot = $temp
-  $OwnerSid = 'fixture'
   $runtime = Join-Path $temp 'runtime'
   [void][IO.Directory]::CreateDirectory($runtime)
   Assert-Contained $runtime $temp
@@ -33,6 +32,20 @@ try {
   Write-Wrapper $runtime $name $temp $true
   [xml]$xml = Get-Content -LiteralPath (Join-Path $runtime 'RescoreService.xml') -Raw
   if ($xml.service.startmode -ne 'Automatic' -or $xml.service.delayedAutoStart -ne 'true') { throw 'Activated service must start after Windows boot' }
+  $legacy = Join-Path $runtime 'dist\scripts'
+  [void][IO.Directory]::CreateDirectory($legacy)
+  foreach ($entry in @('service-data', 'service-stop')) { [IO.File]::WriteAllText((Join-Path $legacy "$entry.js"), '') }
+  Write-Wrapper $runtime $name $temp $true
+  [xml]$xml = Get-Content -LiteralPath (Join-Path $runtime 'RescoreService.xml') -Raw
+  if ($xml.service.stoparguments -notmatch 'dist\\scripts\\service-stop.js') { throw 'Recovery must retain the stop entry point of an older installed runtime' }
+  if ((Get-LifecycleEntry $runtime 'service-data') -ne 'dist\scripts\service-data.js') { throw 'Data recovery must support older installed runtimes' }
+  $current = Join-Path $runtime 'dist\lifecycle'
+  [void][IO.Directory]::CreateDirectory($current)
+  foreach ($entry in @('service-data', 'service-stop')) { [IO.File]::WriteAllText((Join-Path $current "$entry.js"), '') }
+  Write-Wrapper $runtime $name $temp $true
+  [xml]$xml = Get-Content -LiteralPath (Join-Path $runtime 'RescoreService.xml') -Raw
+  if ($xml.service.stoparguments -notmatch 'dist\\lifecycle\\service-stop.js') { throw 'New runtimes must prefer functional lifecycle entry points' }
+  if ((Get-LifecycleEntry $runtime 'service-data') -ne 'dist\lifecycle\service-data.js') { throw 'Data transfer must prefer the new lifecycle entry point' }
   if ($Wrapper) {
     Copy-Item -LiteralPath $Wrapper -Destination (Join-Path $runtime 'RescoreService.exe')
     $status = & (Join-Path $runtime 'RescoreService.exe') status

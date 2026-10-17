@@ -12,7 +12,7 @@ import type {
 } from "../catalog-types.js";
 import { bayesianScore } from "./bayesian.js";
 import { normalizeLanguageCodes } from "./languages.js";
-import { invalidateFacetsCache } from "./facets-cache.js";
+import { invalidateQueryCache, invalidateCountCache } from "./query-cache.js";
 import {
   flagIsSet,
   getMetaValue,
@@ -25,7 +25,6 @@ import {
 import { now } from "./now.js";
 import {
   facets,
-  invalidateCountCache,
   listForYouCandidates,
   libraryEntriesFromWrites,
   listLibrary,
@@ -68,6 +67,7 @@ type LibraryWriteRow = {
   title_id: string;
   status: LibraryStatus;
   personal_rating: number | null;
+  rated_at: string | null;
   note: string | null;
   updated_at: string;
 };
@@ -144,8 +144,8 @@ export class CatalogDatabase {
         }
       }
     })(titles);
-    invalidateFacetsCache();
-    invalidateCountCache();
+    invalidateQueryCache(this.db);
+    invalidateCountCache(this.db);
     return titles.length;
   }
 
@@ -303,20 +303,38 @@ LIMIT ?`,
   saveLibrary(
     id: string,
     status: LibraryStatus,
-    personalRating: number | null,
+    personalRating: number | null | undefined,
     note: string | null,
+    ratedAt?: string,
   ): LibraryEntryDto | null {
     const titleId = id.toLowerCase();
     const exists = this.db
       .prepare("SELECT 1 AS found FROM titles WHERE id = ?")
       .get(titleId);
     if (!exists) return null;
+    const updatedAt = now();
     const row = this.db
       .prepare(
-        `INSERT INTO library_entries(title_id,status,personal_rating,note,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(title_id) DO UPDATE SET status=excluded.status,personal_rating=excluded.personal_rating,note=excluded.note,updated_at=excluded.updated_at RETURNING title_id, status, personal_rating, note, updated_at`,
+        `INSERT INTO library_entries(title_id,status,personal_rating,note,updated_at,rated_at)
+         VALUES(@id,@status,@rating,@note,@updatedAt,@initialRatedAt)
+         ON CONFLICT(title_id) DO UPDATE SET status=excluded.status,
+           personal_rating=CASE WHEN @hasRating THEN excluded.personal_rating ELSE library_entries.personal_rating END,
+           rated_at=CASE WHEN @ratedAt IS NOT NULL THEN @ratedAt
+             WHEN @hasRating AND library_entries.personal_rating IS NOT excluded.personal_rating THEN excluded.rated_at
+             ELSE library_entries.rated_at END,
+           note=excluded.note,updated_at=excluded.updated_at
+         RETURNING title_id, status, personal_rating, note, updated_at, rated_at`,
       )
-      .get(titleId, status, personalRating, note, now()) as
-      LibraryWriteRow | undefined;
+      .get({
+        id: titleId,
+        status,
+        rating: personalRating ?? null,
+        note,
+        updatedAt,
+        initialRatedAt: ratedAt ?? (personalRating != null ? updatedAt : null),
+        ratedAt: ratedAt ?? null,
+        hasRating: personalRating !== undefined ? 1 : 0,
+      }) as LibraryWriteRow | undefined;
     this.bumpLibrarySkipRev();
     return row ? (libraryEntriesFromWrites(this.db, [row])[0] ?? null) : null;
   }
@@ -324,7 +342,7 @@ LIMIT ?`,
   deleteLibrary(id: string): LibraryEntryDto | null {
     const row = this.db
       .prepare(
-        "DELETE FROM library_entries WHERE title_id = ? RETURNING title_id, status, personal_rating, note, updated_at",
+        "DELETE FROM library_entries WHERE title_id = ? RETURNING title_id, status, personal_rating, note, updated_at, rated_at",
       )
       .get(id.toLowerCase()) as LibraryWriteRow | undefined;
     if (!row) return null;
@@ -335,7 +353,7 @@ LIMIT ?`,
   clearLibrary(): LibraryEntryDto[] {
     const rows = this.db
       .prepare(
-        "DELETE FROM library_entries RETURNING title_id, status, personal_rating, note, updated_at",
+        "DELETE FROM library_entries RETURNING title_id, status, personal_rating, note, updated_at, rated_at",
       )
       .all() as LibraryWriteRow[];
     if (!rows.length) return [];
@@ -346,7 +364,7 @@ LIMIT ?`,
   private bumpLibrarySkipRev(): void {
     const next = Number(getMetaValue(this.db, "librarySkipRev") ?? "0") + 1;
     setMetaValue(this.db, "librarySkipRev", String(next));
-    invalidateCountCache();
+    invalidateCountCache(this.db);
   }
 
   createImport(id: string, kind: ImportStatusDto["kind"]): void {
@@ -484,6 +502,27 @@ LIMIT ?`,
     return prioritized;
   }
 
+  /** Reopen only checked-empty fields; successful metadata and initial work stay intact. */
+  requeueMissingMedia(checkedBefore: number, limit = 400): string[] {
+    return this.db.transaction(() => {
+      const rows = this.db
+        .prepare(
+          `SELECT id FROM titles
+         WHERE (poster_url = '' OR synopsis = '')
+           AND NOT (${TMDB_HYDRATION_PENDING_SQL})
+           AND COALESCE(tmdb_checked_at, 0) <= ?
+         ORDER BY COALESCE(tmdb_checked_at, 0), imdb_votes DESC, id LIMIT ?`,
+        )
+        .all(checkedBefore, limit) as Array<{ id: string }>;
+      const update = this.db.prepare(
+        `UPDATE titles SET poster_url = NULLIF(poster_url, ''),
+          synopsis = NULLIF(synopsis, '') WHERE id = ?`,
+      );
+      for (const row of rows) update.run(row.id);
+      return rows.map((row) => row.id);
+    })();
+  }
+
   updatePosterUrls(
     rows: Array<{
       id: string;
@@ -504,7 +543,10 @@ LIMIT ?`,
           ELSE synopsis END,
         certification = CASE
           WHEN @setCertification = 1 AND certification IS NULL THEN @certification
-          ELSE certification END
+          ELSE certification END,
+        tmdb_checked_at = CASE
+          WHEN @setPoster = 1 OR @setSynopsis = 1 THEN @checkedAt
+          ELSE tmdb_checked_at END
        WHERE id = @id`,
     );
     const clearLanguages = this.db.prepare(
@@ -530,18 +572,23 @@ LIMIT ?`,
           posterUrl: row.posterUrl ?? "",
           synopsis: row.synopsis ?? "",
           certification: row.certification ?? "",
+          checkedAt: Date.now(),
         });
         if (row.languages) {
-          clearLanguages.run(row.id);
-          normalizeLanguageCodes(row.languages).forEach(
-            (language, position) => {
+          const languages = normalizeLanguageCodes(row.languages);
+          // A later provider miss must not erase languages already discovered.
+          if (languages.length) {
+            clearLanguages.run(row.id);
+            languages.forEach((language, position) => {
               addLanguage.run(row.id, language, position);
-            },
-          );
+            });
+          }
           markLanguagesChecked.run(row.id);
         }
       }
     })();
+    if (rows.some((row) => row.languages?.length))
+      invalidateCountCache(this.db);
   }
 
   updatePosterUrlsQueued(
@@ -715,6 +762,7 @@ LIMIT ?`,
   }
 
   close(): void {
+    invalidateQueryCache(this.db);
     try {
       this.db.close();
     } finally {

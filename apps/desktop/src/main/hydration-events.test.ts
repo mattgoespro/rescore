@@ -61,3 +61,21 @@ test("preserves validated title completion IDs for visible refresh", () => {
   );
   assert.deepEqual(event.completedIds, ["tt0000001"]);
 });
+
+test("hydration events preserve coverage separately from lookup completion", () => {
+  const parser = createHydrationEventParser();
+  const [event] = parser.push(
+    `event: hydration\ndata: ${JSON.stringify({
+      processed: 100,
+      total: 100,
+      percent: 100,
+      complete: true,
+      posters: 73,
+      synopses: 68,
+      message: "TMDb lookups complete.",
+    })}\n\n`,
+  );
+  assert.equal(event.complete, true);
+  assert.equal(event.posters, 73);
+  assert.equal(event.synopses, 68);
+});

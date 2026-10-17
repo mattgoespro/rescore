@@ -12,15 +12,22 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "tsx --test src/**/*.test.ts",
+    "test:ui": "node scripts/verify-ui.mjs",
+    "test:recovery": "node --import tsx scripts/verify-runtime-recovery.mjs",
+    "test:library-ui": "node scripts/verify-library-refresh.mjs",
+    "test:service": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File resources/service/test-service.ps1",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir --config electron-builder.config.js",
-    "build:win": "npm run build && electron-builder --win --config electron-builder.config.js"
+    "build:win": "npm run build && electron-builder --win --config electron-builder.config.js",
+    "test:lifecycle-native": "node scripts/verify-native-lifecycle.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "react-infinite-scroll-component": "^7.2.1"
+    "@tanstack/react-virtual": "^3.14.17",
+    "react-infinite-scroll-component": "^7.2.1",
+    "xstate": "5.33.2"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",

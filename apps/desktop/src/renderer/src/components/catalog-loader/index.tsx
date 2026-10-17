@@ -4,7 +4,7 @@ import type {
   TmdbHydrationProgress,
 } from "../../../../shared/types";
 import { progressBarClass, progressFillClass } from "../../lib/ui";
-import Spinner from "./spinner";
+import LoadingOverlay from "../loading-overlay";
 
 export default function CatalogLoader({
   label,
@@ -24,15 +24,7 @@ export default function CatalogLoader({
   const inline = layout === "inline";
 
   return (
-    <div
-      className={
-        inline
-          ? "flex w-full flex-col items-start gap-2 text-[13px] text-muted"
-          : "flex flex-col items-center justify-center gap-3 px-4 py-12 text-[13px] text-muted"
-      }
-    >
-      <Spinner />
-      <p className={inline ? "m-0" : "m-0 text-center"}>{label}</p>
+    <LoadingOverlay busy loadingText={label} inline={inline}>
       {download ? (
         <div
           className={
@@ -58,8 +50,8 @@ export default function CatalogLoader({
             <p
               className={
                 inline
-                  ? "m-0 text-xs leading-[1.45] text-muted tabular"
-                  : "m-0 text-center text-xs leading-[1.45] text-muted tabular"
+                  ? "m-0 text-xs leading-copy text-muted tabular"
+                  : "m-0 text-center text-xs leading-copy text-muted tabular"
               }
             >
               {caption}
@@ -91,8 +83,8 @@ export default function CatalogLoader({
           <p
             className={
               inline
-                ? "m-0 text-xs leading-[1.45] text-muted tabular"
-                : "m-0 text-center text-xs leading-[1.45] text-muted tabular"
+                ? "m-0 text-xs leading-copy text-muted tabular"
+                : "m-0 text-center text-xs leading-copy text-muted tabular"
             }
           >
             {`${hydration.percent}% · ${hydration.processed.toLocaleString()} / ${hydration.total.toLocaleString()}`}
@@ -103,14 +95,14 @@ export default function CatalogLoader({
         <p
           className={
             inline
-              ? "m-0 max-w-160 text-xs leading-[1.45] text-muted"
-              : "m-0 max-w-160 text-center text-xs leading-[1.45] text-muted"
+              ? "m-0 max-w-160 text-xs leading-copy text-muted"
+              : "m-0 max-w-160 text-center text-xs leading-copy text-muted"
           }
         >
           {detail}
         </p>
       ) : null}
-    </div>
+    </LoadingOverlay>
   );
 }
 

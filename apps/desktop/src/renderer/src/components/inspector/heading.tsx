@@ -9,7 +9,7 @@ export default function Heading({
   rating?: string;
 }): JSX.Element {
   return (
-    <h2 className="mt-0 mb-1.5 text-2xl font-650 tracking-title [text-shadow:var(--imd-title-shadow)]">
+    <h2 className="mt-0 mb-1.5 text-2xl font-650 tracking-title text-shadow-(--imd-title-shadow)">
       {title}
       <AgeCaption rating={rating} />
     </h2>

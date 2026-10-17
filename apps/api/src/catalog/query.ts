@@ -6,13 +6,11 @@ import type {
   TitleDto,
   TitleListResponse,
 } from "../catalog-types.js";
-import { readFacetsCache, writeFacetsCache } from "./facets-cache.js";
+import { queryCache, FACETS_TTL_MS } from "./query-cache.js";
 import { getMetaValue } from "./meta.js";
 import { hydrateTitles } from "./hydrate.js";
 import { excludedLibraryStatuses } from "./library-visibility.js";
 import { IMDB_ID, type TitleQuery, type TitleRow } from "./types.js";
-
-const countCache = new Map<string, number>();
 
 const orderColumn = {
   title: "t.title COLLATE NOCASE",
@@ -28,10 +26,6 @@ function orderBy(sort: TitleQuery["sort"], order: "ASC" | "DESC"): string {
     return `${column} ${order}, t.imdb_votes ${order}, t.id ASC`;
   }
   return `${column} ${order}, t.id ASC`;
-}
-
-export function invalidateCountCache(): void {
-  countCache.clear();
 }
 
 interface TitleCursor {
@@ -290,7 +284,8 @@ export function listTitles(
     fts,
   });
   const includeTotal = query.includeTotal !== false;
-  const cached = countCache.get(cacheKey);
+  const counts = queryCache(db).counts;
+  const cached = counts.get(cacheKey);
 
   const from = fts
     ? "titles t JOIN titles_fts f ON f.rowid = t.rowid"
@@ -320,7 +315,7 @@ export function listTitles(
           .prepare(`SELECT count(*) AS total FROM ${from} ${condition}`)
           .get(params) as { total: number }
       ).total;
-      countCache.set(cacheKey, total);
+      counts.set(cacheKey, total);
     }
   } else if (cached != null) {
     total = cached;
@@ -361,9 +356,10 @@ export function titleById(db: Database.Database, id: string): TitleDto | null {
 }
 
 export function facets(db: Database.Database): FacetsResponse {
-  const cached = readFacetsCache();
-  if (cached) return cached;
-  return writeFacetsCache({
+  const cache = queryCache(db);
+  if (cache.facets && Date.now() <= cache.facets.expires)
+    return cache.facets.value;
+  const value: FacetsResponse = {
     genres: db
       .prepare(
         "SELECT genre AS value, count(*) AS count FROM title_genres GROUP BY genre ORDER BY count DESC, genre",
@@ -377,7 +373,9 @@ export function facets(db: Database.Database): FacetsResponse {
     years: db
       .prepare("SELECT min(year) AS min, max(year) AS max FROM titles")
       .get() as FacetsResponse["years"],
-  });
+  };
+  cache.facets = { value, expires: Date.now() + FACETS_TTL_MS };
+  return value;
 }
 
 export function libraryEntriesFromWrites(
@@ -386,6 +384,7 @@ export function libraryEntriesFromWrites(
     title_id: string;
     status: LibraryStatus;
     personal_rating: number | null;
+    rated_at: string | null;
     note: string | null;
     updated_at: string;
   }>,
@@ -407,6 +406,7 @@ export function libraryEntriesFromWrites(
         title,
         status: row.status,
         personalRating: row.personal_rating,
+        ratedAt: row.rated_at,
         note: row.note,
         updatedAt: row.updated_at,
       },
@@ -420,14 +420,15 @@ export function listLibrary(
 ): LibraryEntryDto[] {
   const rows = db
     .prepare(
-      `SELECT l.status,l.personal_rating,l.note,l.updated_at,t.* FROM library_entries l JOIN titles t ON t.id=l.title_id ${status ? "WHERE l.status=?" : ""} ORDER BY l.updated_at DESC`,
+      `SELECT l.status,l.personal_rating,l.rated_at,l.note,l.updated_at AS library_updated_at,t.* FROM library_entries l JOIN titles t ON t.id=l.title_id ${status ? "WHERE l.status=?" : ""} ORDER BY l.updated_at DESC`,
     )
     .all(...(status ? [status] : [])) as Array<
     TitleRow & {
       status: LibraryStatus;
       personal_rating: number | null;
+      rated_at: string | null;
       note: string | null;
-      updated_at: string;
+      library_updated_at: string;
     }
   >;
   const titles = hydrateTitles(db, rows);
@@ -435,8 +436,9 @@ export function listLibrary(
     title: titles[index]!,
     status: row.status,
     personalRating: row.personal_rating,
+    ratedAt: row.rated_at,
     note: row.note,
-    updatedAt: row.updated_at,
+    updatedAt: row.library_updated_at,
   }));
 }
 

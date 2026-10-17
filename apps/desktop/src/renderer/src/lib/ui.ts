@@ -10,10 +10,10 @@ export function btn(
   const ghost = variants.includes("ghost");
   const compact = variants.includes("compact");
   return cn(
-    "rounded-full border font-semibold transition-colors duration-140 app-no-drag disabled:cursor-not-allowed disabled:opacity-45",
-    compact ? "h-7 px-2.5 py-0 text-[11px]" : "px-3.5 py-2 text-[13px]",
+    "rounded-md border font-semibold transition-colors duration-140 app-no-drag disabled:cursor-not-allowed disabled:opacity-45",
+    compact ? "h-7 px-2.5 py-0 text-[11px]" : "min-h-8 px-3 py-1.5 text-xs",
     primary
-      ? "border-transparent bg-linear-to-b from-accent-2 to-accent text-accent-ink shadow-accent hover:from-accent-2 hover:to-accent hover:text-accent-ink"
+      ? "border-transparent bg-accent text-accent-ink shadow-accent hover:shadow-accent-glow hover:ring-2 hover:ring-accent hover:ring-offset-2 hover:ring-offset-canvas"
       : danger
         ? "border-danger-ring bg-transparent text-danger hover:bg-wash-9"
         : ghost
@@ -27,8 +27,9 @@ export function iconBtn(
   ...variants: Array<"busy" | false | undefined>
 ): string {
   return cn(
-    "grid size-10 shrink-0 place-items-center rounded-xl border border-transparent bg-linear-to-b from-accent-2 to-accent p-0 text-accent-ink shadow-accent hover:from-accent-2 hover:to-accent hover:text-accent-ink",
-    variants.includes("busy") && "[&_svg]:animate-catalog",
+    "grid size-10 shrink-0 place-items-center rounded-xl border border-transparent bg-accent p-0 text-accent-ink shadow-accent hover:ring-2 hover:ring-accent hover:ring-offset-2 hover:ring-offset-canvas",
+    variants.includes("busy") &&
+      "[&_svg]:animate-catalog motion-reduce:[&_svg]:animate-catalog-reduced!",
   );
 }
 
@@ -47,20 +48,20 @@ export function rankedThumb(): string {
 }
 
 export const rangeInputClass =
-  "h-1 w-full min-w-0 flex-1 appearance-none rounded-full bg-track outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent focus-visible:outline-offset-2 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_var(--color-accent-soft)]";
+  "h-1 w-full min-w-0 flex-1 appearance-none rounded-full bg-track outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ink focus-visible:outline-offset-2 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_var(--color-accent-soft)]";
 
 export const overlayPanelClass =
-  "fixed z-40 overflow-auto rounded-app border border-line bg-raised p-1 shadow-panel";
+  "fixed z-40 overflow-auto overscroll-contain rounded-app border border-line bg-raised p-1 shadow-panel";
 
 export const progressBarClass = "h-2 overflow-hidden rounded-full bg-track";
 export const progressFillClass = "h-full bg-accent";
 
 export function chipClass(selected: boolean): string {
   return cn(
-    "rounded-full border px-2.5 py-1 text-[11px] leading-[1.2] font-semibold whitespace-nowrap transition-[background,color,border-color] duration-140",
+    "rounded-full border px-2.5 py-1 text-[11px] leading-compact font-semibold whitespace-nowrap transition-[background,color,border-color] duration-140",
     selected
-      ? "border-accent bg-accent text-accent-ink"
-      : "border-line bg-wash-3 text-muted",
+      ? "border-accent bg-accent text-accent-ink hover:ring-2 hover:ring-accent"
+      : "border-line bg-wash-3 text-muted hover:border-accent hover:bg-wash-9 hover:text-ink",
   );
 }
 
@@ -78,22 +79,24 @@ export function segmentedCell(
   if (density === "icon") {
     return cn(
       "grid h-7.5 w-8.5 place-items-center border-0 p-0 focus-visible:-outline-offset-2",
-      selected ? "bg-accent-soft text-accent" : "bg-transparent text-muted",
+      selected
+        ? "bg-accent-soft text-ink hover:bg-wash-9"
+        : "bg-transparent text-muted hover:bg-wash-9 hover:text-ink",
     );
   }
   return cn(
     "flex-1 border-0 px-3 py-2.5 text-[13px] font-semibold focus-visible:-outline-offset-2",
     selected
-      ? "bg-accent-soft text-accent"
+      ? "bg-accent-soft text-ink hover:bg-wash-9"
       : "bg-transparent text-muted hover:bg-wash-6 hover:text-ink",
   );
 }
 
 export function ratingCell(filled: boolean): string {
   return cn(
-    "h-8 flex-1 rounded-lg border p-0 text-xs font-650 transition-[background,color] duration-140",
+    "h-8 flex-1 rounded-lg border p-0 text-xs font-650 transition-[background,color] duration-140 hover:ring-2 hover:ring-accent disabled:cursor-wait",
     filled
       ? "border-accent bg-accent text-accent-ink"
-      : "border-line bg-[rgba(8,8,10,0.4)] text-muted",
+      : "border-line bg-input text-muted hover:text-ink",
   );
 }

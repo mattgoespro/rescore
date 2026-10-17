@@ -8,7 +8,7 @@ export default function Directors({
 }): JSX.Element | null {
   if (!directors.length) return null;
   return (
-    <p className="my-2 mb-3 text-xs leading-[1.45] text-muted tabular">
+    <p className="my-2 mb-3 text-xs leading-copy text-muted tabular">
       {directors.map((d) => d.name).join(", ")}
     </p>
   );

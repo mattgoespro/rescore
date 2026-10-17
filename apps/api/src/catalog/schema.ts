@@ -106,6 +106,11 @@ export const migrations = [
    CREATE INDEX IF NOT EXISTS titles_tmdb_pending_idx
      ON titles(imdb_votes DESC, id)
      WHERE ${TMDB_HYDRATION_PENDING_SQL};`,
+  `ALTER TABLE titles ADD COLUMN tmdb_checked_at INTEGER;
+   CREATE INDEX titles_tmdb_retry_idx
+     ON titles(COALESCE(tmdb_checked_at, 0), imdb_votes DESC, id)
+     WHERE poster_url = '' OR synopsis = '';`,
+  `ALTER TABLE library_entries ADD COLUMN rated_at TEXT;`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN

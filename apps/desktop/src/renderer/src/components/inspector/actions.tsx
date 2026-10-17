@@ -11,12 +11,14 @@ export default function Actions({
   movie,
   entry,
   imdb,
+  busy = false,
   onUpsert,
   onRemove,
 }: {
   movie: MovieSummary;
   entry?: LibraryEntry;
   imdb: string | null;
+  busy?: boolean;
   onUpsert: (
     movie: MovieSummary,
     status: WatchStatus,
@@ -29,6 +31,8 @@ export default function Actions({
       <button
         className={btn("primary")}
         type="button"
+        disabled={busy}
+        aria-pressed={entry?.status === "watched"}
         onClick={() => onUpsert(movie, "watched", entry?.rating)}
       >
         Watched
@@ -36,6 +40,8 @@ export default function Actions({
       <button
         className={btn()}
         type="button"
+        disabled={busy}
+        aria-pressed={entry?.status === "watchlist"}
         onClick={() => onUpsert(movie, "watchlist")}
       >
         Watchlist
@@ -43,6 +49,8 @@ export default function Actions({
       <button
         className={btn()}
         type="button"
+        disabled={busy}
+        aria-pressed={entry?.status === "skipped"}
         onClick={() => onUpsert(movie, "skipped")}
       >
         Not for me
@@ -51,6 +59,7 @@ export default function Actions({
         <button
           className={btn("danger")}
           type="button"
+          disabled={busy}
           onClick={() => onRemove(movie.imdbId, movie.mediaType ?? "movie")}
         >
           Remove

@@ -20,6 +20,14 @@
   "files.associations": {
     "*.css": "tailwindcss"
   },
+  "files.exclude": {
+    "**/.git/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/out/**": true,
+    "**/api/data/**": true
+  },
   "gitProjectManager.baseProjectsFolders": ["%USERPROFILE%\\Desktop\\Code"],
   "gitProjectManager.maxDepthRecursion": 2,
   "gitProjectManager.openInNewWindow": true,

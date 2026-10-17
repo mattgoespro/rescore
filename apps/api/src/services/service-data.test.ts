@@ -28,7 +28,7 @@ test("data handoff preserves WAL data, library values, cache, and source; refuse
       [
         "--import",
         "tsx",
-        fileURLToPath(new URL("../scripts/service-data.ts", import.meta.url)),
+        fileURLToPath(new URL("../lifecycle/service-data.ts", import.meta.url)),
         source,
         target,
       ],

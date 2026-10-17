@@ -3,7 +3,7 @@
 The API persists its self-hosted catalog in SQLite at `CATALOG_DB_PATH` (default:
 `data/catalog.sqlite` relative to the process working directory). Migrations run
 automatically when the service starts, or explicitly with `npm run migrate -w
-@imdbrain/api`.
+@rescore/api`.
 
 On first start, if the catalog has no titles, the API downloads IMDb ratings
 and title basics in parallel, imports titles, then marks the catalog ready.
@@ -18,7 +18,7 @@ are kept.
 
 ## Build from IMDb datasets
 
-`npm run build:catalog` (or `npm run build:catalog -w @imdbrain/api`) always
+`npm run build:catalog` (or `npm run build:catalog -w @rescore/api`) always
 rebuilds from the dumps. The API also does this on first launch when the
 catalog is empty. Dumps land in `data/`:
 
@@ -31,6 +31,24 @@ Existing library entries are preserved when the title still exists after the
 rebuild. Poster URLs already stored on matching titles are restored as well.
 Use `--force` to rebuild SQLite even when a catalog already exists. Dumps are
 still skipped when ETag, size, and gzip checks match.
+
+## Tooling and lifecycle entry points
+
+Development and validation commands live in `scripts/`, beside `src/`:
+`migrate.ts`, `build-catalog.ts`, `enrich-posters.ts`, and
+`tmdb-throughput-smoke.ts`. Run them through the corresponding npm commands
+(`migrate`, `build:catalog`, `enrich:posters`, and `smoke:tmdb`). They use the
+API's source modules and configuration but are excluded from production output.
+
+`npm run test:scripts -w @rescore/api` verifies these commands against temporary
+catalogues and local IMDb/TMDb fixtures. It also verifies the clean production
+build and compiled lifecycle helpers, without accessing an installed service.
+
+Functional service entry points stay in `src/lifecycle/`: `service-data.ts`
+performs catalogue transfers during maintenance, and `service-stop.ts` requests
+authenticated shutdown. The build emits them under `dist/lifecycle/` while
+keeping the API entry point at `dist/index.js`. `scripts/build.mjs` clears the
+generated API `dist/` before compilation so obsolete tooling cannot be packaged.
 
 ## TMDb hydration
 

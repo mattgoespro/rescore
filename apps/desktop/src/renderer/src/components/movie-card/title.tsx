@@ -9,13 +9,13 @@ export default function Title({
   grid: boolean;
 }): JSX.Element {
   return (
-    <h4
+    <h2
       className={cn(
-        "mt-0 mb-1 font-650 tracking-tightish",
-        grid ? "line-clamp-2 text-[15px]" : "text-[15px] leading-[1.25]",
+        "mt-0 mb-1 font-650 tracking-tightish wrap-anywhere",
+        grid ? "line-clamp-2 text-[15px]" : "text-[15px] leading-tight",
       )}
     >
       {title}
-    </h4>
+    </h2>
   );
 }

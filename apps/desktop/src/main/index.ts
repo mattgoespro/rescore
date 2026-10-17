@@ -1,5 +1,5 @@
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import { app, BrowserWindow, protocol, session, shell } from "electron";
+import { app, BrowserWindow, dialog, protocol, session, shell } from "electron";
 import { BackgroundService } from "./background-service";
 import { catalogFetch, effectiveCatalogUrl } from "./catalog-connection";
 import { join } from "path";
@@ -17,6 +17,8 @@ import { windowBackgroundColor } from "./window-chrome";
 let mainWindow: BrowserWindow | null = null;
 let catalogRuntime: CatalogRuntime | null = null;
 let stopping = false;
+let quitRequested = false;
+let backgroundService: BackgroundService | null = null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -24,8 +26,10 @@ protocol.registerSchemesAsPrivileged([
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
 ]);
-if (!app.requestSingleInstanceLock()) app.quit();
+const ownsInstance = app.requestSingleInstanceLock();
+if (!ownsInstance) app.quit();
 app.on("second-instance", () => {
+  if (stopping || mainWindow?.isDestroyed()) return;
   mainWindow?.show();
   mainWindow?.focus();
 });
@@ -69,6 +73,21 @@ function createWindow(store: AppStore): void {
     mainWindow = null;
   });
 
+  mainWindow.webContents.on("will-prevent-unload", (event) => {
+    if (!mainWindow) return;
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "question",
+      buttons: ["Keep Editing", "Discard Changes"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "Discard your unsaved settings?",
+      detail:
+        "Your latest settings have not been saved. Keep editing to save them before closing.",
+    });
+    if (choice === 1) event.preventDefault();
+    else quitRequested = false;
+  });
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: "deny" };
@@ -82,6 +101,7 @@ function createWindow(store: AppStore): void {
 }
 
 app.whenReady().then(async () => {
+  if (!ownsInstance || stopping) return;
   electronApp.setAppUserModelId("com.rescore.app");
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
@@ -117,25 +137,32 @@ app.whenReady().then(async () => {
       return new Response(null, { status: 503 });
     }
   });
-  const backgroundService = new BackgroundService();
-  try {
-    await backgroundService.initialize();
-  } catch (error) {
-    console.error("[service]", error);
-  }
-  catalogRuntime = createCatalogRuntime(store, () => mainWindow);
-  backgroundService.attach(catalogRuntime);
+  backgroundService = new BackgroundService();
+  catalogRuntime = createCatalogRuntime(
+    store,
+    () => mainWindow,
+    backgroundService,
+  );
   registerIpc(store, () => mainWindow, catalogRuntime, backgroundService);
   createWindow(store);
-  void backgroundService.ensureRunning().finally(() => catalogRuntime?.start());
+  catalogRuntime.start();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow(store);
+    if (!stopping && BrowserWindow.getAllWindows().length === 0)
+      createWindow(store);
   });
 });
 
 app.on("before-quit", (event) => {
-  if (stopping || !catalogRuntime) return;
+  if (stopping) return;
+  // Let the renderer protect drafts before shutting down its catalogue runtime.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    event.preventDefault();
+    quitRequested = true;
+    mainWindow.close();
+    return;
+  }
+  if (!catalogRuntime) return;
   event.preventDefault();
   stopping = true;
   void Promise.race([
@@ -145,5 +172,5 @@ app.on("before-quit", (event) => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (quitRequested || process.platform !== "darwin") app.quit();
 });

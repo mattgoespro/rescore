@@ -10,23 +10,17 @@ export type { ThemeMode } from "./appearance";
 
 export interface Settings {
   catalogApiUrl: string;
-  region: string;
   rankingMode: RankingMode;
-  imdbApiUrl: string;
   themeMode: ThemeMode;
   accentColor: string;
 }
 
 export const DEFAULT_CATALOG_API_URL = "http://127.0.0.1:3847";
-/** @deprecated Use DEFAULT_CATALOG_API_URL. */
-export const DEFAULT_IMDB_API_URL = DEFAULT_CATALOG_API_URL;
 
 export function defaultSettings(): Settings {
   return {
     catalogApiUrl: DEFAULT_CATALOG_API_URL,
-    region: "US",
     rankingMode: "balanced",
-    imdbApiUrl: DEFAULT_CATALOG_API_URL,
     themeMode: "dark",
     accentColor: DEFAULT_ACCENT_COLOR,
   };
@@ -37,17 +31,15 @@ export function normalizeSettings(
     | (Partial<Settings> & {
         tmdbApiKey?: unknown;
         tmdbApiKeys?: unknown;
+        region?: unknown;
+        imdbApiUrl?: unknown;
       })
     | null,
 ): Settings {
-  const {
-    tmdbApiKey: _legacyTmdbApiKey,
-    tmdbApiKeys: _legacyTmdbApiKeys,
-    ...rest
-  } = raw ?? {};
-  const merged = { ...defaultSettings(), ...rest };
+  const merged = { ...defaultSettings(), ...raw };
   return {
-    ...merged,
+    catalogApiUrl: merged.catalogApiUrl,
+    rankingMode: merged.rankingMode,
     themeMode: normalizeThemeMode(merged.themeMode),
     accentColor: normalizeAccentColor(merged.accentColor),
   };

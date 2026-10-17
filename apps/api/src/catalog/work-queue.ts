@@ -47,7 +47,7 @@ export function queueIdleAnalyze(
 ): Promise<void> {
   return maintenanceWorkQueue.enqueue(async () => {
     try {
-      await cancellableDelay(idleMs);
+      await cancellableDelay(idleMs, { unref: true });
     } catch {
       return;
     }

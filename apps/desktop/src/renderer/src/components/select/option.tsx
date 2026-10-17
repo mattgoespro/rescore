@@ -20,9 +20,9 @@ export default function Option({
       tabIndex={-1}
       aria-selected={selected}
       className={cn(
-        "block w-full rounded-lg border-0 px-2.5 py-2 text-left text-[13px] hover:bg-accent-soft hover:text-accent-2",
+        "block w-full rounded-lg border-0 px-2.5 py-2 text-left text-[13px] hover:bg-accent-soft hover:text-accent-text",
         selected
-          ? "bg-accent-soft font-semibold text-accent-2"
+          ? "bg-accent-soft font-semibold text-accent-text"
           : "bg-transparent text-ink",
       )}
       onMouseDown={(event) => event.preventDefault()}

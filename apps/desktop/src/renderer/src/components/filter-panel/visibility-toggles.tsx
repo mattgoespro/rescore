@@ -17,6 +17,7 @@ export default function VisibilityToggles({
       <label className="mt-1 flex items-center gap-2 text-[13px] text-muted">
         <input
           type="checkbox"
+          name="hideWatched"
           className="accent-accent"
           checked={hideWatched}
           onChange={(e) => onChange({ hideWatched: e.target.checked })}
@@ -26,6 +27,7 @@ export default function VisibilityToggles({
       <label className="mt-1 flex items-center gap-2 text-[13px] text-muted">
         <input
           type="checkbox"
+          name="hideWatchlist"
           className="accent-accent"
           checked={hideWatchlist}
           onChange={(e) => onChange({ hideWatchlist: e.target.checked })}

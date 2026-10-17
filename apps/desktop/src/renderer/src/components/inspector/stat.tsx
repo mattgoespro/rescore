@@ -12,7 +12,7 @@ export default function Stat({
       <small className="mb-1 block text-[10px] tracking-[0.12em] text-faint uppercase">
         {label}
       </small>
-      <b className="tabular text-[22px] tracking-[-0.05em]">{value}</b>
+      <b className="text-[22px] tracking-tighter tabular">{value}</b>
     </div>
   );
 }

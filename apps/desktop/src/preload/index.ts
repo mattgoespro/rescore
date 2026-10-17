@@ -77,6 +77,7 @@ const api = {
     movie: MovieSummary | MovieDetails;
     status: WatchStatus;
     rating?: number;
+    ratedAt?: string;
   }): Promise<LibraryEntry[]> => ipcRenderer.invoke("library:upsert", payload),
   removeLibrary: (
     imdbId: string,

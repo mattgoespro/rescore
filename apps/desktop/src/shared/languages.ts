@@ -1,9 +1,24 @@
+import { IMDB_LANGUAGES, type ImdbLanguageCode } from "./imdb-languages";
+
+// Retain TMDb identifiers and saved filters that differ from IMDb's vocabulary.
+export const COMPATIBILITY_LANGUAGE_CODES = [
+  "cn",
+  "iw",
+  "ig",
+  "nb",
+  "nn",
+  "fy",
+] as const;
+
+export type LanguageCode =
+  ImdbLanguageCode | (typeof COMPATIBILITY_LANGUAGE_CODES)[number];
+
 export interface LanguageOption {
-  id: string;
+  id: LanguageCode;
   name: string;
 }
 
-const LANGUAGES: readonly LanguageOption[] = [
+const COMMON_LANGUAGES: readonly LanguageOption[] = [
   { id: "af", name: "Afrikaans" },
   { id: "sq", name: "Albanian" },
   { id: "am", name: "Amharic" },
@@ -108,6 +123,23 @@ const LANGUAGES: readonly LanguageOption[] = [
   { id: "zu", name: "Zulu" },
 ];
 
+// Preserve existing display names and preferred aliases while offering every
+// IMDb language, including dialects, sign languages, and titles without speech.
+const commonCodes = new Set<string>(COMMON_LANGUAGES.map(({ id }) => id));
+const LANGUAGES: readonly LanguageOption[] = [
+  ...COMMON_LANGUAGES,
+  ...IMDB_LANGUAGES.filter(({ id }) => !commonCodes.has(id)),
+];
+
+const LANGUAGE_CODES = new Set<string>([
+  ...IMDB_LANGUAGES.map(({ id }) => id),
+  ...COMPATIBILITY_LANGUAGE_CODES,
+]);
+
+export function isLanguageCode(value: unknown): value is LanguageCode {
+  return typeof value === "string" && LANGUAGE_CODES.has(value);
+}
+
 const EXTRA_NAMES: Record<string, string> = {
   iw: "Hebrew",
   yue: "Cantonese",
@@ -120,8 +152,11 @@ const ALIASES: Record<string, readonly string[]> = {
   iw: ["he", "iw"],
 };
 
-const BY_CODE = new Map(
+const BY_CODE = new Map<string, string>(
   LANGUAGES.map((language) => [language.id, language.name]),
+);
+const IMDB_NAMES = new Map<string, string>(
+  IMDB_LANGUAGES.map(({ id, name }) => [id, name]),
 );
 
 export function languageName(code: string): string {
@@ -152,21 +187,27 @@ export function formatLanguages(
 export function searchLanguages(query: string, limit = 8): LanguageOption[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
+  const exact: LanguageOption[] = [];
   const prefix: LanguageOption[] = [];
   const contains: LanguageOption[] = [];
   const seen = new Set<string>();
   for (const language of LANGUAGES) {
     if (seen.has(language.name)) continue;
-    const name = language.name.toLowerCase();
+    const names = [language.name, IMDB_NAMES.get(language.id)]
+      .filter((name): name is string => name !== undefined)
+      .map((name) => name.toLowerCase());
     const match =
-      name.startsWith(needle) || language.id.startsWith(needle)
-        ? prefix
-        : name.includes(needle)
-          ? contains
-          : null;
+      language.id === needle
+        ? exact
+        : names.some((name) => name.startsWith(needle)) ||
+            language.id.startsWith(needle)
+          ? prefix
+          : names.some((name) => name.includes(needle))
+            ? contains
+            : null;
     if (!match) continue;
     seen.add(language.name);
     match.push(language);
   }
-  return [...prefix, ...contains].slice(0, limit);
+  return [...exact, ...prefix, ...contains].slice(0, limit);
 }

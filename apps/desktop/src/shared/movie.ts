@@ -32,6 +32,7 @@ export interface MovieSummary {
   originalTitle?: string;
   overview: string;
   posterPath: string | null;
+  posterStatus?: "pending" | "available" | "unavailable";
   backdropPath: string | null;
   releaseDate: string;
   year?: number;
@@ -80,6 +81,7 @@ export interface LibraryEntry {
   title: string;
   overview?: string;
   posterPath?: string | null;
+  posterStatus?: "pending" | "available" | "unavailable";
   backdropPath?: string | null;
   releaseDate?: string;
   year?: number;
@@ -109,6 +111,7 @@ export interface CatalogueTitle {
   runtimeMinutes: number | null;
   synopsis: string | null;
   posterUrl: string | null;
+  posterStatus?: "pending" | "available" | "unavailable";
   certification: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
@@ -140,6 +143,8 @@ export function movieFromTitle(title: CatalogueTitle): MovieSummary {
     originalTitle: title.originalTitle ?? undefined,
     overview: title.synopsis ?? "",
     posterPath: title.posterUrl,
+    posterStatus:
+      title.posterStatus ?? (title.posterUrl ? "available" : "pending"),
     backdropPath: null,
     releaseDate: title.year ? `${title.year}-01-01` : "",
     year: title.year ?? undefined,

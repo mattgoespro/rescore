@@ -1,3 +1,5 @@
+import { shouldTerminateCatalogApi } from "./catalog-reload";
+import { catalogOwner, catalogUnreachableStep } from "./catalog-owner";
 import { is } from "@electron-toolkit/utils";
 import { app, type BrowserWindow } from "electron";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -5,39 +7,29 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   DEFAULT_CATALOG_API_URL,
   type CatalogPhase,
   type CatalogStatus,
 } from "../shared/types";
+import type { BackgroundServiceStatus } from "../shared/background-service";
 import { planApiLaunch } from "./api-launch";
+import { BackgroundService, serviceOwnsCatalog } from "./background-service";
 import {
-  settleHealthMiss,
-  shouldRestartHungChild,
-  shouldSpawnReplacement,
-} from "./api-watch";
-import { serviceOwnsCatalog } from "./background-service";
-import { catalogOwner, catalogUnreachableStep } from "./catalog-owner";
-import {
+  blockCatalogConnection,
   catalogFetch,
   effectiveCatalogUrl,
   matchesServiceHealth,
   serviceConnection,
 } from "./catalog-connection";
-import { shouldFinishCatalogPoll } from "./catalog-poll";
-import { shouldTerminateCatalogApi } from "./catalog-reload";
-import {
-  catalogStatusSnapshot,
-  type CatalogStatusChange,
-} from "./catalog-status-snapshot";
+import { createCatalogLifecycle } from "./catalog-lifecycle";
 import {
   createHydrationEventParser,
   hydrationEventsUrl,
 } from "./hydration-events";
 import type { AppStore } from "./store";
-
-const START_TIMEOUT_MS = 30_000;
-const POLL_MS = 250;
+import { sendToWindow } from "./window-lifecycle";
 
 interface HealthPayload {
   ready?: boolean;
@@ -55,467 +47,135 @@ interface HealthPayload {
   catalogUsable?: boolean;
   tmdbHydration?: CatalogStatus["tmdbHydration"];
 }
-
 export interface CatalogRuntime {
   start(): void;
   retry(): void;
-  announce(message: string): void;
   rebuild(): CatalogStatus;
   status(): CatalogStatus;
   stop(): Promise<void>;
+  repairService(): Promise<BackgroundServiceStatus>;
+  serviceStatus(): BackgroundServiceStatus;
 }
 
 export function createCatalogRuntime(
   store: AppStore,
   getWindow: () => BrowserWindow | null,
+  service: BackgroundService,
 ): CatalogRuntime {
-  let current: CatalogStatus = {
-    phase: "starting",
-    message: "Starting the local catalog…",
-    titleCount: 0,
-    builtAt: null,
-    error: null,
-    download: null,
-    titlesUpdateAvailable: false,
-    creditsFailed: false,
-    catalogUsable: false,
-  };
-  let generation = 0;
   let spawned: ChildProcess | null = null;
-  let quitting = false;
+  let childUrl = "";
   const controlToken = randomBytes(32).toString("hex");
-  let restartAttempts = 0;
-  let recovering = false;
-  let hydrationEventsAbort: AbortController | null = null;
-
-  const publish = (change: CatalogStatusChange): void => {
-    current = catalogStatusSnapshot(current, change);
-    getWindow()?.webContents.send("catalog:status", current);
-  };
-
-  const run = (gen: number): void => {
-    void bootstrap(gen);
-  };
-
-  const start = (): void => {
-    quitting = false;
-    stopHydrationEvents();
-    generation += 1;
-    restartAttempts = 0;
-    run(generation);
-  };
-
-  const announce = (message: string): void => {
-    publish({ phase: "starting", message, error: null });
-  };
-
-  async function stop(): Promise<void> {
-    quitting = true;
-    generation += 1;
-    stopHydrationEvents();
-    const child = spawned;
-    spawned = null;
-    if (shouldTerminateCatalogApi({ ownsApi: child != null })) {
+  const url = () => catalogUrl(store);
+  const childAlive = () =>
+    spawned != null && spawned.exitCode == null && spawned.signalCode == null;
+  const lifecycle = createCatalogLifecycle({
+    serviceOwned: serviceOwnsCatalog,
+    inspect: async (intent, signal) => {
+      signal.throwIfAborted();
+      const facts = await service.inspect(intent);
+      signal.throwIfAborted();
+      return facts;
+    },
+    maintain: (action) => service.maintain(action),
+    block: () => blockCatalogConnection(true),
+    probe: async (signal) => {
+      const baseUrl = url();
+      const health = await readHealth(baseUrl, signal);
+      signal.throwIfAborted();
+      const open = health != null || (await portOpen(baseUrl));
+      signal.throwIfAborted();
+      return {
+        health: health ? statusFromHealth(health) : null,
+        portOpen: open,
+        childAlive: childAlive(),
+      };
+    },
+    spawn: async () => {
+      if (
+        catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) === "refuse"
+      )
+        throw new Error("Catalogue is owned by the Windows service.");
+      const baseUrl = url();
+      const plan = planApiLaunch(
+        {
+          dev: is.dev,
+          packaged: app.isPackaged,
+          localUrl: isLocalUrl(baseUrl),
+          appPath: app.getAppPath(),
+          dirname: __dirname,
+          cwd: process.cwd(),
+          resourcesPath: process.resourcesPath,
+          userDataDir: app.getPath("userData"),
+          npmNodeExecPath: process.env.npm_node_execpath,
+          platform: process.platform,
+        },
+        existsSync,
+      );
+      if (!plan.ok) throw new Error(plan.message);
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        PORT: portFromUrl(baseUrl),
+        RESCORE_CONTROL_TOKEN: controlToken,
+        IMDB_DATA_DIR: plan.dataDir,
+        CATALOG_DB_PATH: join(plan.dataDir, "catalog.sqlite"),
+      };
+      delete env.RESCORE_SERVICE_CONFIG;
+      delete env.TMDB_API_KEYS;
+      delete env.TMDB_API_KEY;
+      const child = spawn(plan.command, plan.args, {
+        cwd: plan.cwd,
+        env,
+        stdio:
+          plan.stdio === "inherit"
+            ? ["ignore", "inherit", "inherit"]
+            : "ignore",
+        windowsHide: plan.windowsHide,
+      });
+      spawned = child;
+      childUrl = baseUrl;
+      child.on("exit", () => {
+        if (spawned === child) {
+          spawned = null;
+          lifecycle.childExited();
+        }
+      });
+      await new Promise<void>((resolve, reject) => {
+        child.once("spawn", resolve);
+        child.once("error", reject);
+      });
+    },
+    killOwned: async () => {
+      const child = spawned;
+      spawned = null;
+      await killProcessTree(child);
+    },
+    stopOwned: async () => {
+      const child = spawned;
+      spawned = null;
+      if (!shouldTerminateCatalogApi({ ownsApi: child != null }) || !child)
+        return;
       try {
-        await fetch(new URL("/internal/shutdown", catalogUrl(store)), {
+        await fetch(new URL("/internal/shutdown", childUrl), {
           method: "POST",
           headers: { Authorization: `Bearer ${controlToken}` },
           signal: AbortSignal.timeout(5000),
           redirect: "error",
         });
-        const deadline = Date.now() + 30_000;
+        const deadline = Date.now() + 30000;
         while (
-          child?.exitCode == null &&
-          child?.signalCode == null &&
+          child.exitCode == null &&
+          child.signalCode == null &&
           Date.now() < deadline
         )
           await sleep(100);
       } catch {
-        /* Process may already have exited. */
+        /* A failed graceful stop falls through to process-tree cleanup. */
       }
       await killProcessTree(child);
-    }
-  }
-
-  async function bootstrap(gen: number): Promise<void> {
-    publish({
-      phase: "starting",
-      message: "Starting the local catalog…",
-      error: null,
-      download: null,
-    });
-
-    const baseUrl = catalogUrl(store);
-    try {
-      const reachable = await canReach(baseUrl);
-      if (generation !== gen || quitting) return;
-      if (!reachable) {
-        if (
-          catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) ===
-          "refuse"
-        ) {
-          publish({
-            phase: "error",
-            error:
-              "Catalogue service unavailable. Open Settings for details and Retry.",
-            message: "The required catalogue service is unavailable.",
-          });
-          return;
-        }
-        if (!spawned || spawned.exitCode != null) {
-          await killProcessTree(spawned);
-          if (generation !== gen || quitting) return;
-          spawned = null;
-          const started = spawnApi(baseUrl);
-          if (!started.ok) {
-            publish({
-              phase: "error",
-              message: started.message,
-              error: started.message,
-            });
-            return;
-          }
-          spawned = started.child;
-        }
-        publish({
-          phase: "starting",
-          message: "Waiting for the catalog API…",
-          error: null,
-        });
-      }
-
-      const reached = await waitForReachable(baseUrl, gen);
-      if (generation !== gen) return;
-      if (!reached) {
-        publish({
-          phase: "error",
-          message: unreachableMessage(),
-          error: "Catalog API did not become reachable.",
-        });
-        return;
-      }
-
-      startHydrationEvents(baseUrl, gen);
-      await pollUntilSettled(baseUrl, gen);
-      if (generation === gen && !quitting) void watchApi(baseUrl, gen);
-    } catch (error) {
-      if (generation !== gen || quitting) return;
-      const message = error instanceof Error ? error.message : String(error);
-      if (message && !message.includes("unreachable")) {
-        console.warn("[catalog]", message);
-      }
-      await recoverApi(baseUrl, gen);
-      if (generation === gen && !quitting) void watchApi(baseUrl, gen);
-    }
-  }
-
-  async function waitForReachable(
-    baseUrl: string,
-    gen: number,
-  ): Promise<boolean> {
-    const deadline = Date.now() + START_TIMEOUT_MS;
-    while (Date.now() < deadline && generation === gen) {
-      if (await canReach(baseUrl)) return true;
-      await sleep(POLL_MS);
-    }
-    return generation === gen ? canReach(baseUrl) : false;
-  }
-
-  async function pollUntilSettled(baseUrl: string, gen: number): Promise<void> {
-    let missed = 0;
-    while (generation === gen) {
-      const health = await readHealth(baseUrl);
-      if (generation !== gen) return;
-      if (!health) {
-        missed += 1;
-        const childAlive = spawned != null && spawned.exitCode == null;
-        const decision = settleHealthMiss({
-          childAlive,
-          portOpen: await portOpen(baseUrl),
-          missed,
-        });
-        if (decision === "reset") {
-          missed = 0;
-          await sleep(POLL_MS);
-          continue;
-        }
-        if (decision === "give-up") {
-          throw new Error("Catalog API became unreachable.");
-        }
-        publish({
-          phase: "starting",
-          message: "Waiting for the catalog API…",
-          error: null,
-          download: null,
-        });
-        await sleep(POLL_MS);
-        continue;
-      }
-      missed = 0;
-      restartAttempts = 0;
-      const next = statusFromHealth(health);
-      publish(next);
-      if (
-        shouldFinishCatalogPoll({
-          phase: next.phase,
-          catalogUsable: next.catalogUsable,
-        })
-      ) {
-        return;
-      }
-      await sleep(next.download ? 200 : POLL_MS);
-    }
-  }
-
-  function startHydrationEvents(baseUrl: string, gen: number): void {
-    if (!isLocalUrl(baseUrl)) return;
-    stopHydrationEvents();
-    const controller = new AbortController();
-    hydrationEventsAbort = controller;
-    void consumeHydrationEvents(baseUrl, gen, controller);
-  }
-
-  function stopHydrationEvents(): void {
-    hydrationEventsAbort?.abort();
-    hydrationEventsAbort = null;
-  }
-
-  async function consumeHydrationEvents(
-    baseUrl: string,
-    gen: number,
-    controller: AbortController,
-  ): Promise<void> {
-    try {
-      while (generation === gen && !quitting && !controller.signal.aborted) {
-        try {
-          const response = await catalogFetch(hydrationEventsUrl(baseUrl), {
-            headers: { Accept: "text/event-stream" },
-            signal: controller.signal,
-          });
-          if (!response.ok || !response.body) {
-            throw new Error(
-              `Hydration events unavailable (${response.status})`,
-            );
-          }
-          const parser = createHydrationEventParser();
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          try {
-            while (
-              generation === gen &&
-              !quitting &&
-              !controller.signal.aborted
-            ) {
-              const chunk = await reader.read();
-              if (chunk.done) break;
-              for (const hydration of parser.push(
-                decoder.decode(chunk.value, { stream: true }),
-              )) {
-                if (generation !== gen || quitting) return;
-                publish({
-                  phase: current.phase,
-                  message: current.message,
-                  tmdbHydration: hydration,
-                });
-              }
-            }
-          } finally {
-            reader.releaseLock();
-          }
-        } catch {
-          // Health polling remains authoritative for API liveness and recovery.
-        }
-        if (generation === gen && !quitting && !controller.signal.aborted) {
-          await sleep(1_000);
-        }
-      }
-    } finally {
-      if (hydrationEventsAbort === controller) hydrationEventsAbort = null;
-    }
-  }
-
-  async function watchApi(baseUrl: string, gen: number): Promise<void> {
-    let misses = 0;
-    while (generation === gen && !quitting) {
-      await sleep(3000);
-      if (generation !== gen || quitting) return;
-      if (await canReach(baseUrl)) {
-        misses = 0;
-        restartAttempts = 0;
-        continue;
-      }
-      misses += 1;
-      const childAlive = spawned != null && spawned.exitCode == null;
-      if (
-        !shouldSpawnReplacement({
-          childAlive,
-          portOpen: await portOpen(baseUrl),
-        })
-      ) {
-        if (!childAlive) {
-          misses = 0;
-          continue;
-        }
-      }
-      if (childAlive && !shouldRestartHungChild(misses)) continue;
-      if (childAlive) {
-        await killProcessTree(spawned);
-        spawned = null;
-        misses = 0;
-      }
-      await recoverApi(baseUrl, gen);
-    }
-  }
-
-  async function recoverApi(baseUrl: string, gen: number): Promise<void> {
-    if (generation !== gen || quitting || recovering) return;
-    if (
-      catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) === "refuse"
-    ) {
-      publish({
-        phase: "error",
-        error: "Background service unavailable",
-        message:
-          "Background catalogue service is unavailable. Use Retry in Settings.",
-      });
-      return;
-    }
-    recovering = true;
-    try {
-      if (spawned && spawned.exitCode == null) {
-        if (await canReach(baseUrl)) {
-          await pollUntilSettled(baseUrl, gen);
-        }
-        return;
-      }
-      if (restartAttempts >= 5) {
-        publish({
-          phase: "error",
-          message:
-            "The catalog API stopped repeatedly. Use Retry on the loader.",
-          error: "Catalog API did not stay running.",
-        });
-        return;
-      }
-      restartAttempts += 1;
-      publish({
-        phase: "starting",
-        message: "Catalog API stopped; restarting…",
-        error: null,
-        download: null,
-      });
-      await sleep(Math.min(800 * 2 ** (restartAttempts - 1), 8000));
-      if (generation !== gen || quitting) return;
-      if ((await canReach(baseUrl)) || (await portOpen(baseUrl))) {
-        restartAttempts = 0;
-        await pollUntilSettled(baseUrl, gen);
-        return;
-      }
-      if (generation !== gen || quitting) return;
-      const started = spawnApi(baseUrl);
-      if (started.ok) spawned = started.child;
-      const reached = await waitForReachable(baseUrl, gen);
-      if (generation !== gen || quitting) return;
-      if (!reached) {
-        publish({
-          phase: "error",
-          message: unreachableMessage(),
-          error: "Catalog API did not become reachable.",
-        });
-        return;
-      }
-      await pollUntilSettled(baseUrl, gen);
-    } finally {
-      recovering = false;
-    }
-  }
-
-  function spawnApi(
-    baseUrl: string,
-  ): { ok: true; child: ChildProcess } | { ok: false; message: string } {
-    if (catalogUnreachableStep(catalogOwner(serviceOwnsCatalog())) === "refuse")
-      return {
-        ok: false,
-        message: "Catalogue is owned by the Windows service.",
-      };
-    const plan = planApiLaunch(
-      {
-        dev: is.dev,
-        packaged: app.isPackaged,
-        localUrl: isLocalUrl(baseUrl),
-        appPath: app.getAppPath(),
-        dirname: __dirname,
-        cwd: process.cwd(),
-        resourcesPath: process.resourcesPath,
-        userDataDir: app.getPath("userData"),
-        npmNodeExecPath: process.env.npm_node_execpath,
-        platform: process.platform,
-      },
-      existsSync,
-    );
-    if (!plan.ok) return plan;
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      PORT: portFromUrl(baseUrl),
-      RESCORE_CONTROL_TOKEN: controlToken,
-      IMDB_DATA_DIR: plan.dataDir,
-      CATALOG_DB_PATH: join(plan.dataDir, "catalog.sqlite"),
-      CATALOG_REGION: store.getSettings().region.trim() || "US",
-    };
-    delete env.RESCORE_SERVICE_CONFIG;
-    delete env.TMDB_API_KEYS;
-    delete env.TMDB_API_KEY;
-    const child = spawn(plan.command, plan.args, {
-      cwd: plan.cwd,
-      env,
-      stdio:
-        plan.stdio === "inherit" ? ["ignore", "inherit", "inherit"] : "ignore",
-      windowsHide: plan.windowsHide,
-    });
-    child.on("error", (error) => {
-      console.error("[api] failed to start", error);
-    });
-    child.on("exit", (code, signal) => {
-      if (spawned === child) spawned = null;
-      if (!code) return;
-      console.warn(`[api] exited (${code}${signal ? ` ${signal}` : ""})`);
-      const baseUrl = catalogUrl(store);
-      void (async () => {
-        if (quitting || !(await canReach(baseUrl))) return;
-        const health = await readHealth(baseUrl);
-        if (health) publish(statusFromHealth(health));
-      })();
-    });
-    return { ok: true, child };
-  }
-
-  function rebuild(): CatalogStatus {
-    stopHydrationEvents();
-    generation += 1;
-    publish({
-      phase: "building",
-      message: "Rebuilding catalog from IMDb datasets…",
-      error: null,
-      download: null,
-    });
-    void runRebuild(generation);
-    return current;
-  }
-
-  async function runRebuild(gen: number): Promise<void> {
-    const baseUrl = catalogUrl(store);
-    try {
-      if (!(await canReach(baseUrl))) {
-        if (generation !== gen) return;
-        publish({
-          phase: "error",
-          message: unreachableMessage(),
-          error: "Catalog API did not become reachable.",
-        });
-        return;
-      }
+    },
+    rebuild: async (signal) => {
       const response = await catalogFetch(
-        new URL("/v1/catalog/rebuild", `${baseUrl}/`),
+        new URL("/v1/catalog/rebuild", `${url()}/`),
         {
           method: "POST",
           headers: {
@@ -523,50 +183,61 @@ export function createCatalogRuntime(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ force: true }),
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
         },
       );
-      if (generation !== gen) return;
       if (!response.ok && response.status !== 409) {
         const body = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        publish({
-          phase: "error",
-          message: body?.error ?? "Could not start a catalog rebuild.",
-          error: body?.error ?? `Catalog rebuild failed (${response.status})`,
-        });
-        return;
+        throw new Error(
+          body?.error ?? `Catalog rebuild failed (${response.status})`,
+        );
       }
-      startHydrationEvents(baseUrl, gen);
-      await pollUntilSettled(baseUrl, gen);
-      if (generation === gen && !quitting) void watchApi(baseUrl, gen);
-    } catch (error) {
-      if (generation !== gen) return;
-      const message = error instanceof Error ? error.message : String(error);
-      publish({
-        phase: "error",
-        message: "Catalog rebuild failed.",
-        error: message,
-      });
-    }
-  }
-
-  return {
-    start,
-    retry: start,
-    announce,
-    rebuild,
-    status: () => current,
-    stop,
-  };
-}
-
-function unreachableMessage(): string {
-  if (app.isPackaged) {
-    return "Cannot reach the local catalog API. Check the URL in Settings, then use Retry.";
-  }
-  return "Cannot reach the local catalog API. Check the URL in Settings or start it with npm run dev:api.";
+    },
+    subscribeHydration: (report) => {
+      const baseUrl = url();
+      if (!isLocalUrl(baseUrl)) return () => {};
+      const controller = new AbortController();
+      void (async () => {
+        while (!controller.signal.aborted) {
+          try {
+            const response = await catalogFetch(hydrationEventsUrl(baseUrl), {
+              headers: { Accept: "text/event-stream" },
+              signal: controller.signal,
+            });
+            if (!response.ok || !response.body)
+              throw new Error("Hydration events unavailable");
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            const parser = createHydrationEventParser();
+            try {
+              while (!controller.signal.aborted) {
+                const chunk = await reader.read();
+                if (chunk.done) break;
+                for (const hydration of parser.push(
+                  decoder.decode(chunk.value, { stream: true }),
+                )) {
+                  if (!controller.signal.aborted) report(hydration);
+                }
+              }
+            } finally {
+              reader.releaseLock();
+            }
+          } catch {
+            /* Health observations determine liveness, independently of the stream. */
+          }
+          if (!controller.signal.aborted)
+            await delay(1000, undefined, { signal: controller.signal }).catch(
+              () => undefined,
+            );
+        }
+      })();
+      return () => controller.abort();
+    },
+    publish: (status) => sendToWindow(getWindow(), "catalog:status", status),
+  });
+  return lifecycle;
 }
 
 function catalogUrl(store: AppStore): string {
@@ -618,30 +289,14 @@ function portOpen(baseUrl: string): Promise<boolean> {
   });
 }
 
-async function canReach(baseUrl: string): Promise<boolean> {
+async function readHealth(
+  baseUrl: string,
+  signal: AbortSignal,
+): Promise<HealthPayload | null> {
   try {
     const response = await catalogFetch(new URL("/health", `${baseUrl}/`), {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(1500),
-    });
-    const expected = serviceConnection();
-    if (serviceOwnsCatalog())
-      return (
-        !!expected &&
-        response.ok &&
-        matchesServiceHealth(await response.json(), expected)
-      );
-    return response.status < 500 || response.status === 503;
-  } catch {
-    return false;
-  }
-}
-
-async function readHealth(baseUrl: string): Promise<HealthPayload | null> {
-  try {
-    const response = await catalogFetch(new URL("/health", `${baseUrl}/`), {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]),
     });
     const health = await response.json();
     const expected = serviceConnection();

@@ -73,6 +73,15 @@
         "$ports = 9229, 9230, 9222, 3847; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ports -contains $_.LocalPort } | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { taskkill /PID $_ /T /F }"
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "Build Rescore for Windows",
+      "type": "npm",
+      "script": "build:win",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     }
   ]
 }

@@ -1,14 +1,22 @@
+import { maintenanceActivity } from "./maintenance-activity";
 import { createHash } from "node:crypto";
 import { app, shell } from "electron";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import type { BackgroundServiceStatus } from "../shared/background-service";
-import type { CatalogRuntime } from "./catalog-runtime";
 import {
-  elevationCommand,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import type { BackgroundServiceStatus } from "../shared/background-service";
+import type { ServiceInspection, ServiceIntent } from "./catalog-lifecycle";
+import {
+  runServiceMaintenance,
   serviceMaintenanceAction,
-  type ServiceLaunchIntent,
 } from "./service-launch";
 import {
   blockCatalogConnection,
@@ -21,7 +29,6 @@ interface Installation {
   enabled: boolean;
   phase: string;
   serviceName: string;
-  ownerSid: string;
   desktopRoot: string;
   runtime: string;
   originalDataDir: string;
@@ -65,31 +72,16 @@ function powershell(code: string): Promise<string> {
 const quote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
 
 export class BackgroundService {
-  private sid = "";
+  private ready = false;
   private root = "";
-  private busy = false;
   private error: string | null = null;
-  private runtime: CatalogRuntime | null = null;
-  private ensuring: Promise<BackgroundServiceStatus> | null = null;
 
   async initialize(): Promise<void> {
     if (process.platform !== "win32" || !app.isPackaged) return;
     blockCatalogConnection(true);
-    this.sid = await powershell(
-      "[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
-    );
-    if (!/^S-1-5-21-\d+-\d+-\d+-\d+$/.test(this.sid))
-      throw new Error("Unsupported Windows profile");
-    this.root = join(
-      process.env.ProgramData ?? "C:\\ProgramData",
-      "Rescore",
-      this.sid,
-    );
+    this.root = join(process.env.ProgramData ?? "C:\\ProgramData", "Rescore");
+    this.ready = true;
     this.reload();
-  }
-
-  attach(runtime: CatalogRuntime): void {
-    this.runtime = runtime;
   }
 
   private installation(): Installation | null {
@@ -98,12 +90,7 @@ export class BackgroundService {
     const record = JSON.parse(
       readFileSync(join(this.root, "installation.json"), "utf8"),
     ) as Installation;
-    if (
-      record.ownerSid !== this.sid ||
-      record.serviceName !== `RescoreCatalogue-${this.sid}` ||
-      resolve(record.originalDataDir).toLowerCase() !==
-        resolve(app.getPath("userData"), "data").toLowerCase()
-    ) {
+    if (record.serviceName !== "RescoreCatalogue") {
       throw new Error("Catalogue service profile does not match this app.");
     }
     return record;
@@ -153,15 +140,6 @@ export class BackgroundService {
         message: "Available in Windows x64 builds, installed or unpacked.",
       };
     const logsAvailable = !!this.root && existsSync(join(this.root, "logs"));
-    if (this.busy)
-      return {
-        supported,
-        logsAvailable,
-        enabled: managed,
-        state: "transitioning",
-        message:
-          "Preparing the required catalogue service. Please keep Rescore open.",
-      };
     try {
       this.reload();
       const record = this.installation();
@@ -231,35 +209,15 @@ export class BackgroundService {
     }
   }
 
-  ensureRunning(
-    intent: ServiceLaunchIntent = "launch",
-  ): Promise<BackgroundServiceStatus> {
-    if (this.ensuring) return this.ensuring;
-    this.ensuring = this.runEnsureRunning(intent).finally(() => {
-      this.ensuring = null;
-    });
-    return this.ensuring;
-  }
-
-  private async runEnsureRunning(
-    intent: ServiceLaunchIntent,
-  ): Promise<BackgroundServiceStatus> {
-    if (!serviceRequired()) return this.getStatus();
+  async inspect(intent: ServiceIntent): Promise<ServiceInspection> {
+    if (!this.ready) await this.initialize();
+    const status = await this.getStatus();
+    if (!serviceRequired()) return { status, activity: "idle", action: "none" };
+    const activity = await this.maintenanceActivity();
+    if (intent === "observe") return { status, activity, action: "none" };
+    if (intent === "launch" && status.state === "running")
+      return { status, activity, action: "none" };
     try {
-      if (!this.sid) await this.initialize();
-      const status = await this.getStatus();
-      if (
-        serviceMaintenanceAction({
-          intent,
-          state: status.state,
-          phase: null,
-          sameLocation: false,
-          hashMatches: false,
-          displayName: null,
-        }) === "none"
-      ) {
-        return status;
-      }
       const record = this.installation();
       const expectedHash = createHash("sha256")
         .update(
@@ -296,26 +254,27 @@ export class BackgroundService {
         hashMatches,
         displayName,
       });
-      if (action === "none") return status;
-      return await this.change(action);
+      return { status, activity, action };
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       blockCatalogConnection(true);
       return {
-        supported: true,
-        enabled: managed,
-        state: "error",
-        message: this.error,
+        status: { ...status, state: "error", message: this.error },
+        activity,
+        action: "none",
       };
     }
   }
 
-  async change(
+  private async maintenanceActivity(): Promise<ServiceInspection["activity"]> {
+    return maintenanceActivity(join(this.root, "management.lock"));
+  }
+
+  async maintain(
     action: "EnsureRunning" | "Retry",
   ): Promise<BackgroundServiceStatus> {
-    if (this.busy) throw new Error("A service operation is already running.");
     if (
-      !this.sid ||
+      !this.ready ||
       !app.isPackaged ||
       process.platform !== "win32" ||
       process.arch !== "x64"
@@ -323,56 +282,46 @@ export class BackgroundService {
       throw new Error(
         "Service requires a Windows x64 build, installed or unpacked.",
       );
-    const script = join(process.resourcesPath, "service", "manage-service.ps1");
-    if (!existsSync(script))
+    const launcher = join(
+      process.resourcesPath,
+      "service",
+      "Rescore Maintenance.exe",
+    );
+    if (!existsSync(launcher))
       throw new Error("Service installer is missing. Reinstall Rescore.");
-    this.busy = true;
     this.error = null;
     blockCatalogConnection(true);
     const startedAt = Date.now();
-    this.runtime?.announce(
-      "Preparing the required catalogue service. Please keep Rescore open.",
-    );
+    let resultDirectory: string | null = null;
+    let confirmedComplete = false;
     try {
-      {
-        const profile = await powershell(
-          `[Environment]::ExpandEnvironmentVariables((Get-ItemProperty -LiteralPath ${quote(`HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\${this.sid}`)}).ProfileImagePath)`,
+      const dataDir = resolve(app.getPath("userData"), "data");
+      const expected = resolve(process.env.APPDATA ?? "", "Rescore", "data");
+      if (dataDir.toLowerCase() !== expected.toLowerCase()) {
+        throw new Error(
+          "The service requires the default local Windows profile location. Custom or redirected data folders are not supported.",
         );
-        const expected = resolve(
-          profile,
-          "AppData",
-          "Roaming",
-          "Rescore",
-          "data",
-        );
-        if (
-          resolve(app.getPath("userData"), "data").toLowerCase() !==
-          expected.toLowerCase()
-        ) {
-          throw new Error(
-            "The service requires the default local Windows profile location. Custom or redirected data folders are not supported.",
-          );
-        }
       }
-      await this.runtime?.stop();
-      // Encoded command keeps paths and apostrophes out of shell argument parsing.
-      const elevated = `& ${quote(script)} -Action ${action} -OwnerSid ${quote(this.sid)}; exit $LASTEXITCODE`;
-      const encoded = Buffer.from(elevated, "utf16le").toString("base64");
-      await powershell(elevationCommand(encoded));
+      resultDirectory = mkdtempSync(join(tmpdir(), "rescore-service-"));
+      const resultPath = join(resultDirectory, "result.txt");
+      writeFileSync(resultPath, "");
+      await runServiceMaintenance(launcher, action, dataDir, resultPath);
+      confirmedComplete = true;
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       const errorFile = join(this.root, "last-error.txt");
       if (existsSync(errorFile) && statSync(errorFile).mtimeMs >= startedAt)
         this.error += ` ${readFileSync(errorFile, "utf8").slice(0, 1500)}`;
     } finally {
-      this.busy = false;
+      // A timed-out broker can leave an elevated worker writing this result.
+      if (resultDirectory && confirmedComplete)
+        rmSync(resultDirectory, { recursive: true, force: true });
       try {
         this.reload();
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         blockCatalogConnection(true);
       }
-      this.runtime?.start();
     }
     return this.getStatus();
   }

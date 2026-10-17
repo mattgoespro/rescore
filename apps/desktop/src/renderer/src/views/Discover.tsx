@@ -1,9 +1,14 @@
+import {
+  createDiscoverResults,
+  visibleDiscoverItems,
+} from "../lib/discover-results";
 import { useVisibleMedia, mergeTitleMedia } from "../lib/use-visible-media";
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type ReactNode,
 } from "react";
@@ -11,8 +16,9 @@ import InfiniteScroll from "react-infinite-scroll-component";
 import type {
   DiscoverFilters,
   Genre,
+  LibraryEntry,
+  RankingMode,
   MovieSummary,
-  RankedMovie,
   SearchHistoryEntry,
 } from "../../../shared/types";
 import { titleKey } from "../../../shared/types";
@@ -30,9 +36,10 @@ import {
 import FilterPanel from "../components/filter-panel";
 import MovieCard from "../components/movie-card";
 import OverlayScroll from "../components/overlay-scroll";
+import VirtualList from "../components/virtual-list";
 import CatalogLoader from "../components/catalog-loader";
 import { IconGrid, IconList } from "../components/icons";
-import { enterDelayMs, gridColumnCount } from "../motion";
+import { enterDelayMs } from "../motion";
 import { cn } from "../lib/cn";
 import { discoverCountLabel } from "../lib/discover-count";
 import { segmentedCell, segmentedGroup } from "../lib/ui";
@@ -41,6 +48,9 @@ const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
 
 export default function Discover({
+  library,
+  libraryRevision,
+  rankingMode,
   filters,
   setFilters,
   genres,
@@ -49,6 +59,9 @@ export default function Discover({
   onError,
   inspector,
 }: {
+  library: LibraryEntry[];
+  libraryRevision: number;
+  rankingMode: RankingMode;
   filters: DiscoverFilters;
   setFilters: (filters: DiscoverFilters) => void;
   genres: Genre[];
@@ -58,26 +71,25 @@ export default function Discover({
   inspector: ReactNode;
 }): JSX.Element {
   const { containerRef, media } = useVisibleMedia();
-  const [items, setItems] = useState<RankedMovie[]>([]);
-  const [totalResults, setTotalResults] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const results = useMemo(
+    () => createDiscoverResults((filters) => window.api.discover(filters)),
+    [],
+  );
+  const snapshot = useSyncExternalStore(results.subscribe, results.getSnapshot);
+  const { items, totalResults, loading } = snapshot;
+  const visibleItems = visibleDiscoverItems(snapshot.items, library, filters);
   const [entering, setEntering] = useState(false);
   const [layout, setLayout] = useState<"list" | "grid">("list");
-  const [gridCols, setGridCols] = useState(1);
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const requestId = useRef(0);
   const openedId = useRef<string | null>(null);
   const filtersRef = useRef(filters);
   const genresRef = useRef(genres);
-  const loadingRef = useRef(true);
-  const loadingMoreRef = useRef(false);
-  const lastPageFullRef = useRef(false);
-  const cursorRef = useRef<string | null>(null);
   const historySession = useRef({ saved: false });
+  const replayKey = useRef<string | null>(null);
+  const [historyReplay, setHistoryReplay] = useState(0);
   filtersRef.current = filters;
   genresRef.current = genres;
-  loadingRef.current = loading;
 
   const filterKey = useMemo(
     () =>
@@ -89,78 +101,54 @@ export default function Discover({
   );
 
   useEffect(() => {
-    historySession.current = { saved: false };
-  }, [filterKey]);
+    historySession.current = { saved: replayKey.current === filterKey };
+    replayKey.current = null;
+  }, [filterKey, historyReplay]);
 
   useEffect(() => {
     void listSearchHistory().then(setHistory);
   }, []);
 
   useEffect(() => {
-    setLoading(true);
+    results.configure(filtersRef.current);
     const handle = window.setTimeout(() => {
-      void load(true);
+      void results.replace();
     }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(handle);
-  }, [filterKey]);
-
-  async function load(replace: boolean): Promise<void> {
-    if (!replace && loadingMoreRef.current) return;
-    const id = ++requestId.current;
-    if (replace) {
-      loadingMoreRef.current = false;
-      setLoading(true);
-      cursorRef.current = null;
-    } else {
-      loadingMoreRef.current = true;
+    return () => {
+      window.clearTimeout(handle);
+      results.cancel();
+    };
+  }, [filterKey, historyReplay, results]);
+  const previousRevision = useRef({ libraryRevision, rankingMode });
+  useEffect(() => {
+    const previous = previousRevision.current;
+    previousRevision.current = { libraryRevision, rankingMode };
+    if (
+      previous.libraryRevision !== libraryRevision ||
+      previous.rankingMode !== rankingMode
+    )
+      void results.refresh();
+  }, [libraryRevision, rankingMode, results]);
+  useEffect(() => () => results.dispose(), [results]);
+  useEffect(() => {
+    onError(snapshot.error);
+  }, [snapshot.error, onError]);
+  useEffect(() => {
+    if (!snapshot.completion?.reset) return;
+    scrollerRef.current?.scrollTo({ top: 0 });
+    const first = snapshot.items[0];
+    if (first) {
+      openedId.current = first.imdbId;
+      onOpen(first);
     }
-    onError("");
-    try {
-      const data = await window.api.discover({
-        ...filtersRef.current,
-        page: 1,
-        cursor: cursorRef.current,
-      });
-      if (id !== requestId.current) return;
-      setTotalResults(
-        typeof data.totalResults === "number" ? data.totalResults : null,
-      );
-      cursorRef.current = data.nextCursor;
-      lastPageFullRef.current = data.canLoadMore;
-      setItems((prev) => {
-        if (replace) return data.results;
-        return [...prev, ...data.results];
-      });
-      if (replace) {
-        scrollerRef.current?.scrollTo({ top: 0 });
-        const first = data.results[0];
-        if (first) {
-          openedId.current = first.imdbId;
-          onOpen(first);
-        }
-        setEntering(true);
-        recordSearchHistory();
-      }
-    } catch (error) {
-      if (id !== requestId.current) return;
-      onError(error instanceof Error ? error.message : "Search failed");
-    } finally {
-      if (id === requestId.current) {
-        loadingMoreRef.current = false;
-        setLoading(false);
-      }
-    }
-  }
-
+    setEntering(true);
+    recordSearchHistory();
+  }, [snapshot.completion]);
   function canLoadMore(): boolean {
-    return (
-      !loadingRef.current && !loadingMoreRef.current && lastPageFullRef.current
-    );
+    return !loading && !snapshot.loadingMore && snapshot.canLoadMore;
   }
-
   function loadMore(): void {
-    if (!canLoadMore()) return;
-    void load(false);
+    void results.loadMore();
   }
 
   function handleCardOpen(movie: MovieSummary): void {
@@ -170,6 +158,12 @@ export default function Discover({
 
   function recordSearchHistory(): void {
     if (historySession.current.saved) return;
+    if (
+      history.some((entry) => matchesSearchHistory(filtersRef.current, entry))
+    ) {
+      historySession.current.saved = true;
+      return;
+    }
     const snapshot = snapshotSearchHistory(
       filtersRef.current,
       genresRef.current,
@@ -197,21 +191,7 @@ export default function Discover({
     return () => window.clearTimeout(handle);
   }, [entering]);
 
-  const hasResults = items.length > 0;
-
-  useEffect(() => {
-    if (layout !== "grid") {
-      setGridCols(1);
-      return;
-    }
-    const el = scrollerRef.current;
-    if (!el) return;
-    const read = (): void => setGridCols(gridColumnCount(el));
-    read();
-    const observer = new ResizeObserver(read);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [layout, items.length, entering]);
+  const hasResults = visibleItems.length > 0;
 
   const refreshing = loading && hasResults;
   const countLabel = discoverCountLabel(totalResults, loading && !items.length);
@@ -229,21 +209,28 @@ export default function Discover({
         genres={genres}
         history={history}
         activeHistoryId={activeHistoryId}
-        onApplyHistory={(entry) =>
-          setFilters(applySearchHistory(filters, entry))
-        }
+        onApplyHistory={(entry) => {
+          const next = applySearchHistory(filters, entry);
+          replayKey.current = JSON.stringify({ ...next, page: 1 });
+          setFilters(next);
+          setHistoryReplay((revision) => revision + 1);
+        }}
         onRemoveHistory={(id) => {
           void removeSearchHistory(id).then(setHistory);
         }}
       />
       <div className="flex min-h-0 min-w-0 flex-col pt-5 pr-0 pb-4 pl-4.5">
         <div className="mb-2 flex items-center justify-between gap-3 pr-4.5">
-          <h2 className="m-0 text-[22px] font-650 tracking-title">
+          <h1 className="m-0 text-[22px] font-650 tracking-title">
             Results
-            <span className="ml-2 text-xs font-medium text-muted">
+            <span
+              className="ml-2 text-xs font-medium text-muted"
+              role="status"
+              aria-live="polite"
+            >
               {countLabel}
             </span>
-          </h2>
+          </h1>
           <div className="flex items-center gap-2.5">
             <div
               className={segmentedGroup("icon")}
@@ -279,24 +266,24 @@ export default function Discover({
             id={SCROLLABLE_TARGET_ID}
             className={cn(refreshing && "opacity-45")}
           >
-            {loading && !items.length ? (
-              <CatalogLoader label="Searching the catalog…" />
-            ) : null}
-            {!loading && !items.length ? (
+            {!loading && !visibleItems.length ? (
               <div className="col-span-full px-4 py-6 text-center text-muted">
-                <h3 className="mt-0 mb-2 text-lg tracking-[-0.03em] text-ink">
+                <h2 className="mt-0 mb-2 text-lg tracking-[-0.03em] text-ink">
                   No titles in this slice
-                </h3>
+                </h2>
                 <p>Loosen the vote floor or year window to see more films.</p>
               </div>
             ) : null}
             {hasResults ? (
               <InfiniteScroll
-                dataLength={items.length}
+                dataLength={visibleItems.length}
                 next={loadMore}
                 hasMore={canLoadMore()}
                 loader={
-                  <div className="my-4 mb-2 flex items-center justify-center gap-2.5 text-xs text-muted">
+                  <div
+                    className="my-4 mb-2 flex items-center justify-center gap-2.5 text-xs text-muted"
+                    role="status"
+                  >
                     Loading more titles…
                   </div>
                 }
@@ -307,16 +294,16 @@ export default function Discover({
                 }
                 scrollableTarget={SCROLLABLE_TARGET_ID}
               >
-                <div
-                  className={cn(
-                    layout === "grid"
-                      ? "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] content-start gap-x-3.5 gap-y-4.5 pr-[var(--rail-gutter,14px)]"
-                      : "flex flex-col",
-                  )}
-                >
-                  {items
-                    .map((movie) => mergeTitleMedia(movie, media))
-                    .map((movie, index) => (
+                <VirtualList
+                  items={visibleItems}
+                  scrollRef={scrollerRef}
+                  getKey={titleKey}
+                  grid={layout === "grid"}
+                  estimateSize={90}
+                  label="Search results"
+                  renderItem={(item, index) => {
+                    const movie = mergeTitleMedia(item, media);
+                    return (
                       <MovieCard
                         key={titleKey(movie)}
                         movie={movie}
@@ -325,20 +312,23 @@ export default function Discover({
                         entering={entering}
                         enterDelay={enterDelayMs(
                           index,
-                          layout === "grid" ? gridCols : 1,
+                          1,
                           layout === "grid" ? 36 : 18,
                         )}
                         onOpen={handleCardOpen}
                       />
-                    ))}
-                </div>
+                    );
+                  }}
+                />
               </InfiniteScroll>
             ) : null}
           </OverlayScroll>
-          {refreshing ? (
-            <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center bg-canvas/42">
-              <CatalogLoader label="Updating results…" />
-            </div>
+          {loading ? (
+            <CatalogLoader
+              label={
+                refreshing ? "Updating results…" : "Searching the catalog…"
+              }
+            />
           ) : null}
         </div>
       </div>

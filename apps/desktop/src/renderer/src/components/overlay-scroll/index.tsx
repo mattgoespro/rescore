@@ -71,7 +71,12 @@ const OverlayScroll = forwardRef<
     const observer = new ResizeObserver(sync);
     observer.observe(el);
     const mutations = new MutationObserver(sync);
-    mutations.observe(el, { childList: true });
+    mutations.observe(el, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style"],
+    });
     return () => {
       observer.disconnect();
       mutations.disconnect();
@@ -80,6 +85,8 @@ const OverlayScroll = forwardRef<
 
   useEffect(() => {
     if (!dragging) return;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
     const onMove = (event: PointerEvent): void => {
       const el = viewRef.current;
       const start = drag.current;
@@ -99,9 +106,12 @@ const OverlayScroll = forwardRef<
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.body.style.userSelect = previousUserSelect;
     };
   }, [dragging]);
 
@@ -110,7 +120,13 @@ const OverlayScroll = forwardRef<
       <div
         ref={setRefs}
         id={id}
-        className={cn("scrollbar-none h-full overflow-auto", className)}
+        className={cn(
+          "scrollbar-none h-full overflow-auto overscroll-contain",
+          className,
+        )}
+        tabIndex={0}
+        role="region"
+        aria-label="Titles"
         onScroll={(event) => {
           sync();
           onScroll?.(event);

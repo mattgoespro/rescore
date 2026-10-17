@@ -18,11 +18,13 @@ export default function Select({
   options,
   onChange,
   ariaLabel,
+  disabled = false,
 }: {
   value: string;
   options: ReadonlyArray<SelectOption>;
   onChange: (value: string) => void;
   ariaLabel?: string;
+  disabled?: boolean;
 }): JSX.Element {
   const id = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -148,6 +150,7 @@ export default function Select({
         open={open}
         label={selected?.label ?? ""}
         ariaLabel={ariaLabel}
+        disabled={disabled}
         menuId={id}
         onClick={() => setOpen((prev) => !prev)}
         onKeyDown={onButtonKey}

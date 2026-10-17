@@ -1,4 +1,6 @@
 import type { BackgroundServiceStatus } from "../shared/background-service";
+import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 export type ServiceLaunchIntent = "launch" | "repair";
 export type ServiceMaintenanceAction = "none" | "EnsureRunning" | "Retry";
@@ -26,17 +28,27 @@ export function serviceMaintenanceAction(input: {
   return "EnsureRunning";
 }
 
-/** Child powershell.exe must be hidden. Start-Process -WindowStyle is ignored with -Verb RunAs. */
-export function elevationCommand(encodedCommand: string): string {
-  if (!/^[A-Za-z0-9+/=]+$/.test(encodedCommand)) {
-    throw new Error("Invalid elevated command.");
-  }
-  return [
-    "$ErrorActionPreference='Stop'",
-    `$p=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Verb RunAs -PassThru -ArgumentList @('-NoProfile','-WindowStyle','Hidden','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand','${encodedCommand}')`,
-    "if ($null -eq $p) { exit 1 }",
-    "$null = $p.Handle",
-    "if (-not $p.WaitForExit(1800000)) { exit 1 }",
-    "if ($null -ne $p.ExitCode -and $p.ExitCode -ne 0) { exit 1 }",
-  ].join("; ");
+/** The GUI broker elevates itself and creates PowerShell with CREATE_NO_WINDOW. */
+export function runServiceMaintenance(
+  launcher: string,
+  action: "EnsureRunning" | "Retry",
+  dataDir: string,
+  resultPath: string,
+): Promise<void> {
+  return new Promise((resolveResult, reject) => {
+    execFile(
+      launcher,
+      ["--action", action, "--data-dir", dataDir, "--result", resultPath],
+      { windowsHide: true, timeout: 30 * 60_000, maxBuffer: 1024 * 1024 },
+      (error) => {
+        try {
+          // Approval cancellation, a missing result, and nonzero results fail closed.
+          if (error || readFileSync(resultPath, "utf8").trim() !== "0") {
+            throw new Error("Windows service operation failed or administrator approval was cancelled.");
+          }
+          resolveResult();
+        } catch (failure) { reject(failure); }
+      },
+    );
+  });
 }

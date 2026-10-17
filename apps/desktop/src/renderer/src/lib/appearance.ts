@@ -1,5 +1,6 @@
 import {
   accentInkColor,
+  accentTextColor,
   normalizeAccentColor,
   normalizeThemeMode,
 } from "../../../shared/appearance";
@@ -18,6 +19,10 @@ export function applyAppearance(
   root.style.colorScheme = themeMode;
   root.style.setProperty("--imd-accent", accentColor);
   root.style.setProperty("--imd-accent-ink", accentInkColor(accentColor));
+  root.style.setProperty(
+    "--imd-accent-text",
+    accentTextColor(accentColor, themeMode),
+  );
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ themeMode, accentColor }));
   } catch {

@@ -1,4 +1,6 @@
 export type { ThemeMode } from "./appearance";
+export type { LanguageCode } from "./languages";
+export type { ImdbLanguageCode } from "./imdb-languages";
 export type {
   CastMember,
   Genre,
@@ -57,7 +59,6 @@ export { applyMovieEnrichment } from "./ranking-types";
 export type { Settings } from "./settings";
 export {
   DEFAULT_CATALOG_API_URL,
-  DEFAULT_IMDB_API_URL,
   defaultSettings,
   normalizeSettings,
 } from "./settings";

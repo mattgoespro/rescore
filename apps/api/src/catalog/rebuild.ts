@@ -1,9 +1,8 @@
 import type Database from "better-sqlite3";
 import { imdbValue, readTsvRows } from "../services/gzip-tsv.js";
 import { bayesianScore } from "./bayesian.js";
-import { invalidateFacetsCache } from "./facets-cache.js";
+import { invalidateQueryCache, invalidateCountCache } from "./query-cache.js";
 import { now } from "./now.js";
-import { invalidateCountCache } from "./query.js";
 import {
   dropFtsTriggers,
   rebuildFtsIndex,
@@ -37,8 +36,8 @@ export function endBulkLoad(db: Database.Database): void {
   restoreFtsTriggers(db);
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
-  invalidateFacetsCache();
-  invalidateCountCache();
+  invalidateQueryCache(db);
+  invalidateCountCache(db);
 }
 
 export function startCreditsRebuild(db: Database.Database): void {
@@ -90,7 +89,7 @@ export function insertTitleRows(
       }
     }
   })();
-  invalidateCountCache();
+  invalidateQueryCache(db);
 }
 
 export function insertPeople(
@@ -121,7 +120,7 @@ export function insertPeople(
       statement.run(...values);
     }
   })();
-  invalidateCountCache();
+  invalidateCountCache(db);
 }
 
 export function existingPeopleNames(
@@ -171,6 +170,7 @@ export function replaceTitleCredits(
 ): void {
   db.prepare("DELETE FROM title_people WHERE title_id = ?").run(titleId);
   if (rows.length) insertPeople(db, rows);
+  invalidateCountCache(db);
 }
 
 const UPSERT_TITLE_SQL = `INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at)
@@ -202,17 +202,19 @@ export function startTitleIngest(db: Database.Database, bulk: boolean): void {
 export function abortTitleIngest(db: Database.Database, bulk: boolean): void {
   db.exec("DROP TABLE IF EXISTS ingest_seen");
   if (bulk) endBulkLoad(db);
+  invalidateQueryCache(db);
 }
 
 export function finishTitleIngest(db: Database.Database, bulk: boolean): void {
-  db.exec("DELETE FROM titles WHERE id NOT IN (SELECT id FROM ingest_seen)");
+  db.exec(`DELETE FROM titles WHERE id NOT IN (SELECT id FROM ingest_seen)
+    AND NOT EXISTS (SELECT 1 FROM library_entries l WHERE l.title_id = titles.id)`);
   db.exec("DROP TABLE IF EXISTS ingest_seen");
   if (bulk) {
     endBulkLoad(db);
     return;
   }
-  invalidateFacetsCache();
-  invalidateCountCache();
+  invalidateQueryCache(db);
+  invalidateCountCache(db);
 }
 
 export function upsertTitleRows(
@@ -274,14 +276,14 @@ export function upsertTitleRows(
       }
     }
   })();
-  invalidateCountCache();
+  invalidateQueryCache(db);
 }
 
 export function finishCreditsRebuild(db: Database.Database): void {
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
-  invalidateFacetsCache();
-  invalidateCountCache();
+  invalidateQueryCache(db);
+  invalidateCountCache(db);
 }
 
 export function queueAnalyze(
@@ -289,6 +291,7 @@ export function queueAnalyze(
   target?: string,
 ): Promise<void> {
   return queueIdleAnalyze(() => {
+    if (!db.open) return;
     db.exec(target ? `ANALYZE ${target}` : "ANALYZE");
   });
 }
@@ -346,8 +349,8 @@ export async function upsertRatingsChunked(
       }
     }
     flush();
-    invalidateFacetsCache();
-    invalidateCountCache();
+    invalidateQueryCache(db);
+    invalidateCountCache(db);
     return updated;
   });
 }
@@ -378,8 +381,8 @@ export async function upsertRatingsFromFile(
       }
     }
     flush();
-    invalidateFacetsCache();
-    invalidateCountCache();
+    invalidateQueryCache(db);
+    invalidateCountCache(db);
     return updated;
   });
 }
@@ -389,7 +392,7 @@ export function upsertRatingsSync(
   ratings: Map<string, { rating: number; votes: number }>,
 ): number {
   const updated = applyRatingUpdates(db, ratings);
-  invalidateFacetsCache();
-  invalidateCountCache();
+  invalidateQueryCache(db);
+  invalidateCountCache(db);
   return updated;
 }

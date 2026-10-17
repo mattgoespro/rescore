@@ -14,7 +14,7 @@ export default function Thumb({
 }): JSX.Element {
   return (
     <div
-      className="pointer-events-none absolute top-1.5 right-0.75 bottom-1.5 z-2 w-2 rounded-full bg-rail"
+      className="pointer-events-none absolute inset-y-1.5 right-0.75 z-2 w-2 rounded-full bg-rail"
       aria-hidden="true"
     >
       <div

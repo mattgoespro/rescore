@@ -1,4 +1,5 @@
-import { effectiveCatalogUrl } from "./catalog-connection";
+import { effectiveCatalogUrl, serviceConnection } from "./catalog-connection";
+import { sendToWindow } from "./window-lifecycle";
 import { catalogOwner, catalogUrlChangeAllowed } from "./catalog-owner";
 import {
   BackgroundService,
@@ -11,33 +12,21 @@ import { resolve } from "node:path";
 import { readFileSync, writeFileSync } from "fs";
 import { isAppearanceOnlyPatch } from "../shared/appearance";
 import {
-  sortMovies,
-  titleKey,
   type DiscoverFilters,
   type ForYouResult,
   type ImportProgress,
-  type LibraryEntry,
-  type MovieDetails,
-  type MovieEnrichment,
   type MovieSummary,
-  type RankReason,
   type Settings,
-  type WatchStatus,
 } from "../shared/types";
-import { genreId, movieFromTitle } from "../shared/movie";
 import { CatalogClient, CatalogError } from "./catalog-client";
-import { loadDiscoverSlice } from "./discover-slice";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
 import type { SearchHistoryInput } from "../shared/search-history";
+import { buildProfile, describeProfile, publicProfile } from "./ranking";
 import {
-  buildProfile,
-  describeProfile,
-  publicProfile,
-  scoreMovie,
-  tasteRanked,
-} from "./ranking";
-import { createTasteCache, withLibraryWrite } from "./taste-cache";
+  createLibraryTasteWorkflow,
+  type LibraryUpsert,
+} from "./library-taste";
 import type { AppStore } from "./store";
 import { applyWindowChrome } from "./window-chrome";
 
@@ -77,15 +66,26 @@ export function registerIpc(
   store = appStore;
   getWindow = windowGetter;
   catalog = catalogRuntime;
+  workflow = createLibraryTasteWorkflow({
+    connection: () => {
+      const url = effectiveCatalogUrl(store.getSettings().catalogApiUrl);
+      return {
+        url,
+        identity: `${url}|${serviceConnection()?.catalogId ?? ""}`,
+      };
+    },
+    createClient: (url) => new CatalogClient(url),
+    rankingMode: () => store.getSettings().rankingMode,
+  });
   const serviceAction = (event: Electron.IpcMainInvokeEvent) => {
     if (!trustedServiceSender(event))
       throw new Error("Untrusted service request");
-    return backgroundService.ensureRunning("repair");
+    return catalog.repairService();
   };
   ipcMain.handle("background-service:status", (event) => {
     if (!trustedServiceSender(event))
       throw new Error("Untrusted service request");
-    return backgroundService.getStatus();
+    return catalog.serviceStatus();
   });
   ipcMain.handle("background-service:retry", (event) => serviceAction(event));
   ipcMain.handle("background-service:logs", (event) => {
@@ -114,21 +114,19 @@ export function registerIpc(
     return next;
   });
   ipcMain.handle("catalog:status", () => catalog.status());
-  ipcMain.handle("catalog:tmdbHealth", () =>
-    withCatalog({ total: 0, posters: 0, synopses: 0, certifications: 0 }, () =>
-      getClient().tmdbHealth(),
-    ),
-  );
+  ipcMain.handle("catalog:tmdbHealth", () => getClient().tmdbHealth());
   ipcMain.handle("catalog:retry", async (event) => {
     if (serviceRequired()) {
       if (!trustedServiceSender(event))
         throw new Error("Untrusted service request");
-      await backgroundService.ensureRunning("repair");
-    }
-    catalog.retry();
+      await catalog.repairService();
+    } else catalog.retry();
     return catalog.status();
   });
-  ipcMain.handle("catalog:rebuild", () => catalog.rebuild());
+  ipcMain.handle("catalog:rebuild", () => {
+    workflow.invalidate();
+    return catalog.rebuild();
+  });
   ipcMain.handle("catalog:configured", () => getClient().configured());
   ipcMain.handle("catalog:genres", () =>
     withCatalog([], () => getClient().genres()),
@@ -143,7 +141,7 @@ export function registerIpc(
         nextCursor: null,
         canLoadMore: false,
       },
-      () => discover(filters),
+      () => workflow.discover(filters),
     ),
   );
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>
@@ -153,26 +151,16 @@ export function registerIpc(
     withCatalog([], () => getClient().fillMedia(ids)),
   );
   ipcMain.handle("catalog:movieMeta", (_event, movies: MovieSummary[]) =>
-    withCatalog({}, () => enrichMovies(movies)),
+    withCatalog({}, () => workflow.enrich(movies)),
   );
-  ipcMain.handle("library:list", () =>
-    withCatalog([], () => getClient().listLibrary()),
-  );
+  ipcMain.handle("library:list", () => withCatalog([], () => workflow.list()));
   ipcMain.handle("library:upsert", (_event, payload: LibraryUpsert) =>
-    withLibraryWrite(taste, () => upsertLibrary(payload)),
+    workflow.upsert(payload),
   );
   ipcMain.handle("library:remove", (_event, imdbId: string) =>
-    withLibraryWrite(taste, async () => {
-      await getClient().removeLibrary(imdbId);
-      return getClient().listLibrary();
-    }),
+    workflow.remove(imdbId),
   );
-  ipcMain.handle("library:clear", () =>
-    withLibraryWrite(taste, async () => {
-      await getClient().clearLibrary();
-      return [];
-    }),
-  );
+  ipcMain.handle("library:clear", () => workflow.clear());
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
   ipcMain.handle("search-history:list", () => store.listSearchHistory());
@@ -183,50 +171,14 @@ export function registerIpc(
     store.removeSearchHistory(id),
   );
   ipcMain.handle("ranking:forYou", () =>
-    withCatalog(emptyForYou(), () => forYou()),
+    withCatalog(emptyForYou(), () => workflow.forYou()),
   );
-  ipcMain.handle("ranking:profile", async () => {
-    const [library, genres] = await Promise.all([
-      withCatalog([], () => getClient().listLibrary()),
-      withCatalog([], () => getClient().genres()),
-    ]);
-    return publicProfile(buildProfile(library, genres));
-  });
+  ipcMain.handle("ranking:profile", () => workflow.profile());
 }
 
-interface LibraryUpsert {
-  movie: MovieSummary | MovieDetails;
-  status: WatchStatus;
-  rating?: number;
-}
-
-let catalogClient: CatalogClient | null = null;
-let catalogClientUrl = "";
-const taste = createTasteCache<{
-  library: LibraryEntry[];
-  genres: { id: number; name: string }[];
-}>();
-
-async function matchContext(): Promise<{
-  library: LibraryEntry[];
-  genres: { id: number; name: string }[];
-}> {
-  return taste.read(async () => {
-    const [library, genres] = await Promise.all([
-      getClient().listLibrary(),
-      getClient().genres(),
-    ]);
-    return { library, genres };
-  });
-}
-
+let workflow: ReturnType<typeof createLibraryTasteWorkflow<CatalogClient>>;
 function getClient(): CatalogClient {
-  const url = effectiveCatalogUrl(store.getSettings().catalogApiUrl);
-  if (!catalogClient || catalogClientUrl !== url) {
-    catalogClient = new CatalogClient(url);
-    catalogClientUrl = url;
-  }
-  return catalogClient;
+  return workflow.client();
 }
 
 async function withCatalog<T>(fallback: T, run: () => Promise<T>): Promise<T> {
@@ -250,146 +202,6 @@ function emptyForYou(): ForYouResult {
   };
 }
 
-async function discover(filters: DiscoverFilters) {
-  const mode = filters.cursor == null ? "replace" : "append";
-  const cursor = filters.cursor ?? null;
-  if (filters.sortBy !== "match") {
-    return loadDiscoverSlice({
-      filters,
-      mode,
-      cursor,
-      ratedCount: 0,
-      fetchPage: (pageFilters) => getClient().discover(pageFilters),
-      rankPage: (movies) => movies,
-    });
-  }
-  const { library, genres } = await matchContext();
-  const profile = buildProfile(library, genres);
-  const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
-  return loadDiscoverSlice({
-    filters,
-    mode,
-    cursor,
-    ratedCount: profile.ratedCount,
-    fetchPage: (pageFilters) => getClient().discover(pageFilters),
-    rankPage: (movies) =>
-      sortMovies(
-        movies.map((movie) =>
-          scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
-        ),
-        "match",
-      ),
-  });
-}
-
-async function upsertLibrary({
-  movie,
-  status,
-  rating,
-}: LibraryUpsert): Promise<LibraryEntry[]> {
-  await getClient().saveLibrary(movie as MovieSummary, status, rating);
-  return getClient().listLibrary();
-}
-
-async function forYou(): Promise<ForYouResult> {
-  const payload = await getClient().forYouPage(80);
-  const library = payload.library.map(
-    ({ title, status, personalRating, updatedAt }) =>
-      toLibraryFromDto(title, status, personalRating ?? undefined, updatedAt),
-  );
-  const genres = payload.facets.genres.map((genre) => ({
-    id: genreId(genre.value),
-    name: genre.value,
-  }));
-  const candidates = payload.candidates.map(toSummaryFromDto);
-  const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
-  const profile = buildProfile(library, genres);
-  const movies = tasteRanked(
-    profile.ratedCount,
-    candidates.map((movie) => ({
-      ...movie,
-      match: 0,
-      reasons: [] as RankReason[],
-    })),
-    (rows) =>
-      sortMovies(
-        rows.map((movie) =>
-          scoreMovie(movie, profile, store.getSettings().rankingMode, entries),
-        ),
-        "match",
-      ),
-  ).slice(0, 40);
-  return {
-    profile: publicProfile(profile),
-    insights: describeProfile(profile),
-    movies,
-  };
-}
-
-function toSummaryFromDto(title: {
-  id: string;
-  title: string;
-  originalTitle: string | null;
-  kind: string;
-  year: number | null;
-  runtimeMinutes: number | null;
-  synopsis: string | null;
-  posterUrl: string | null;
-  certification: string | null;
-  imdbRating: number | null;
-  imdbVotes: number | null;
-  genres: string[];
-  directors: string[];
-  cast: string[];
-  languages?: string[];
-}): MovieSummary {
-  return movieFromTitle(title);
-}
-
-function toLibraryFromDto(
-  title: Parameters<typeof toSummaryFromDto>[0],
-  status: WatchStatus,
-  rating: number | undefined,
-  updatedAt: string,
-): LibraryEntry {
-  const movie = toSummaryFromDto(title);
-  return {
-    ...movie,
-    status,
-    rating,
-    updatedAt,
-    directorIds: movie.directorIds ?? [],
-    directorNames: movie.directorNames ?? [],
-    castIds: movie.castIds ?? [],
-    castNames: movie.castNames ?? [],
-  };
-}
-
-async function enrichMovies(
-  movies: MovieSummary[],
-): Promise<Record<string, MovieEnrichment>> {
-  const [library, genres] = await Promise.all([
-    getClient().listLibrary(),
-    getClient().genres(),
-  ]);
-  const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
-  const profile = buildProfile(library, genres);
-  return Object.fromEntries(
-    movies.map((movie) => {
-      const ranked = scoreMovie(
-        movie,
-        profile,
-        store.getSettings().rankingMode,
-        entries,
-      );
-      return [
-        titleKey(movie),
-        { match: ranked.match, reasons: ranked.reasons },
-      ];
-    }),
-  );
-}
-
 async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
   const options = {
     title: "Export Rescore library",
@@ -406,7 +218,7 @@ async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
     JSON.stringify(
       {
         exportedAt: new Date().toISOString(),
-        library: await getClient().listLibrary(),
+        library: await workflow.list(),
       },
       null,
       2,
@@ -437,26 +249,7 @@ async function importImdbCsv(): Promise<ImportProgress> {
   };
   if (picked.canceled || !picked.filePaths[0]) return empty;
   const rows = parseImdbRatingsCsv(readFileSync(picked.filePaths[0], "utf8"));
-  const progress = { ...empty, total: rows.length, done: false };
-  for (const [index, row] of rows.entries()) {
-    progress.current = index + 1;
-    progress.title = row.title;
-    getWindow()?.webContents.send("library:importProgress", progress);
-    try {
-      const movie = await getClient().findByImdb(row.imdbId);
-      if (!movie) progress.skipped++;
-      else {
-        await withLibraryWrite(taste, () =>
-          getClient().saveLibrary(movie, "watched", row.rating),
-        );
-        progress.imported++;
-      }
-    } catch {
-      progress.errors++;
-    }
-  }
-  progress.done = true;
-  progress.title = "Import complete";
-  getWindow()?.webContents.send("library:importProgress", progress);
-  return progress;
+  return workflow.importRatings(rows, (progress) =>
+    sendToWindow(getWindow(), "library:importProgress", progress),
+  );
 }

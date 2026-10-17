@@ -11,11 +11,25 @@ test("default discover filters do not advertise catalogue fields IMDb dumps lack
   assert.equal("directors" in filters, false);
 });
 
-test("best match is the taste sort, and language exclusion starts empty", () => {
+test("best match is the taste sort, with the selected default language exclusions", () => {
   const filters = defaultFilters();
-  assert.deepEqual(filters.excludeLanguages, []);
+  assert.deepEqual(filters.excludeLanguages, [
+    "ur",
+    "pa",
+    "ps",
+    "sd",
+    "bn",
+    "si",
+    "ta",
+  ]);
   assert.equal(
     SORT_OPTIONS.find((option) => option.value === "match")?.label,
     "Best match for you",
   );
+});
+
+test("changing language exclusions does not change another default filter instance", () => {
+  const filters = defaultFilters();
+  filters.excludeLanguages.length = 0;
+  assert.equal(defaultFilters().excludeLanguages.length, 7);
 });

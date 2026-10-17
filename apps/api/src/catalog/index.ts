@@ -5,7 +5,6 @@ export {
   maintenanceWorkQueue,
   yieldEventLoop,
 } from "./work-queue.js";
-export { invalidateFacetsCache } from "./facets-cache.js";
 export { BAYESIAN_PRIOR_VOTES, bayesianScore } from "./bayesian.js";
 export type {
   CatalogMeta,

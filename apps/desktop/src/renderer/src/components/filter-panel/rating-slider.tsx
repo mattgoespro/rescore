@@ -14,6 +14,7 @@ export default function RatingSlider({
       <div className="flex min-w-0 items-center gap-2">
         <input
           type="range"
+          name="ratingMin"
           className={rangeInputClass}
           min={0}
           max={9}

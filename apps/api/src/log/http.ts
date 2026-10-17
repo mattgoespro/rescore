@@ -12,6 +12,10 @@ export function shouldLogRequest(path: string, status: number): boolean {
   return true;
 }
 
+export function shouldLogIncoming(path: string): boolean {
+  return path !== "/health";
+}
+
 export function httpMessage(input: {
   id: string;
   status: number;
@@ -26,6 +30,17 @@ export function httpMessage(input: {
   return `${input.id}  ${status}${duration}  ${input.path}${tail}`;
 }
 
+export function incomingMessage(input: {
+  id: string;
+  path: string;
+  query: Record<string, unknown>;
+}): string {
+  const mark = "-->".padEnd(6, " ");
+  const keys = searchKeyList(input.path, input.query);
+  const tail = keys ? `  ${keys}` : "";
+  return `${input.id}  ${mark}${input.path}${tail}`;
+}
+
 export function requestLog(
   req: Request,
   res: Response,
@@ -35,6 +50,18 @@ export function requestLog(
 ): void {
   const id = requestId();
   res.locals.requestId = id;
+  const query = req.query as Record<string, unknown>;
+  if (shouldLogIncoming(req.path)) {
+    emit(
+      {
+        channel: "http",
+        phase: req.method,
+        level: "info",
+        message: incomingMessage({ id, path: req.path, query }),
+      },
+      sink,
+    );
+  }
   res.on("finish", () => {
     const status = res.statusCode;
     if (!shouldLogRequest(req.path, status)) return;
@@ -49,7 +76,7 @@ export function requestLog(
           status,
           ms: Date.now() - startedAt,
           path: req.path,
-          query: req.query as Record<string, unknown>,
+          query,
         }),
       },
       sink,

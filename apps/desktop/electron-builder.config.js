@@ -14,6 +14,7 @@ const {
   writeFileSync,
 } = require("node:fs");
 const { delimiter, join } = require("node:path");
+const { checkPackage } = require("./scripts/check-package.cjs");
 
 const BUNDLED_NODE_VERSION = "22.23.2";
 const WINSW_VERSION = "2.12.0";
@@ -48,6 +49,11 @@ function copyApiRuntime(context) {
     throw new Error(`API runtime missing at ${src}.`);
   }
   cpSync(src, dest, { recursive: true });
+  copyFileSync(
+    join(context.packager.projectDir, "build/service/Rescore Logs.exe"),
+    join(context.appOutDir, "Rescore Logs.exe"),
+  );
+  checkPackage(context.appOutDir);
 }
 
 /**
@@ -60,6 +66,32 @@ async function stageApiRuntimeToDisk(projectDir) {
 
   const repoRoot = join(projectDir, "../..");
   const apiRoot = join(repoRoot, "apps/api");
+  const serviceBuild = join(projectDir, "build/service");
+  mkdirSync(serviceBuild, { recursive: true });
+  execFileSync(
+    join(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
+    ),
+    [
+      "/nologo",
+      "/target:winexe",
+      "/platform:x64",
+      "/reference:System.Windows.Forms.dll",
+      `/out:${join(serviceBuild, "Rescore Logs.exe")}`,
+      join(projectDir, "resources/service/logs-launcher.cs"),
+    ],
+    { stdio: "inherit", windowsHide: true },
+  );
+  execFileSync(
+    join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET/Framework64/v4.0.30319/csc.exe"),
+    [
+      "/nologo", "/target:winexe", "/platform:x64",
+      `/out:${join(serviceBuild, "Rescore Maintenance.exe")}`,
+      join(projectDir, "resources/service/maintenance-launcher.cs"),
+    ],
+    { stdio: "inherit", windowsHide: true },
+  );
   const cacheDir = join(projectDir, "build/node");
   const stagingDir = join(projectDir, "build/api-runtime");
   const zipName = `node-v${BUNDLED_NODE_VERSION}-win-x64.zip`;
@@ -70,13 +102,7 @@ async function stageApiRuntimeToDisk(projectDir) {
   console.log("Compiling catalog API…");
   execFileSync(
     process.execPath,
-    [
-      join(repoRoot, "node_modules/typescript/bin/tsc"),
-      "-p",
-      "tsconfig.build.json",
-      "--pretty",
-      "false",
-    ],
+    [join(apiRoot, "scripts/build.mjs")],
     { cwd: apiRoot, stdio: "inherit" },
   );
 
@@ -240,8 +266,11 @@ module.exports = {
   icon: "../assets/icon.png",
   directories: {
     buildResources: "build",
+    output: join(__dirname, "../../dist"),
   },
   files: [
+    "!scripts/**",
+    "!resources/service/**",
     "!**/.vscode/*",
     "!src/*",
     "!electron.vite.config.{js,ts,mjs,cjs}",
@@ -253,17 +282,19 @@ module.exports = {
   beforePack: stageApiRuntime,
   afterPack: copyApiRuntime,
   extraResources: [
+    { from: "build/service/Rescore Maintenance.exe", to: "service/Rescore Maintenance.exe" },
     {
       from: "resources/service",
       to: "service",
-      filter: ["**/*", "!test-*.ps1"],
+      filter: ["**/*", "!test-*.ps1", "!*.cs"],
     },
   ],
   win: {
     executableName: "Rescore",
   },
   nsis: {
-    perMachine: false,
+    oneClick: false,
+    perMachine: true,
     runAfterFinish: false,
     include: "resources/service/installer.nsh",
     artifactName: "${name}-${version}-setup.${ext}",

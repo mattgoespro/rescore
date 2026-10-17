@@ -1,4 +1,5 @@
 import type { TitleKind } from "./movie";
+import type { LanguageCode } from "./languages";
 
 export type AppView = "discover" | "foryou" | "library" | "settings";
 
@@ -7,7 +8,7 @@ export interface DiscoverFilters {
   titleKind: TitleKind;
   genres: number[];
   withoutGenres: number[];
-  excludeLanguages: string[];
+  excludeLanguages: LanguageCode[];
   yearMin: number | null;
   yearMax: number | null;
   ratingMin: number;
@@ -36,6 +37,7 @@ export interface SearchHistoryEntry {
   yearMax: number | null;
   ratingMin: number;
   sortBy: string;
+  filters?: Omit<DiscoverFilters, "page" | "cursor">;
 }
 
 export const TITLE_KIND_OPTIONS = [
@@ -65,7 +67,9 @@ export function defaultFilters(): DiscoverFilters {
     voteCountMin: 1000,
     runtimeMin: null,
     runtimeMax: null,
-    excludeLanguages: [],
+    // Major languages supported by the catalogue for Pakistan, Bangladesh,
+    // and Sri Lanka: Urdu, Punjabi, Pashto, Sindhi, Bengali, Sinhala, Tamil.
+    excludeLanguages: ["ur", "pa", "ps", "sd", "bn", "si", "ta"],
     sortBy: "match",
     hideWatched: true,
     hideWatchlist: false,

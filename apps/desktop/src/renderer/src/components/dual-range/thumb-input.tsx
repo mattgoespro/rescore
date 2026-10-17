@@ -22,6 +22,7 @@ export default function ThumbInput({
   return (
     <input
       type="range"
+      name={label?.toLowerCase().replaceAll(" ", "-")}
       min={min}
       max={max}
       step={step}

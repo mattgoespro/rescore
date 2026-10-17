@@ -18,7 +18,7 @@ export default function GenreChips({
   return (
     <div className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
       {label}
-      <p className="m-0 text-[11px] leading-[1.3] text-faint">
+      <p className="m-0 text-[11px] leading-label text-faint">
         {hint ??
           (selected.length
             ? "Match any selected genre."

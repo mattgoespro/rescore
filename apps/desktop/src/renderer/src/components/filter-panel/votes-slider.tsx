@@ -14,6 +14,7 @@ export default function VotesSlider({
       <div className="flex min-w-0 items-center gap-2">
         <input
           type="range"
+          name="voteCountMin"
           className={rangeInputClass}
           min={0}
           max={5000}

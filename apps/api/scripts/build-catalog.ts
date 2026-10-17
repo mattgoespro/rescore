@@ -1,6 +1,6 @@
-import { CATALOG_DB_PATH } from "../config.js";
-import { buildCatalog } from "../services/catalog-builder.js";
-import { CatalogDatabase } from "../services/catalog-db.js";
+import { CATALOG_DB_PATH } from "../src/config.js";
+import { buildCatalog } from "../src/services/catalog-builder.js";
+import { CatalogDatabase } from "../src/services/catalog-db.js";
 
 const force = process.argv.includes("--force");
 const catalog = new CatalogDatabase(CATALOG_DB_PATH);

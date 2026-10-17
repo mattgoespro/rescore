@@ -10,3 +10,12 @@ test("drops stored TMDb keys from settings", () => {
   assert.equal("tmdbApiKey" in settings, false);
   assert.equal("tmdbApiKeys" in settings, false);
 });
+
+test("drops unsupported region and IMDb endpoint settings when loading old profiles", () => {
+  const settings = normalizeSettings({
+    region: "ZA",
+    imdbApiUrl: "https://obsolete.example",
+  });
+  assert.equal("region" in settings, false);
+  assert.equal("imdbApiUrl" in settings, false);
+});

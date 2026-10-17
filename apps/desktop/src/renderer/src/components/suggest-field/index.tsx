@@ -86,13 +86,14 @@ export default function SuggestField<
     <div className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
       <label htmlFor={inputId}>{label}</label>
       {hint ? (
-        <p className="m-0 text-[11px] leading-[1.3] font-normal text-pretty text-faint">
+        <p className="m-0 text-[11px] leading-label font-normal text-pretty text-faint">
           {hint}
         </p>
       ) : null}
       <div className="relative">
         <input
           id={inputId}
+          name="excludeLanguages"
           type="text"
           role="combobox"
           value={query}

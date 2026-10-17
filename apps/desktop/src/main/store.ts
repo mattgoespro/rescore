@@ -29,7 +29,7 @@ export class AppStore {
   private path: string;
   private imdbIdsPath: string;
   private state: PersistedState;
-  private legacyTmdbKeys = false;
+  private legacySettings = false;
   private imdbIds: Record<string, string>;
   private imdbSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -39,7 +39,7 @@ export class AppStore {
     this.path = join(dir, "rescore.json");
     this.imdbIdsPath = join(dir, "imdb-ids.json");
     this.state = this.load();
-    if (this.legacyTmdbKeys) this.save();
+    if (this.legacySettings) this.save();
     this.imdbIds = this.loadImdbIds();
   }
 
@@ -55,7 +55,7 @@ export class AppStore {
         const normalized = normalizeEntry(entry);
         library[titleKey(normalized)] = normalized;
       }
-      this.legacyTmdbKeys = hasLegacyTmdbKeys(raw.settings);
+      this.legacySettings = hasLegacySettings(raw.settings);
       return {
         settings: normalizeSettings(raw.settings),
         library,
@@ -186,12 +186,14 @@ export class AppStore {
   }
 }
 
-function hasLegacyTmdbKeys(settings: unknown): boolean {
+function hasLegacySettings(settings: unknown): boolean {
   return (
     !!settings &&
     typeof settings === "object" &&
     (Object.hasOwn(settings, "tmdbApiKey") ||
-      Object.hasOwn(settings, "tmdbApiKeys"))
+      Object.hasOwn(settings, "tmdbApiKeys") ||
+      Object.hasOwn(settings, "region") ||
+      Object.hasOwn(settings, "imdbApiUrl"))
   );
 }
 

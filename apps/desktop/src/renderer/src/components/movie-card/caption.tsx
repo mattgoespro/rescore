@@ -23,8 +23,8 @@ export default function Caption({
     <div
       className={
         compact
-          ? "text-[11px] leading-[1.4] text-muted tabular"
-          : "text-xs leading-[1.45] text-muted tabular"
+          ? "text-[11px] leading-caption text-muted tabular"
+          : "text-xs leading-copy text-muted tabular"
       }
     >
       {parts.join(" · ")}

@@ -139,7 +139,9 @@ export function buildProfile(
 
   const recent = [...watched]
     .sort((a, b) =>
-      (b.watchedAt ?? b.updatedAt).localeCompare(a.watchedAt ?? a.updatedAt),
+      (b.watchedAt ?? b.ratedAt ?? b.updatedAt).localeCompare(
+        a.watchedAt ?? a.ratedAt ?? a.updatedAt,
+      ),
     )
     .slice(0, 12);
   const recentCounts = new Map<number, number>();

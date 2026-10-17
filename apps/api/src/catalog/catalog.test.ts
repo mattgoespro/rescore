@@ -10,8 +10,28 @@ import { ingestTitles } from "../build/import-basics.js";
 import { RatingsStore } from "../services/ratings-store.js";
 import { bayesianScore } from "./bayesian.js";
 import { CatalogDatabase } from "./database.js";
+import Database from "better-sqlite3";
+import { migrations } from "./schema.js";
 
 const dirs: string[] = [];
+
+test("title DTO retains pending versus confirmed absent poster metadata", () => {
+  const catalog = openCatalog();
+  try {
+    for (const [id, posterUrl] of [
+      ["tt1", null],
+      ["tt2", ""],
+      ["tt3", "https://image.tmdb.org/t/p/w500/poster.jpg"],
+    ] as const) {
+      catalog.upsertTitles([{ id, title: id, kind: "movie", posterUrl }]);
+    }
+    assert.equal(catalog.title("tt1")?.posterStatus, "pending");
+    assert.equal(catalog.title("tt2")?.posterStatus, "unavailable");
+    assert.equal(catalog.title("tt3")?.posterStatus, "available");
+  } finally {
+    catalog.close();
+  }
+});
 
 function openCatalog(): CatalogDatabase {
   const dir = mkdtempSync(join(tmpdir(), "rescore-catalog-"));
@@ -56,6 +76,159 @@ function writeGzipTsv(dir: string, name: string, lines: string[]): string {
   writeFileSync(path, gzipSync(Buffer.from(`${lines.join("\n")}\n`)));
   return path;
 }
+
+test("reconciliation retains saved titles missing from IMDb and refuses empty input", async () => {
+  const catalog = openCatalog();
+  try {
+    for (const id of ["tt100", "tt200", "tt300"])
+      seedTitle(catalog, { id, title: id, rating: 8, votes: 1000 });
+    catalog.saveLibrary("tt100", "watched", 9, "keep my rating");
+    const file = writeGzipTsv(dirs.at(-1)!, "changed.gz", [
+      "tconst\ttitleType\tprimaryTitle\toriginalTitle\tisAdult\tstartYear\tendYear\truntimeMinutes\tgenres",
+      "tt200\tmovie\tSurvivor\tSurvivor\t0\t2000\t\\N\t100\tDrama",
+    ]);
+    await ingestTitles(
+      catalog,
+      file,
+      new Map([["tt200", { rating: 8, votes: 1000 }]]),
+    );
+    assert.equal(catalog.title("tt300"), null);
+    assert.equal(catalog.listLibrary()[0].personalRating, 9);
+    assert.equal(catalog.listLibrary()[0].note, "keep my rating");
+    const empty = writeGzipTsv(dirs.at(-1)!, "empty.gz", ["tconst\ttitleType"]);
+    await assert.rejects(
+      ingestTitles(catalog, empty, new Map()),
+      /unexpectedly few/,
+    );
+    assert.equal(catalog.titleCount(), 2);
+    const corrupt = join(dirs.at(-1)!, "corrupt.gz");
+    const compressed = gzipSync("tconst\ttitleType\ninvalid");
+    writeFileSync(corrupt, compressed.subarray(0, compressed.length - 6));
+    await assert.rejects(ingestTitles(catalog, corrupt, new Map()));
+    assert.equal(catalog.titleCount(), 2);
+  } finally {
+    catalog.close();
+  }
+});
+
+test("library dates survive reads, status changes, deletion Undo, and reopening", () => {
+  const catalog = openCatalog();
+  const path = join(dirs.at(-1)!, "catalog.sqlite");
+  seedTitle(catalog, { id: "tt100", title: "Dated", rating: 8, votes: 1000 });
+  const raw = new Database(path);
+  raw
+    .prepare("UPDATE titles SET updated_at=? WHERE id=?")
+    .run("2001-01-01T00:00:00.000Z", "tt100");
+  raw.close();
+  const date = "2012-04-05T00:00:00.000Z";
+  const saved = catalog.saveLibrary("tt100", "watched", 8, null, date)!;
+  assert.equal(catalog.listLibrary()[0].updatedAt, saved.updatedAt);
+  assert.equal(catalog.listLibrary()[0].ratedAt, date);
+  catalog.saveLibrary("tt100", "watchlist", undefined, null);
+  assert.equal(catalog.listLibrary()[0].personalRating, 8);
+  assert.equal(catalog.listLibrary()[0].ratedAt, date);
+  const removed = catalog.deleteLibrary("tt100")!;
+  catalog.saveLibrary(
+    "tt100",
+    removed.status,
+    removed.personalRating,
+    removed.note,
+    removed.ratedAt ?? undefined,
+  );
+  catalog.close();
+  const reopened = new CatalogDatabase(path);
+  try {
+    assert.equal(reopened.listLibrary()[0].ratedAt, date);
+  } finally {
+    reopened.close();
+  }
+});
+
+test("an unexpectedly small rebuild cannot remove most of a populated catalogue", async () => {
+  const catalog = openCatalog();
+  try {
+    catalog.insertTitleRows(
+      Array.from({ length: 1000 }, (_, index) => ({
+        id: `tt${index}`,
+        title: "Existing",
+        originalTitle: null,
+        kind: "movie",
+        year: 2000,
+        runtimeMinutes: 100,
+        imdbRating: 8,
+        imdbVotes: 1000,
+        genres: [],
+      })),
+    );
+    const file = writeGzipTsv(dirs.at(-1)!, "small.gz", [
+      "tconst\ttitleType\tprimaryTitle\toriginalTitle\tisAdult\tstartYear\tendYear\truntimeMinutes\tgenres",
+      "tt0\tmovie\tExisting\tExisting\t0\t2000\t\\N\t100\tDrama",
+    ]);
+    await assert.rejects(
+      ingestTitles(
+        catalog,
+        file,
+        new Map([["tt0", { rating: 8, votes: 1000 }]]),
+      ),
+      /unexpectedly few/,
+    );
+    assert.equal(catalog.titleCount(), 1000);
+  } finally {
+    catalog.close();
+  }
+});
+
+test("HTTP library saves support unscored watched titles and all genre exclusions", async () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt100",
+    title: "Unscored",
+    rating: 8,
+    votes: 1000,
+  });
+  const server = createApp(new RatingsStore(catalog), catalog).listen(
+    0,
+    "127.0.0.1",
+  );
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const saved = await fetch(`${base}/v1/library/tt100`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "watched" }),
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(catalog.listLibrary()[0].personalRating, null);
+    const invalid = await fetch(`${base}/v1/library/tt100`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "watched", ratedAt: "yesterday" }),
+    });
+    assert.equal(invalid.status, 400);
+    const genres = [
+      "Action",
+      "Adventure",
+      "Animation",
+      "Biography",
+      "Comedy",
+      "Crime",
+      "Documentary",
+      "Drama",
+      "Family",
+      "Fantasy",
+    ];
+    assert.equal(
+      (await fetch(`${base}/v1/titles?withoutGenre=${genres.join(",")}`))
+        .status,
+      200,
+    );
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    catalog.close();
+  }
+});
 
 test("title ingest reconciles without wiping survivors", async () => {
   const catalog = openCatalog();
@@ -1027,6 +1200,139 @@ test("tmdb hydration keeps confirmed misses complete and certifications pending"
     ["tt0000002"],
   );
   catalog.close();
+});
+
+test("stale missing metadata is retried in bounded batches without replacing existing data", (t) => {
+  const catalog = openCatalog();
+  let time = 1_000;
+  t.mock.method(Date, "now", () => time);
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Missing synopsis", kind: "movie" },
+    { id: "tt0000002", title: "Missing poster", kind: "movie" },
+    { id: "tt0000003", title: "Complete", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: "https://example.com/keep.jpg",
+      synopsis: null,
+      certification: "PG",
+      languages: ["en"],
+    },
+    {
+      id: "tt0000002",
+      posterUrl: null,
+      synopsis: "Keep this synopsis",
+      certification: "",
+      languages: [],
+    },
+    {
+      id: "tt0000003",
+      posterUrl: "https://example.com/full.jpg",
+      synopsis: "Complete",
+      certification: "",
+      languages: [],
+    },
+  ]);
+  assert.deepEqual(catalog.requeueMissingMedia(999, 10), []);
+  assert.deepEqual(catalog.requeueMissingMedia(1_000, 1), ["tt0000001"]);
+  assert.equal(catalog.titleNeedsMedia("tt0000001"), true);
+  time = 2_000;
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: null,
+      synopsis: "New synopsis",
+      certification: "",
+      languages: [],
+    },
+  ]);
+  assert.equal(
+    catalog.title("tt0000001")?.posterUrl,
+    "https://example.com/keep.jpg",
+  );
+  assert.equal(catalog.title("tt0000001")?.synopsis, "New synopsis");
+  assert.equal(catalog.title("tt0000001")?.certification, "PG");
+  assert.deepEqual(catalog.title("tt0000001")?.languages, ["en"]);
+  assert.deepEqual(catalog.requeueMissingMedia(1_000, 10), ["tt0000002"]);
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000002",
+      posterUrl: "https://example.com/new.jpg",
+      synopsis: null,
+      languages: [],
+    },
+  ]);
+  assert.equal(catalog.title("tt0000002")?.synopsis, "Keep this synopsis");
+  assert.deepEqual(catalog.requeueMissingMedia(3_000, 10), []);
+  catalog.close();
+});
+
+test("missing metadata retry timestamps survive reopening and legacy misses are eligible", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "rescore-retry-"));
+  dirs.push(dir);
+  const path = join(dir, "catalog.sqlite");
+  let catalog = new CatalogDatabase(path);
+  t.mock.method(Date, "now", () => 5_000);
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Recent miss", kind: "movie" },
+    {
+      id: "tt0000002",
+      title: "Legacy miss",
+      kind: "movie",
+      posterUrl: "",
+      synopsis: "",
+    },
+  ]);
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: null,
+      synopsis: null,
+      certification: "",
+      languages: [],
+    },
+    { id: "tt0000002", certification: "", languages: [] },
+  ]);
+  catalog.close();
+  catalog = new CatalogDatabase(path);
+  assert.deepEqual(catalog.requeueMissingMedia(4_999, 10), ["tt0000002"]);
+  assert.deepEqual(catalog.requeueMissingMedia(5_000, 10), ["tt0000001"]);
+  catalog.close();
+});
+
+test("retry migration preserves an existing catalogue and makes old misses eligible", () => {
+  const dir = mkdtempSync(join(tmpdir(), "rescore-retry-upgrade-"));
+  dirs.push(dir);
+  const path = join(dir, "catalog.sqlite");
+  const old = new Database(path);
+  try {
+    migrations.slice(0, -1).forEach((sql, index) => {
+      old.exec(sql);
+      old
+        .prepare(
+          "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+        )
+        .run(index + 1, "2026-10-10");
+    });
+    old.exec(`INSERT INTO titles(id, title, kind, updated_at, poster_url, synopsis, certification, languages_checked)
+      VALUES ('tt0000001', 'Legacy title', 'movie', '2026-10-10', '', 'Keep this synopsis', 'PG', 1);
+      INSERT INTO library_entries(title_id, status, personal_rating, updated_at)
+      VALUES ('tt0000001', 'watched', 8, '2026-10-10');`);
+  } finally {
+    old.close();
+  }
+  const catalog = new CatalogDatabase(path);
+  try {
+    assert.deepEqual(catalog.requeueMissingMedia(Date.now(), 400), [
+      "tt0000001",
+    ]);
+    assert.equal(catalog.title("tt0000001")?.synopsis, "Keep this synopsis");
+    assert.equal(catalog.title("tt0000001")?.certification, "PG");
+    assert.equal(catalog.listLibrary()[0]?.personalRating, 8);
+  } finally {
+    catalog.close();
+  }
 });
 
 test("complete media still leaves a title pending until languages are checked", () => {

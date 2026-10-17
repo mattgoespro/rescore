@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import type { MovieDetails } from "../../../../shared/types";
 import { posterUrl } from "../../../../shared/types";
 
@@ -7,16 +7,22 @@ export default function CastCard({
 }: {
   person: NonNullable<MovieDetails["cast"]>[number];
 }): JSX.Element {
+  const [failedPath, setFailedPath] = useState<string | null>(null);
   return (
-    <div className="min-w-[72px] text-[11px] text-muted">
-      {person.profilePath ? (
+    <div className="w-24 shrink-0 text-[11px] wrap-break-word text-muted">
+      {person.profilePath && person.profilePath !== failedPath ? (
         <img
-          className="block size-[72px] rounded-[10px] bg-poster object-cover"
+          className="block size-[72px] rounded-app bg-poster object-cover"
           src={posterUrl(person.profilePath, "w185") ?? ""}
           alt=""
+          width={72}
+          height={72}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedPath(person.profilePath)}
         />
       ) : (
-        <div className="grid size-[72px] place-items-center rounded-[10px] bg-poster">
+        <div className="grid size-[72px] place-items-center rounded-app bg-poster">
           {person.name.slice(0, 1)}
         </div>
       )}

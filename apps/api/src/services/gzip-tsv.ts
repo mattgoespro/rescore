@@ -165,21 +165,30 @@ export async function downloadGzip(
 }
 
 export async function* readTsvRows(file: string): AsyncGenerator<string[]> {
+  const source = createReadStream(file, { highWaterMark: 256 * 1024 });
+  const decoded = createGunzip({ chunkSize: 256 * 1024 });
   const lines = createInterface({
-    input: createReadStream(file, { highWaterMark: 256 * 1024 }).pipe(
-      createGunzip({ chunkSize: 256 * 1024 }),
-    ),
+    input: decoded,
     crlfDelay: Infinity,
   });
-  let header = true;
-  for await (const line of lines) {
-    shutdownSignal.throwIfAborted();
-    if (header) {
-      header = false;
-      continue;
+  const complete = pipeline(source, decoded, { signal: shutdownSignal });
+  void complete.catch(() => undefined);
+  try {
+    let header = true;
+    for await (const line of lines) {
+      shutdownSignal.throwIfAborted();
+      if (header) {
+        header = false;
+        continue;
+      }
+      if (line) yield line.split("\t");
     }
-    if (!line) continue;
-    yield line.split("\t");
+    await complete;
+  } finally {
+    lines.close();
+    source.destroy();
+    decoded.destroy();
+    await complete.catch(() => undefined);
   }
 }
 

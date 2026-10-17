@@ -18,6 +18,12 @@ export function toTitleDto(
     runtimeMinutes: row.runtime_minutes,
     synopsis: row.synopsis,
     posterUrl: row.poster_url || null,
+    posterStatus:
+      row.poster_url === null
+        ? "pending"
+        : row.poster_url
+          ? "available"
+          : "unavailable",
     certification: row.certification || null,
     imdbRating: row.imdb_rating,
     imdbVotes: row.imdb_votes,

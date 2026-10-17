@@ -37,6 +37,17 @@ export function clearPendingRetries(
   }
 }
 
+export function invalidateCompletedMedia(
+  retryAt: Map<string, number>,
+  resolved: Set<string>,
+  completedIds: readonly string[],
+): void {
+  for (const id of completedIds) {
+    resolved.delete(id);
+    retryAt.delete(id);
+  }
+}
+
 export type TitleMedia = Awaited<
   ReturnType<Window["api"]["fillMedia"]>
 >[number];
@@ -45,6 +56,7 @@ export function mergeTitleMedia<
   T extends {
     imdbId: string;
     posterPath?: string | null;
+    posterStatus?: "pending" | "available" | "unavailable";
     overview?: string;
     certification?: string;
   },
@@ -54,6 +66,11 @@ export function mergeTitleMedia<
     ? {
         ...title,
         posterPath: row.posterUrl ?? title.posterPath,
+        posterStatus: row.posterUrl
+          ? "available"
+          : row.posterUrl === ""
+            ? "unavailable"
+            : (title.posterStatus ?? "pending"),
         overview: row.synopsis ?? title.overview,
         certification: row.certification ?? title.certification,
       }
@@ -130,10 +147,10 @@ export function useVisibleMedia() {
     mutations.observe(container, { childList: true, subtree: true });
     scan();
     const unsubscribe = window.api.onCatalogStatus((status) => {
-      clearPendingRetries(
+      invalidateCompletedMedia(
         retryAt,
-        status.tmdbHydration?.completedIds ?? [],
         resolved,
+        status.tmdbHydration?.completedIds ?? [],
       );
       void fill();
     });

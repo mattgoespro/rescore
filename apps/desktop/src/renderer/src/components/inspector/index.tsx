@@ -34,6 +34,7 @@ export default function Inspector({
   creditsReady,
   creditsFailed,
   docked,
+  busy = false,
   onUpsert,
   onRemove,
 }: {
@@ -45,6 +46,7 @@ export default function Inspector({
   creditsReady?: boolean;
   creditsFailed?: boolean;
   docked?: boolean;
+  busy?: boolean;
   onUpsert: (
     movie: MovieSummary,
     status: WatchStatus,
@@ -83,15 +85,21 @@ export default function Inspector({
   const subject = details ?? movie;
 
   return (
-    <aside className={inspectorClass(docked)}>
-      <div className="hero-ph relative aspect-[2/3] w-full overflow-hidden">
+    <aside
+      className={`${inspectorClass(docked)} max-inspect:grid max-inspect:grid-cols-[80px_minmax(0,1fr)] max-inspect:items-start`}
+      aria-label="Title details"
+    >
+      <div className="relative aspect-2/3 w-full overflow-hidden hero-ph max-inspect:mt-4 max-inspect:ml-3 max-inspect:w-17 inspect:mx-auto inspect:mt-4 inspect:h-[min(32vh,280px)] inspect:w-auto">
         <HeroPoster
           key={data.posterPath || movie.posterPath || "none"}
           path={data.posterPath || movie.posterPath}
         />
-        <div className="hero-fade pointer-events-none absolute inset-x-0 bottom-0 h-[72px]" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-18 hero-fade" />
       </div>
-      <div className="animate-fade px-4 pt-4 pb-[18px]" key={movie.imdbId}>
+      <div
+        className="min-w-0 animate-fade px-4 pt-4 pb-[18px] wrap-break-word"
+        key={movie.imdbId}
+      >
         <Heading
           title={data.title}
           rating={details?.certification ?? data.certification}
@@ -106,12 +114,26 @@ export default function Inspector({
             languages,
           ]}
         />
+        <RatingScale
+          rating={entry?.rating}
+          disabled={busy}
+          onRate={(n) => onUpsert(subject, "watched", n)}
+        />
+        <Actions
+          movie={subject}
+          entry={entry}
+          imdb={imdb}
+          busy={busy}
+          onUpsert={onUpsert}
+          onRemove={onRemove}
+        />
+        {entry?.status ? <LibraryStatus status={entry.status} /> : null}
         {details?.tagline ? (
-          <div className="mb-2.5 text-[13px] text-accent-2 italic">
+          <div className="mb-2.5 text-[13px] text-accent-text italic">
             {details.tagline}
           </div>
         ) : null}
-        <p className="mb-3.5 text-[13px] leading-[1.55] text-muted">
+        <p className="mb-3.5 text-[13px] leading-description text-muted">
           {data.overview || movie.overview || "No synopsis available."}
         </p>
         <Stats
@@ -119,27 +141,15 @@ export default function Inspector({
           match={matchValue}
           voteCount={data.voteCount}
         />
-        <RatingScale
-          rating={entry?.rating}
-          onRate={(n) => onUpsert(subject, "watched", n)}
-        />
-        <Actions
-          movie={subject}
-          entry={entry}
-          imdb={imdb}
-          onUpsert={onUpsert}
-          onRemove={onRemove}
-        />
-        {entry?.status ? <LibraryStatus status={entry.status} /> : null}
         {creditsFailed &&
         !(details?.directors?.length || details?.cast?.length) ? (
-          <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
+          <p className="my-2 mb-3 text-xs leading-copy text-muted">
             Credits could not be loaded. They will be tried again next launch.
           </p>
         ) : creditsReady === false &&
           !creditsFailed &&
           !(details?.directors?.length || details?.cast?.length) ? (
-          <p className="my-2 mb-3 text-xs leading-[1.45] text-muted">
+          <p className="my-2 mb-3 text-xs leading-copy text-muted">
             Loading credits…
           </p>
         ) : null}

@@ -17,8 +17,8 @@ export default function RatingLine({
       className={cn(
         "flex items-center gap-1 tabular",
         compact
-          ? "mt-0.5 text-[11px] leading-[1.4]"
-          : "mt-1 text-xs leading-[1.45]",
+          ? "mt-0.5 text-[11px] leading-caption"
+          : "mt-1 text-xs leading-copy",
       )}
     >
       <IconStar

@@ -1,16 +1,16 @@
-import { CATALOG_DB_PATH, TMDB_API_BASE } from "../config.js";
-import { CatalogDatabase } from "../services/catalog-db.js";
+import { CATALOG_DB_PATH, TMDB_API_BASE } from "../src/config.js";
+import { CatalogDatabase } from "../src/services/catalog-db.js";
+import {
+  readTmdbApiKeys,
+  TmdbRequestScheduler,
+} from "../src/services/tmdb-posters.js";
 import {
   compareTmdbKeyPoolThroughput,
   compareTmdbThroughput,
   summarizeTmdbThroughput,
-  type TmdbThroughputSample,
   type TmdbThroughputResult,
-} from "../services/tmdb-throughput.js";
-import {
-  readTmdbApiKeys,
-  TmdbRequestScheduler,
-} from "../services/tmdb-posters.js";
+  type TmdbThroughputSample,
+} from "../src/services/tmdb-throughput.js";
 
 const CAPS = [20, 30, 40];
 const SAMPLE_SIZE = Math.max(

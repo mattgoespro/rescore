@@ -1,6 +1,6 @@
-import { CATALOG_DB_PATH } from "../config.js";
-import { CatalogDatabase } from "../services/catalog-db.js";
-import { enrichPosters } from "../services/tmdb-posters.js";
+import { CATALOG_DB_PATH } from "../src/config.js";
+import { CatalogDatabase } from "../src/services/catalog-db.js";
+import { enrichPosters } from "../src/services/tmdb-posters.js";
 
 const catalog = new CatalogDatabase(CATALOG_DB_PATH);
 

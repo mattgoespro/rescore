@@ -24,12 +24,16 @@ export default function HeroPoster({
     };
   }, [thumb, hero]);
 
-  if (!src) return <div className="hero-ph-fallback absolute inset-0" />;
+  if (!src) return <div className="absolute inset-0 hero-ph-fallback" />;
   return (
     <img
       className="absolute inset-0 size-full object-cover object-top"
       src={src}
       alt=""
+      width={780}
+      height={1170}
+      fetchPriority="high"
+      decoding="async"
       onError={() => setSrc(null)}
     />
   );

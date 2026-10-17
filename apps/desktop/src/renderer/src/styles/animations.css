@@ -1,7 +1,14 @@
 @theme inline {
-  --animate-catalog: spin 0.7s linear infinite;
+  --animate-catalog: catalog-spin 0.7s linear infinite;
+  --animate-catalog-reduced: catalog-spin 1.2s linear infinite;
   --animate-result-in: result-in 160ms ease both;
   --animate-fade: fade 200ms ease;
+}
+
+@keyframes catalog-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes result-in {
@@ -30,4 +37,19 @@
 
 @utility enter-delay {
   animation-delay: var(--enter-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Loading motion communicates ongoing work, including with reduced effects. */
+  .animate-catalog {
+    animation: catalog-spin 1.2s linear infinite !important;
+  }
 }
