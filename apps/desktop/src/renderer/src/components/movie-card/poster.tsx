@@ -27,10 +27,12 @@ export default function Poster({
       className={
         grid
           ? cn(
-              "relative aspect-2/3 h-auto w-full shrink-0 overflow-hidden rounded-lg bg-poster",
-              active && "shadow-[0_0_0_2px_var(--color-accent)]",
+              "relative aspect-2/3 h-auto w-full shrink-0 overflow-hidden rounded-control border bg-poster transition-colors duration-140",
+              active
+                ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]"
+                : "border-line group-hover:border-control",
             )
-          : "relative h-16.5 w-11 shrink-0 overflow-hidden rounded-md bg-poster"
+          : "relative h-13.5 w-9 shrink-0 overflow-hidden rounded-[3px] bg-poster"
       }
     >
       {showImage ? (
@@ -46,7 +48,7 @@ export default function Poster({
         />
       ) : (
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-1 text-center text-muted"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-1 text-center text-faint"
           role="img"
           aria-label={caption}
         >
@@ -70,7 +72,7 @@ export default function Poster({
               </>
             )}
           </svg>
-          <span className={grid ? "text-[11px]" : "text-[9px] leading-tight"}>
+          <span className={grid ? "text-xs" : "text-[9px] leading-tight"}>
             {src
               ? "No image"
               : status === "unavailable"

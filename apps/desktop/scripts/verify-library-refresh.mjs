@@ -162,7 +162,7 @@ try {
   const ranking = page.getByRole("list", { name: "Ranked titles" });
   await ranking.getByRole("button", { name: /Review Beta/ }).click();
   assert.equal(await inspector.count(), 0);
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("button", { name: "Discover", exact: true }).click();
   await inspector.getByRole("heading", { name: "Review Beta R" }).waitFor();
   await inspector.getByRole("radio", { name: "9 out of 10" }).click();
   await page

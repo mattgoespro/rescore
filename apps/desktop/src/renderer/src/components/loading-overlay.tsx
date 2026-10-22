@@ -33,7 +33,7 @@ export default function LoadingOverlay({
         "flex flex-col gap-3 text-[13px] text-muted",
         inline
           ? "w-full items-start"
-          : "absolute inset-0 z-3 items-center justify-center overflow-auto bg-canvas/85 p-4 text-center",
+          : "absolute inset-0 z-3 items-center justify-center overflow-auto bg-canvas/90 p-4 text-center",
       )}
     >
       {busy ? icon === undefined ? <Spinner /> : icon : null}
@@ -41,7 +41,7 @@ export default function LoadingOverlay({
         {busy ? loadingText : completeText}
       </p>
       {detail ? (
-        <div className="max-w-160 text-xs leading-relaxed">{detail}</div>
+        <div className="max-w-140 text-[13px] leading-relaxed">{detail}</div>
       ) : null}
       {children}
     </div>

@@ -9,9 +9,9 @@ export default function Track({
 }): JSX.Element {
   return (
     <>
-      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-track" />
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-track" />
       <div
-        className="pointer-events-none absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent"
+        className="pointer-events-none absolute top-1/2 h-0.5 -translate-y-1/2 bg-accent"
         style={{ left: `${fillLeft}%`, width: `${fillWidth}%` }}
       />
     </>

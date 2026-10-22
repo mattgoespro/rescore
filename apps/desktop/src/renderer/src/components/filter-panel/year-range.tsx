@@ -14,7 +14,7 @@ export default function YearRange({
   onChange: (yearMin: number | null, yearMax: number | null) => void;
 }): JSX.Element {
   return (
-    <Field label={`Years ${yearCaption(yearMin, yearMax)}`}>
+    <Field label="Years" value={yearCaption(yearMin, yearMax)}>
       <DualRange
         min={YEAR_FLOOR}
         max={YEAR_CEILING}

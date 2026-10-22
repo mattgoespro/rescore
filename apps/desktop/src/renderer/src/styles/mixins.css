@@ -1,40 +1,29 @@
 @utility poster-ph {
-  background: linear-gradient(165deg, #5a5a64, #1a1a20);
+  background: var(--color-poster);
 }
 
 @utility hero-ph {
-  background: linear-gradient(180deg, #4a4a54, #16161a);
+  background: var(--color-backdrop);
 }
 
 @utility hero-ph-fallback {
-  background:
-    radial-gradient(
-      circle at 30% 20%,
-      rgb(255 255 255 / 0.12),
-      transparent 36%
-    ),
-    linear-gradient(180deg, #6a6a74 0%, #2c2c34 52%, #121214 100%);
+  background: var(--color-backdrop);
 }
 
 @utility hero-fade {
-  background: linear-gradient(
-    180deg,
-    transparent,
-    rgb(0 0 0 / 0.55) 48%,
-    color-mix(in srgb, var(--color-canvas) 98%, transparent)
-  );
+  background: none;
 }
 
 @utility inset-accent {
-  box-shadow: inset 3px 0 0 var(--color-accent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 @utility field-control {
-  @apply w-full min-w-0 max-w-full rounded-app border border-line bg-input px-3 py-2.5 outline-none transition-colors duration-140 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ink focus-visible:outline-offset-2;
+  @apply h-9 w-full min-w-0 max-w-full rounded-control border border-control bg-input px-3 text-sm text-ink outline-none transition-colors duration-140 placeholder:text-faint focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent-text focus-visible:outline-offset-2;
 }
 
 @utility kicker {
-  @apply m-0 text-[11px] font-semibold tracking-kicker text-muted uppercase;
+  @apply m-0 text-xs font-semibold tracking-kicker text-faint uppercase;
 }
 
 @utility tabular {

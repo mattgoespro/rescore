@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type JSX,
-  type ReactNode,
 } from "react";
 import { isAppearanceOnlyPatch } from "../../shared/appearance";
 import { applySearchHistory } from "../../shared/search-history";
@@ -28,13 +27,8 @@ import {
   titleKey,
 } from "../../shared/types";
 import CatalogLoader from "./components/catalog-loader";
-import {
-  IconForYou,
-  IconLibrary,
-  IconSearch,
-  IconSettings,
-} from "./components/icons";
 import Inspector from "./components/inspector";
+import TopBar from "./components/top-bar";
 import { applyAppearance } from "./lib/appearance";
 import { catalogLoaderDetail, isCatalogUiBlocked } from "./lib/catalog-busy";
 import {
@@ -51,6 +45,7 @@ import Discover from "./views/Discover";
 import ForYou from "./views/ForYou";
 import Library from "./views/Library";
 import SettingsView from "./views/Settings";
+import { loadTmdbHealth } from "./lib/tmdb-health";
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<AppView>("discover");
@@ -72,6 +67,7 @@ export default function App(): JSX.Element {
   const [undoEntry, setUndoEntry] = useState<LibraryEntry | null>(null);
   const [libraryBusy, setLibraryBusy] = useState(false);
   const undoButton = useRef<HTMLButtonElement>(null);
+  const queryInput = useRef<HTMLInputElement>(null);
   const libraryActing = useRef(false);
   const settingsDirty = useRef(false);
   const onSettingsDirty = useCallback((dirty: boolean) => {
@@ -159,6 +155,8 @@ export default function App(): JSX.Element {
     if (!shouldRefresh) return;
     setError("");
     void refresh().catch((err: Error) => setError(err.message));
+    // Warm the coverage reading so Settings opens with its bars already filled.
+    void loadTmdbHealth().catch(() => undefined);
   }, [catalogStatus, refresh, booting]);
 
   useEffect(() => {
@@ -176,6 +174,11 @@ export default function App(): JSX.Element {
         )
       )
         setSelected(null);
+      if (event.ctrlKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        queryInput.current?.focus();
+        queryInput.current?.select();
+      }
       if (event.ctrlKey && event.key === "1") {
         event.preventDefault();
         navigate("discover");
@@ -385,10 +388,10 @@ export default function App(): JSX.Element {
   );
 
   return (
-    <div className="grid h-full grid-rows-[36px_1fr]">
+    <div className="grid h-full grid-rows-[48px_1fr]">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-10 focus:left-20 focus:z-50 focus:rounded-app focus:bg-raised focus:px-4 focus:py-3 focus:text-ink"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-14 focus:left-4 focus:z-50 focus:rounded-control focus:border focus:border-control focus:bg-raised focus:px-4 focus:py-3 focus:text-ink"
         onClick={(event) => {
           event.preventDefault();
           document.getElementById("main-content")?.focus();
@@ -396,86 +399,55 @@ export default function App(): JSX.Element {
       >
         Skip to Content
       </a>
-      <div className="flex items-center border-b border-line px-4 text-[11px] tracking-[0.16em] text-muted uppercase app-drag">
-        <span className="mr-2 text-accent">●</span> Rescore
-      </div>
-      <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)]">
-        <nav
-          className="flex flex-col items-center gap-2 border-r border-line bg-transparent px-2 py-4 app-no-drag"
-          aria-label="Primary"
-        >
-          <div className="mb-2 grid size-9.5 place-items-center rounded-xl bg-accent text-xs font-bold tracking-[-0.06em] text-accent-ink shadow-accent">
-            R
-          </div>
-          <NavBtn
-            id="discover"
-            view={view}
-            setView={navigate}
-            label="Search"
-            tip="Search"
-          >
-            <IconSearch />
-          </NavBtn>
-          <NavBtn
-            id="foryou"
-            view={view}
-            setView={navigate}
-            label="For you"
-            tip="For you"
-          >
-            <IconForYou />
-          </NavBtn>
-          <NavBtn
-            id="library"
-            view={view}
-            setView={navigate}
-            label="Library"
-            tip="Library"
-          >
-            <IconLibrary />
-          </NavBtn>
-          <NavBtn
-            id="settings"
-            view={view}
-            setView={navigate}
-            label="Settings"
-            tip="Settings"
-          >
-            <IconSettings />
-          </NavBtn>
-        </nav>
+      <TopBar
+        view={view}
+        onNavigate={navigate}
+        query={filters.query}
+        queryRef={queryInput}
+        catalogStatus={catalogStatus}
+        onQueryChange={(query) => {
+          setFilters((current) => ({ ...current, query, page: 1 }));
+          if (view !== "discover") navigate("discover");
+        }}
+      />
+      <div className="min-h-0">
         <main
           id="main-content"
           tabIndex={-1}
           className={cn(
-            "relative min-h-0 min-w-0",
+            "relative h-full min-h-0 min-w-0",
             discoverLayout && "flex flex-col overflow-hidden p-0",
-            (forYouLayout || libraryLayout) &&
-              "flex flex-col overflow-hidden px-7 pt-6 pb-4",
+            forYouLayout && "flex flex-col overflow-hidden p-0",
+            libraryLayout && "flex flex-col overflow-hidden px-6 pt-6 pb-4",
             !discoverLayout &&
               !forYouLayout &&
               !libraryLayout &&
-              "overflow-auto px-7 pt-6 pb-10",
+              "overflow-auto px-6 pt-6 pb-10",
           )}
         >
           {error ? (
             <div
               role="alert"
               className={cn(
-                "mb-3.5 rounded-app border border-danger-border bg-danger-bg px-3 py-2.5 text-danger-fg",
+                "mb-4 rounded-control border border-danger bg-transparent px-3 py-2.5 text-[13px] text-danger",
                 (discoverLayout || forYouLayout) && "shrink-0",
-                discoverLayout && "mx-4 mt-3 mb-0",
+                (discoverLayout || forYouLayout) && "mx-6 mt-4 mb-0",
               )}
             >
               {error}
             </div>
           ) : null}
-          <div className={cn("shrink-0", discoverLayout && "mx-4")}>
+          <div
+            className={cn(
+              "shrink-0",
+              (discoverLayout || forYouLayout) && "mx-6",
+            )}
+          >
             <p
               role="status"
               aria-live="polite"
               aria-atomic="true"
-              className={notice ? "my-2 text-xs text-muted" : "sr-only"}
+              className={notice ? "my-2 text-[13px] text-muted" : "sr-only"}
             >
               {notice}
             </p>
@@ -514,14 +486,15 @@ export default function App(): JSX.Element {
               onDirtyChange={onSettingsDirty}
             />
           ) : catalogFailed ? (
-            <section className="mx-auto my-[8vh] max-w-160 px-0 py-2">
-              <h1 className="mt-0 mb-2.5 text-[32px] tracking-title">
-                Catalog is not ready.
+            <section className="mx-auto my-[8vh] flex max-w-140 flex-col gap-2 px-0 py-2">
+              <span className="kicker text-danger">Catalogue failed</span>
+              <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
+                The catalogue is not ready
               </h1>
-              <p className="leading-description text-muted">
+              <p className="m-0 text-sm leading-description text-muted">
                 {catalogStatus?.error ||
                   catalogStatus?.message ||
-                  "The local catalog could not start."}
+                  "The local catalogue could not start."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
@@ -569,6 +542,11 @@ export default function App(): JSX.Element {
               onOpen={setSelected}
               onError={setError}
               rankingMode={settings.rankingMode}
+              onRankingModeChange={(rankingMode) =>
+                void saveSettings({ rankingMode }).catch((err: Error) =>
+                  setError(err.message),
+                )
+              }
             />
           ) : view === "library" ? (
             <Library
@@ -583,40 +561,5 @@ export default function App(): JSX.Element {
         </main>
       </div>
     </div>
-  );
-}
-
-function NavBtn({
-  id,
-  view,
-  setView,
-  label,
-  tip,
-  children,
-}: {
-  id: AppView;
-  view: AppView;
-  setView: (view: AppView) => void;
-  label: string;
-  tip: string;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "relative grid size-10 place-items-center rounded-xl border-0 p-0 transition-[background,color] duration-140",
-        "after:pointer-events-none after:absolute after:top-1/2 after:left-[calc(100%+10px)] after:z-5 after:-translate-y-1/2 after:rounded-lg after:border after:border-line after:bg-raised after:px-2.5 after:py-1.5 after:text-[11px] after:font-semibold after:tracking-normal after:whitespace-nowrap after:text-ink after:shadow-panel after:content-none hover:after:content-[attr(data-tip)] focus-visible:after:content-[attr(data-tip)]",
-        view === id
-          ? "bg-accent-soft text-accent-text hover:bg-accent-soft hover:text-accent-text"
-          : "bg-transparent text-muted hover:bg-wash-6 hover:text-ink",
-      )}
-      aria-label={label}
-      aria-current={view === id ? "page" : undefined}
-      data-tip={tip}
-      onClick={() => setView(id)}
-    >
-      {children}
-    </button>
   );
 }

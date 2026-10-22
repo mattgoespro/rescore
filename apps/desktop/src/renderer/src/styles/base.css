@@ -23,7 +23,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--imd-ink);
+    outline: 2px solid var(--imd-accent-text);
     outline-offset: 2px;
   }
 
@@ -34,7 +34,7 @@
 
   ::-webkit-scrollbar-thumb {
     background: var(--imd-scrollbar);
-    border-radius: 99px;
+    border-radius: 2px;
   }
 
   ::-webkit-scrollbar-track {
@@ -61,7 +61,7 @@
   input:focus-visible,
   textarea:focus-visible,
   .field-control:focus-visible {
-    outline: 2px solid var(--imd-ink);
+    outline: 2px solid var(--imd-accent-text);
     outline-offset: 2px;
   }
 }

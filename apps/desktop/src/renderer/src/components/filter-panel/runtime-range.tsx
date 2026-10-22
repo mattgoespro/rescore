@@ -16,7 +16,7 @@ export default function RuntimeRange({
   onChange: (runtimeMin: number | null, runtimeMax: number | null) => void;
 }): JSX.Element {
   return (
-    <Field label={`${label} ${runtimeCaption(runtimeMin, runtimeMax)}`}>
+    <Field label={label} value={runtimeCaption(runtimeMin, runtimeMax)}>
       <DualRange
         min={RUNTIME_FLOOR}
         max={RUNTIME_CEILING}

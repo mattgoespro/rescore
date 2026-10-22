@@ -113,7 +113,7 @@ export default function BackgroundService(): JSX.Element {
         {status?.supported && status.state !== "running" && (
           <button
             type="button"
-            className={btn("primary")}
+            className={btn("primary", "small")}
             disabled={busy}
             onClick={() =>
               void run("Preparing service�", () =>
@@ -126,7 +126,7 @@ export default function BackgroundService(): JSX.Element {
         )}
         <button
           type="button"
-          className={btn()}
+          className={btn("small")}
           disabled={busy || !status?.logsAvailable}
           onClick={() =>
             void run("Opening logs…", () =>

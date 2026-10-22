@@ -6,11 +6,12 @@ import type {
   SearchHistoryEntry,
 } from "../../../../shared/types";
 import { defaultFilters, mediaTypeOf } from "../../../../shared/types";
+import { activeFilterCount } from "../../lib/active-filters";
 import SuggestField from "../suggest-field";
 import GenreChips from "./genre-chips";
 import Header from "./header";
-import QueryField from "./query-field";
 import RatingSlider from "./rating-slider";
+import Section from "./section";
 import RuntimeRange from "./runtime-range";
 import SortField from "./sort-field";
 import TitleKindField from "./title-kind-field";
@@ -64,104 +65,119 @@ export default function FilterPanel({
   }
 
   return (
-    <aside className="flex max-h-[28vh] min-h-0 flex-col gap-2.5 overflow-auto border-b border-line bg-transparent px-4.5 py-5 inspect:max-h-none inspect:border-r inspect:border-b-0">
+    <aside
+      aria-label="Filters"
+      className="flex max-h-[28vh] min-h-0 flex-col gap-6 overflow-auto border-b border-line bg-rail px-5 pt-6 pb-8 inspect:max-h-none inspect:border-r inspect:border-b-0"
+    >
       <Header
-        onReset={() => setFilters(defaultFilters())}
+        activeCount={activeFilterCount(filters)}
+        onReset={() =>
+          setFilters({ ...defaultFilters(), query: filters.query })
+        }
         history={history}
         activeHistoryId={activeHistoryId}
         onApplyHistory={onApplyHistory}
         onRemoveHistory={onRemoveHistory}
       />
-      <QueryField
-        value={filters.query}
-        onChange={(query) => patch({ query })}
-      />
-      <TitleKindField
-        value={filters.titleKind}
-        onChange={(titleKind) =>
-          patch({
-            titleKind,
-            genres: [],
-            withoutGenres: [],
-            sortBy:
-              titleKind !== "movie" && filters.sortBy === "revenue.desc"
-                ? "popularity.desc"
-                : filters.sortBy,
-          })
-        }
-      />
-      <SortField
-        value={filters.sortBy}
-        onChange={(sortBy) => patch({ sortBy })}
-      />
-      <GenreChips
-        genres={genres}
-        selected={filters.genres}
-        onToggle={toggleGenre}
-      />
-      <GenreChips
-        label="Exclude"
-        hint={
-          filters.withoutGenres.length
-            ? "Hide titles with any of these genres."
-            : "None selected — no genres excluded."
-        }
-        genres={genres}
-        selected={filters.withoutGenres}
-        onToggle={toggleWithoutGenre}
-      />
-      <SuggestField
-        label="Exclude languages"
-        hint={
-          filters.excludeLanguages.length
-            ? "Hides a title when any of these is one of its languages. Titles TMDb has not described yet stay visible."
-            : "None excluded."
-        }
-        placeholder="Add a language…"
-        minQueryLength={1}
-        values={filters.excludeLanguages.map((code) => ({
-          id: code,
-          name: languageName(code),
-        }))}
-        onChange={(languages) =>
-          patch({
-            excludeLanguages: languages
-              .map((language) => language.id)
-              .slice(0, 12),
-          })
-        }
-        search={async (query) =>
-          searchLanguages(query).filter(
-            (language) => !filters.excludeLanguages.includes(language.id),
-          )
-        }
-      />
-      <YearRange
-        yearMin={filters.yearMin}
-        yearMax={filters.yearMax}
-        onChange={(yearMin, yearMax) => patch({ yearMin, yearMax })}
-      />
-      <RatingSlider
-        value={filters.ratingMin}
-        onChange={(ratingMin) => patch({ ratingMin })}
-      />
-      <VotesSlider
-        value={filters.voteCountMin}
-        onChange={(voteCountMin) => patch({ voteCountMin })}
-      />
-      <RuntimeRange
-        label={
-          mediaTypeOf(filters.titleKind) === "tv" ? "Episode length" : "Runtime"
-        }
-        runtimeMin={filters.runtimeMin}
-        runtimeMax={filters.runtimeMax}
-        onChange={(runtimeMin, runtimeMax) => patch({ runtimeMin, runtimeMax })}
-      />
-      <VisibilityToggles
-        hideWatched={filters.hideWatched}
-        hideWatchlist={filters.hideWatchlist}
-        onChange={patch}
-      />
+      <Section title="Type">
+        <TitleKindField
+          value={filters.titleKind}
+          onChange={(titleKind) =>
+            patch({
+              titleKind,
+              genres: [],
+              withoutGenres: [],
+              sortBy:
+                titleKind !== "movie" && filters.sortBy === "revenue.desc"
+                  ? "popularity.desc"
+                  : filters.sortBy,
+            })
+          }
+        />
+      </Section>
+      <Section title="Sort by">
+        <SortField
+          value={filters.sortBy}
+          onChange={(sortBy) => patch({ sortBy })}
+        />
+      </Section>
+      <Section
+        title="Genres"
+        hint="Click once to include, again to exclude, again to clear."
+      >
+        <GenreChips
+          genres={genres}
+          included={filters.genres}
+          excluded={filters.withoutGenres}
+          onCycle={(id, state) =>
+            state === "any" ? toggleGenre(id) : toggleWithoutGenre(id)
+          }
+        />
+      </Section>
+      <Section title="Released">
+        <YearRange
+          yearMin={filters.yearMin}
+          yearMax={filters.yearMax}
+          onChange={(yearMin, yearMax) => patch({ yearMin, yearMax })}
+        />
+      </Section>
+      <Section title="Quality floor">
+        <RatingSlider
+          value={filters.ratingMin}
+          onChange={(ratingMin) => patch({ ratingMin })}
+        />
+        <VotesSlider
+          value={filters.voteCountMin}
+          onChange={(voteCountMin) => patch({ voteCountMin })}
+        />
+        <RuntimeRange
+          label={
+            mediaTypeOf(filters.titleKind) === "tv"
+              ? "Episode length"
+              : "Runtime"
+          }
+          runtimeMin={filters.runtimeMin}
+          runtimeMax={filters.runtimeMax}
+          onChange={(runtimeMin, runtimeMax) =>
+            patch({ runtimeMin, runtimeMax })
+          }
+        />
+      </Section>
+      <Section title="Languages">
+        <SuggestField
+          label="Hide titles in"
+          hint={
+            filters.excludeLanguages.length
+              ? "Hides a title when any of these is one of its languages. Titles TMDb has not described yet stay visible."
+              : "None hidden."
+          }
+          placeholder="Add a language…"
+          minQueryLength={1}
+          values={filters.excludeLanguages.map((code) => ({
+            id: code,
+            name: languageName(code),
+          }))}
+          onChange={(languages) =>
+            patch({
+              excludeLanguages: languages
+                .map((language) => language.id)
+                .slice(0, 12),
+            })
+          }
+          search={async (query) =>
+            searchLanguages(query).filter(
+              (language) => !filters.excludeLanguages.includes(language.id),
+            )
+          }
+        />
+      </Section>
+      <Section title="Visibility">
+        <VisibilityToggles
+          hideWatched={filters.hideWatched}
+          hideWatchlist={filters.hideWatchlist}
+          onChange={patch}
+        />
+      </Section>
     </aside>
   );
 }

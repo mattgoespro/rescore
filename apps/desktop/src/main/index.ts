@@ -5,7 +5,7 @@ import { catalogFetch, effectiveCatalogUrl } from "./catalog-connection";
 import { join } from "path";
 import icon from "../../assets/icon.png?asset";
 import {
-  normalizeAccentColor,
+  TITLE_BAR_HEIGHT,
   normalizeThemeMode,
   windowSymbolColor,
 } from "../shared/appearance";
@@ -40,7 +40,6 @@ const IMAGE_USER_AGENT =
 function createWindow(store: AppStore): void {
   const settings = store.getSettings();
   const themeMode = normalizeThemeMode(settings.themeMode);
-  const accentColor = normalizeAccentColor(settings.accentColor);
   const backgroundColor = windowBackgroundColor(settings);
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -55,8 +54,8 @@ function createWindow(store: AppStore): void {
     titleBarStyle: "hidden",
     titleBarOverlay: {
       color: backgroundColor,
-      symbolColor: windowSymbolColor(accentColor, themeMode),
-      height: 36,
+      symbolColor: windowSymbolColor(themeMode),
+      height: TITLE_BAR_HEIGHT,
     },
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),

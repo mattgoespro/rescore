@@ -11,8 +11,8 @@ export default function Title({
   return (
     <h2
       className={cn(
-        "mt-0 mb-1 font-650 tracking-tightish wrap-anywhere",
-        grid ? "line-clamp-2 text-[15px]" : "text-[15px] leading-tight",
+        "m-0 text-sm leading-snug font-semibold wrap-anywhere",
+        grid && "line-clamp-2",
       )}
     >
       {title}

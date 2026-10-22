@@ -269,6 +269,8 @@ try {
     .uncheck();
   await page.getByRole("heading", { name: "Sample Title 0 R" }).waitFor();
   const results = page.getByRole("list", { name: "Search results" });
+  // Discover opens on the poster grid; the list-row checks below use List view.
+  await page.getByRole("button", { name: "List view", exact: true }).click();
   assert.ok((await results.getByRole("listitem").count()) < 40);
   const rowWidths = await results
     .getByRole("button")
@@ -581,7 +583,7 @@ try {
   );
   check("Import progress has a labelled accessible value and live status");
 
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("button", { name: "Discover", exact: true }).click();
   await results.getByRole("listitem").first().waitFor();
   for (const theme of ["light", "dark"]) {
     await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -594,7 +596,7 @@ try {
     await page.waitForFunction(
       () => !document.querySelector("fieldset")?.disabled,
     );
-    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByRole("button", { name: "Discover", exact: true }).click();
     await results.getByRole("listitem").first().waitFor();
     await page.waitForFunction(() =>
       document
@@ -709,7 +711,7 @@ try {
   assert.equal(await page.locator("h1").count(), 1);
   assert.equal(
     await page
-      .getByRole("button", { name: "Search", exact: true })
+      .getByRole("button", { name: "Discover", exact: true })
       .getAttribute("aria-current"),
     "page",
   );
@@ -771,7 +773,7 @@ try {
     };
     for (const listener of c.catalogListeners) listener(c.status);
   });
-  await page.getByRole("heading", { name: "Results" }).waitFor();
+  await page.getByRole("heading", { name: "Discover", exact: true }).waitFor();
   await assertCentered(overlay);
   await page
     .getByRole("checkbox", { name: "Hide watched", exact: true })
@@ -876,7 +878,7 @@ try {
     historyBefore.writes,
   );
   await page.getByRole("button", { name: "Library", exact: true }).click();
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("button", { name: "Discover", exact: true }).click();
   await page.waitForFunction(
     () => window.__uiTest.lastFilters?.query === "Saved series",
   );

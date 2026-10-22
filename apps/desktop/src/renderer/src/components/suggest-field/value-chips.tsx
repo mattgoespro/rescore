@@ -14,13 +14,13 @@ export default function ValueChips<
     <div className="flex flex-wrap gap-1.5">
       {values.map((value) => (
         <span
-          className="inline-flex items-center gap-1.5 rounded-full bg-wash-6 py-1 pr-2 pl-2.5 text-xs"
+          className="inline-flex h-7 items-center gap-0.5 rounded-control bg-selected pr-0.5 pl-2.5 text-[13px] text-ink"
           key={value.id}
         >
           {value.name}
           <button
             type="button"
-            className="border-0 bg-transparent px-0.5 text-muted"
+            className="grid size-6 place-items-center rounded-[3px] border-0 bg-transparent text-muted hover:bg-wash-8 hover:text-ink"
             aria-label={`Remove ${value.name}`}
             onClick={() => onRemove(value.id)}
           >

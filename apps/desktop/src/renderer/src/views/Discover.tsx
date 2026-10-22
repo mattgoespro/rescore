@@ -79,7 +79,7 @@ export default function Discover({
   const { items, totalResults, loading } = snapshot;
   const visibleItems = visibleDiscoverItems(snapshot.items, library, filters);
   const [entering, setEntering] = useState(false);
-  const [layout, setLayout] = useState<"list" | "grid">("list");
+  const [layout, setLayout] = useState<"list" | "grid">("grid");
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const openedId = useRef<string | null>(null);
@@ -201,7 +201,7 @@ export default function Discover({
   return (
     <section
       ref={containerRef}
-      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[280px_minmax(0,1fr)_minmax(280px,400px)] inspect:grid-rows-none"
+      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[288px_minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none"
     >
       <FilterPanel
         filters={filters}
@@ -219,18 +219,20 @@ export default function Discover({
           void removeSearchHistory(id).then(setHistory);
         }}
       />
-      <div className="flex min-h-0 min-w-0 flex-col pt-5 pr-0 pb-4 pl-4.5">
-        <div className="mb-2 flex items-center justify-between gap-3 pr-4.5">
-          <h1 className="m-0 text-[22px] font-650 tracking-title">
-            Results
-            <span
-              className="ml-2 text-xs font-medium text-muted"
+      <div className="flex min-h-0 min-w-0 flex-col pt-6 pr-0 pb-4 pl-6">
+        <div className="mb-5 flex items-end justify-between gap-4 pr-6">
+          <div className="min-w-0">
+            <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
+              Discover
+            </h1>
+            <p
+              className="m-0 mt-1 text-sm text-muted tabular"
               role="status"
               aria-live="polite"
             >
               {countLabel}
-            </span>
-          </h1>
+            </p>
+          </div>
           <div className="flex items-center gap-2.5">
             <div
               className={segmentedGroup("icon")}
@@ -242,20 +244,20 @@ export default function Discover({
                 className={segmentedCell(layout === "list", "icon")}
                 aria-label="List view"
                 aria-pressed={layout === "list"}
-                title="List"
                 onClick={() => setLayout("list")}
               >
-                <IconList className="size-3.75" />
+                <IconList className="size-3.5" />
+                <span aria-hidden="true">List</span>
               </button>
               <button
                 type="button"
                 className={segmentedCell(layout === "grid", "icon")}
                 aria-label="Grid view"
                 aria-pressed={layout === "grid"}
-                title="Grid"
                 onClick={() => setLayout("grid")}
               >
-                <IconGrid className="size-3.75" />
+                <IconGrid className="size-3.5" />
+                <span aria-hidden="true">Grid</span>
               </button>
             </div>
           </div>
@@ -267,11 +269,14 @@ export default function Discover({
             className={cn(refreshing && "opacity-45")}
           >
             {!loading && !visibleItems.length ? (
-              <div className="col-span-full px-4 py-6 text-center text-muted">
-                <h2 className="mt-0 mb-2 text-lg tracking-[-0.03em] text-ink">
-                  No titles in this slice
+              <div className="col-span-full flex flex-col items-center gap-2 px-4 py-12 text-center">
+                <h2 className="m-0 text-base font-semibold text-ink">
+                  No titles match these filters
                 </h2>
-                <p>Loosen the vote floor or year window to see more films.</p>
+                <p className="m-0 max-w-90 text-sm leading-copy text-muted">
+                  Lower the quality floor, widen the year range or clear a genre
+                  to see more.
+                </p>
               </div>
             ) : null}
             {hasResults ? (
@@ -281,14 +286,14 @@ export default function Discover({
                 hasMore={canLoadMore()}
                 loader={
                   <div
-                    className="my-4 mb-2 flex items-center justify-center gap-2.5 text-xs text-muted"
+                    className="my-4 mb-2 flex items-center justify-center gap-2.5 text-[13px] text-muted"
                     role="status"
                   >
                     Loading more titles…
                   </div>
                 }
                 endMessage={
-                  <p className="my-5 text-center text-xs text-muted">
+                  <p className="my-6 text-center text-[13px] text-faint">
                     You have reached the end of these results.
                   </p>
                 }

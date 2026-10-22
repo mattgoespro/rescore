@@ -3,9 +3,18 @@ export type ThemeMode = "dark" | "light";
 export const DEFAULT_ACCENT_COLOR = "#CEAA34";
 
 export const THEME_CANVAS = {
-  dark: "#0e0e10",
-  light: "#f3f3f5",
+  dark: "#161616",
+  light: "#f4f4f4",
 } as const;
+
+/** Sheets an accent may sit on: rail, raised and selected (Dark paper). */
+const THEME_SURFACES = {
+  dark: ["#1C1C1C", "#232323", "#2B2B2B", "#17171B"],
+  light: ["#ECECEC", "#FFFFFF", "#E2E2E2"],
+} as const;
+
+/** Height of the unified top bar and the native caption-button overlay. */
+export const TITLE_BAR_HEIGHT = 48;
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 const APPEARANCE_KEYS = new Set(["themeMode", "accentColor"]);
@@ -52,14 +61,11 @@ export function accentInkColor(hex: string): string {
   return contrast("#000000") >= contrast("#FFFFFF") ? "#000000" : "#FFFFFF";
 }
 
-/** Keep accent text readable on the canvas, panels, and tinted selections. */
+/** Keep accent text readable on the canvas, every sheet, and selections. */
 export function accentTextColor(hex: string, themeMode: ThemeMode): string {
   const accent = normalizeAccentColor(hex);
-  const ink = themeMode === "light" ? "#17171B" : "#F5F5F7";
-  const surfaces = [
-    THEME_CANVAS[themeMode],
-    themeMode === "light" ? "#FFFFFF" : "#17171B",
-  ];
+  const ink = themeMode === "light" ? "#161616" : "#ECECEC";
+  const surfaces = [THEME_CANVAS[themeMode], ...THEME_SURFACES[themeMode]];
   const backgrounds = surfaces.flatMap((surface) => [
     surface,
     mixColor(surface, accent, 0.14),
@@ -94,16 +100,9 @@ function mixColor(from: string, to: string, amount: number): string {
     .join("")}`.toUpperCase();
 }
 
-export function windowSymbolColor(
-  accent: string,
-  themeMode: ThemeMode,
-): string {
-  const color = normalizeAccentColor(accent);
-  const contrast = Math.abs(
-    relativeLuminance(color) - relativeLuminance(THEME_CANVAS[themeMode]),
-  );
-  if (contrast > 0.22) return color;
-  return themeMode === "light" ? "#17171B" : "#F5F5F7";
+/** Native caption buttons use the secondary ink, never the accent. */
+export function windowSymbolColor(themeMode: ThemeMode): string {
+  return themeMode === "light" ? "#4A4A4A" : "#B0B0B0";
 }
 
 function relativeLuminance(hex: string): number {

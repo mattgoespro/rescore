@@ -32,13 +32,13 @@ export default function HistoryOption({
   return (
     <div
       className={cn(
-        "flex items-start gap-0.5 rounded-lg not-last:mb-0.5 not-last:border-b not-last:border-line not-last:pb-0.5",
-        active ? "bg-accent-soft" : "bg-transparent hover:bg-wash-6",
+        "flex items-start gap-0.5 rounded-control not-last:mb-0.5 not-last:border-b not-last:border-line not-last:pb-0.5",
+        active ? "bg-selected inset-accent" : "bg-transparent hover:bg-wash-6",
       )}
     >
       <button
         type="button"
-        className="min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2.5 py-2 text-left"
+        className="min-w-0 flex-1 rounded-control border-0 bg-transparent px-3 py-2.5 text-left"
         onClick={onApply}
       >
         <dl className="m-0 flex flex-col gap-1">
@@ -47,12 +47,12 @@ export default function HistoryOption({
               key={label}
               className="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-x-2.5"
             >
-              <dt className="text-[11px] leading-detail font-medium whitespace-nowrap text-faint">
+              <dt className="text-xs leading-detail font-medium whitespace-nowrap text-faint">
                 {label}
               </dt>
               <dd
                 className={cn(
-                  "m-0 min-w-0 text-[12px] leading-detail wrap-break-word",
+                  "m-0 min-w-0 text-[13px] leading-detail wrap-break-word",
                   label === "Title type"
                     ? "font-semibold text-ink"
                     : "text-ink",
@@ -67,7 +67,7 @@ export default function HistoryOption({
       </button>
       <button
         type="button"
-        className="mt-1 mr-1 grid size-7 shrink-0 place-items-center rounded-md border-0 bg-transparent text-muted hover:bg-wash-8 hover:text-danger"
+        className="mt-1.5 mr-1.5 grid size-8 shrink-0 place-items-center rounded-control border-0 bg-transparent text-muted hover:bg-wash-8 hover:text-danger"
         aria-label="Remove from search history"
         title="Remove"
         onClick={(event) => {

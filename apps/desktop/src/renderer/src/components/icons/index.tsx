@@ -6,3 +6,8 @@ export { default as IconList } from "./list";
 export { default as IconGrid } from "./grid";
 export { default as IconStar } from "./star";
 export { default as IconRefresh } from "./refresh";
+export { default as IconHistory } from "./history";
+export { default as IconCheck } from "./check";
+export { default as IconBookmark } from "./bookmark";
+export { default as IconExternal } from "./external";
+export { default as IconClose } from "./close";

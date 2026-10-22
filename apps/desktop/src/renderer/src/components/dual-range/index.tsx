@@ -29,7 +29,7 @@ export default function DualRange({
   const fillWidth = ((valueMax - valueMin) / span) * 100;
 
   return (
-    <div className="relative mt-0.5 mb-1 h-7">
+    <div className="relative h-4">
       <Track fillLeft={fillLeft} fillWidth={fillWidth} />
       <ThumbInput
         min={min}

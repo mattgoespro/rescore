@@ -10,19 +10,17 @@ export default function VotesSlider({
   onChange: (voteCountMin: number) => void;
 }): JSX.Element {
   return (
-    <Field label={`Minimum votes ${value}`}>
-      <div className="flex min-w-0 items-center gap-2">
-        <input
-          type="range"
-          name="voteCountMin"
-          className={rangeInputClass}
-          min={0}
-          max={5000}
-          step={50}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-        />
-      </div>
+    <Field label="Minimum votes" value={`${value.toLocaleString()}+`}>
+      <input
+        type="range"
+        name="voteCountMin"
+        className={rangeInputClass}
+        min={0}
+        max={5000}
+        step={50}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
     </Field>
   );
 }

@@ -17,6 +17,11 @@ import BackgroundService from "../components/background-service";
 import Select from "../components/select";
 import { applyAppearance } from "../lib/appearance";
 import { catalogRebuildFeedback, tmdbHealthPercent } from "../lib/catalog-busy";
+import {
+  lastTmdbHealth,
+  loadTmdbHealth,
+  type TmdbHealthReading,
+} from "../lib/tmdb-health";
 import { cn } from "../lib/cn";
 import {
   validateRankingSettings,
@@ -196,28 +201,30 @@ export default function SettingsView({
 
   return (
     <section>
-      <div className="mb-5.5">
-        <h1 className="m-0 text-[28px] font-650 tracking-title text-balance">
+      <div className="mb-6">
+        <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title text-balance">
           Settings
         </h1>
-        <p className="mt-1.5 mb-0 max-w-160 text-[13px] leading-copy text-pretty text-muted">
+        <p className="mt-1 mb-0 max-w-[60ch] text-sm leading-copy text-pretty text-muted">
           Catalog, imported ratings, and how titles are ranked.
         </p>
       </div>
-      <p className="my-2 text-xs text-muted" role="status" aria-live="polite">
+      <p
+        className="my-2 text-[13px] text-muted"
+        role="status"
+        aria-live="polite"
+      >
         {feedback}
       </p>
-      <div className="grid grid-cols-1 items-start gap-4 inspect:grid-cols-2">
-        <div className="min-w-0 border border-line p-4.5 inspect:col-span-2">
+      <div className="grid max-w-300 grid-cols-1 items-start gap-4 inspect:grid-cols-2">
+        <div className="min-w-0 rounded-app border border-line bg-rail p-5 inspect:col-span-2">
           <h2 className="kicker">Appearance</h2>
           <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
             <fieldset
               disabled={appearanceBusy}
               className="m-0 min-w-0 border-0 p-0"
             >
-              <legend className="mb-1.5 text-xs font-medium text-muted">
-                Theme
-              </legend>
+              <legend className="mb-2 text-[13px] text-muted">Theme</legend>
               <div
                 className={segmentedGroup("text")}
                 role="radiogroup"
@@ -272,9 +279,7 @@ export default function SettingsView({
               disabled={appearanceBusy}
               className="m-0 min-w-0 border-0 p-0"
             >
-              <legend className="mb-1.5 text-xs font-medium text-muted">
-                Accent
-              </legend>
+              <legend className="mb-2 text-[13px] text-muted">Accent</legend>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -284,7 +289,7 @@ export default function SettingsView({
                   onChange={(event) =>
                     void commitAppearance(themeMode, event.target.value)
                   }
-                  className="size-10.5 shrink-0 cursor-pointer rounded-app border border-line bg-transparent p-1 [&::-webkit-color-swatch]:rounded-[7px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+                  className="size-9 shrink-0 cursor-pointer rounded-control border border-control bg-transparent p-1 [&::-webkit-color-swatch]:rounded-[2px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
                 />
                 <input
                   type="text"
@@ -313,17 +318,17 @@ export default function SettingsView({
               </div>
             </fieldset>
           </div>
-          <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">
+          <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
             Theme and accent apply immediately on this PC.
           </p>
         </div>
-        <div className="min-w-0 border border-line p-4.5">
+        <div className="min-w-0 rounded-app border border-line bg-rail p-5">
           <h2 className="kicker">Catalog</h2>
-          <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">
+          <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
             {catalogSummary(catalogStatus)}
           </p>
           <button
-            className={cn(btn(), "mt-3 mb-4")}
+            className={cn(btn("small"), "mt-3 mb-4")}
             disabled={rebuild != null}
             aria-busy={rebuild != null}
             onClick={() => void rebuildCatalog()}
@@ -339,7 +344,7 @@ export default function SettingsView({
               />
             </div>
           ) : null}
-          <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">
+          <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
             Posters, synopses, and age ratings fill in from TMDb while you
             browse.
           </p>
@@ -347,15 +352,15 @@ export default function SettingsView({
           <BackgroundService />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="border border-line p-4.5">
+          <div className="rounded-app border border-line bg-rail p-5">
             <h2 className="kicker">Ratings import</h2>
-            <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">
+            <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
               Export your ratings from IMDb, then choose the CSV. Imported
               titles are marked watched.
             </p>
             <div className="my-3 flex flex-wrap gap-2.5">
               <button
-                className={btn("primary")}
+                className={btn("primary", "small")}
                 disabled={busy}
                 aria-busy={busy}
                 onClick={() => void importCsv()}
@@ -363,7 +368,7 @@ export default function SettingsView({
                 {busy ? "Importing…" : "Import ratings.csv"}
               </button>
               <button
-                className={btn()}
+                className={btn("small")}
                 onClick={async () => {
                   try {
                     const result = await window.api.exportLibrary();
@@ -378,7 +383,7 @@ export default function SettingsView({
                 Export library JSON
               </button>
               <button
-                className={btn("danger")}
+                className={btn("danger", "small")}
                 onClick={async () => {
                   if (confirm("Clear local ratings, watchlist, and skips?")) {
                     try {
@@ -427,7 +432,7 @@ export default function SettingsView({
             ) : null}
           </div>
           <form
-            className="border border-line p-4.5"
+            className="rounded-app border border-line bg-rail p-5"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -436,7 +441,7 @@ export default function SettingsView({
           >
             <h2 className="kicker">Ranking</h2>
             {!serviceRequired && (
-              <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+              <label className="mb-1 flex min-w-0 flex-col gap-2 text-[13px] text-muted">
                 Catalog API URL
                 <input
                   type="url"
@@ -460,7 +465,7 @@ export default function SettingsView({
                 {fieldErrors.catalogApiUrl}
               </p>
             )}
-            <label className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+            <label className="mb-1 flex min-w-0 flex-col gap-2 text-[13px] text-muted">
               Ranking mode
               <Select
                 value={mode}
@@ -475,7 +480,7 @@ export default function SettingsView({
             </p>
             <button
               type="submit"
-              className={cn(btn("primary"), "mt-4")}
+              className={cn(btn("primary", "small"), "mt-4")}
               disabled={saving}
               aria-busy={saving}
             >
@@ -489,20 +494,15 @@ export default function SettingsView({
 }
 
 function TmdbHealth({ apiUrl }: { apiUrl: string }): JSX.Element {
-  const [health, setHealth] = useState<{
-    total: number;
-    posters: number;
-    synopses: number;
-    certifications: number;
-  } | null>();
+  const [health, setHealth] = useState<TmdbHealthReading | null | undefined>(
+    lastTmdbHealth,
+  );
 
   const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    setHealth(undefined);
     const load = () => {
-      void window.api
-        .tmdbHealth()
+      void loadTmdbHealth()
         .then((next) => {
           if (!cancelled) {
             setHealth(next);
@@ -521,36 +521,41 @@ function TmdbHealth({ apiUrl }: { apiUrl: string }): JSX.Element {
     };
   }, [apiUrl]);
 
+  // Until the first reading arrives the bars keep their full layout and show
+  // placeholders, so nothing changes height when the numbers land.
+  const pending = health === undefined && !unavailable;
   const total = health?.total ?? 0;
+  const message = unavailable
+    ? health
+      ? "Coverage update unavailable. Showing the last measurement."
+      : "Coverage is not available right now."
+    : health && total === 0
+      ? "No titles to measure yet."
+      : null;
   return (
-    <div className="mb-3">
+    <div className="mb-3" aria-busy={pending}>
       <p className="mt-3 mb-2 text-xs font-medium text-muted">TMDb coverage</p>
-      <p className="mb-2 text-xs text-muted not-empty:mt-2" role="status">
-        {unavailable
-          ? health
-            ? "Coverage update unavailable. Showing the last measurement."
-            : "Coverage is not available right now."
-          : health === undefined
-            ? "Checking coverage…"
-            : total === 0
-              ? "No titles to measure yet."
-              : null}
+      <p className="mb-2 text-xs text-muted empty:hidden" role="status">
+        {message}
       </p>
       <div className="flex flex-col gap-3">
         <HealthBar
           label="Posters"
           filled={health?.posters ?? 0}
           total={total}
+          pending={pending}
         />
         <HealthBar
           label="Synopses"
           filled={health?.synopses ?? 0}
           total={total}
+          pending={pending}
         />
         <HealthBar
           label="Age ratings"
           filled={health?.certifications ?? 0}
           total={total}
+          pending={pending}
         />
       </div>
     </div>
@@ -561,10 +566,12 @@ function HealthBar({
   label,
   filled,
   total,
+  pending = false,
 }: {
   label: string;
   filled: number;
   total: number;
+  pending?: boolean;
 }): JSX.Element {
   const percent = tmdbHealthPercent(filled, total);
   return (
@@ -572,8 +579,9 @@ function HealthBar({
       <div className="mb-1 flex items-baseline justify-between gap-3 text-xs text-muted">
         <span>{label}</span>
         <span className="tabular">
-          {percent.label} · {filled.toLocaleString()} of{" "}
-          {total.toLocaleString()}
+          {pending
+            ? "—"
+            : `${percent.label} · ${filled.toLocaleString()} of ${total.toLocaleString()}`}
         </span>
       </div>
       <div

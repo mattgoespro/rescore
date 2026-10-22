@@ -8,9 +8,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { SearchHistoryEntry } from "../../../../shared/types";
-import { btn, overlayPanelClass } from "../../lib/ui";
+import { iconBtn, overlayPanelClass } from "../../lib/ui";
 import { cn } from "../../lib/cn";
-import Chevron from "../select/chevron";
+import { IconHistory } from "../icons";
 import HistoryOption from "./history-option";
 
 const MENU_WIDTH = 320;
@@ -112,10 +112,12 @@ export default function HistoryMenu({
       <button
         ref={buttonRef}
         className={cn(
-          btn("ghost", "compact"),
-          "inline-flex items-center gap-1 pr-2",
+          iconBtn("bare"),
+          "size-8",
+          open && "bg-selected text-accent-text",
         )}
         type="button"
+        title="Search history"
         aria-label="Search history"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -123,8 +125,7 @@ export default function HistoryMenu({
         onClick={() => setOpen((prev) => !prev)}
         onKeyDown={onButtonKey}
       >
-        History
-        <Chevron className={cn("size-3.5", open && "rotate-180")} />
+        <IconHistory className="size-4" />
       </button>
       {open
         ? createPortal(
@@ -165,7 +166,7 @@ export default function HistoryMenu({
             >
               {entries.length ? (
                 <>
-                  <p className="sticky top-0 z-1 kicker bg-raised px-2.5 py-2">
+                  <p className="sticky top-0 z-1 kicker bg-raised px-3 py-2.5">
                     Saved searches
                   </p>
                   {entries.map((entry) => (
@@ -183,7 +184,7 @@ export default function HistoryMenu({
                   ))}
                 </>
               ) : (
-                <p className="m-0 px-2.5 py-3 text-[12px] leading-copy text-muted">
+                <p className="m-0 p-3 text-[13px] leading-copy text-muted">
                   No saved searches yet. Run a search with filters or a sort
                   other than the defaults to record it.
                 </p>

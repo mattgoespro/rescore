@@ -1,15 +1,10 @@
 @theme inline {
-  --color-accent-soft: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  --color-danger-bg: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  --color-danger-border: color-mix(
-    in srgb,
-    var(--color-danger) 35%,
-    transparent
-  );
-  --color-danger-ring: color-mix(in srgb, var(--color-danger) 40%, transparent);
-  --shadow-accent: 0 6px 16px
-    color-mix(in srgb, var(--color-accent) 28%, transparent);
-  --shadow-accent-glow: 0 6px 16px
-    color-mix(in srgb, var(--color-accent) 28%, transparent);
-  --shadow-panel: var(--imd-shadow-panel);
+  /* Dark paper is flat: selection is a solid sheet, never a tinted glow. */
+  --color-accent-soft: var(--imd-selected);
+  --color-danger-bg: transparent;
+  --color-danger-border: var(--imd-danger);
+  --color-danger-ring: var(--imd-danger);
+  --shadow-accent: none;
+  --shadow-accent-glow: none;
+  --shadow-panel: none;
 }

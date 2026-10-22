@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  catalogIndicator,
   catalogLoaderDetail,
   catalogRebuildFeedback,
   isCatalogUiBlocked,
@@ -132,5 +133,33 @@ test("loader detail describes the blocking build until bytes arrive", () => {
       download: { receivedBytes: 12_000 },
     }),
     undefined,
+  );
+});
+
+test("catalogue indicator names every state in words", () => {
+  assert.equal(catalogIndicator(null).label, "Starting");
+  assert.equal(
+    catalogIndicator({ phase: "building", catalogUsable: false }).state,
+    "starting",
+  );
+  const failed = catalogIndicator({
+    phase: "error",
+    error: "Service exited",
+  });
+  assert.equal(failed.label, "Failed");
+  assert.equal(failed.tip, "Catalogue has terminated");
+  assert.equal(failed.detail, "Service exited");
+  const loaded = catalogIndicator({ phase: "ready", catalogUsable: true });
+  assert.deepEqual(
+    [loaded.state, loaded.label, loaded.tip],
+    ["loaded", "Loaded", "Catalogue is running"],
+  );
+  assert.match(
+    catalogIndicator({
+      phase: "ready",
+      catalogUsable: true,
+      tmdbHydration: { complete: false, percent: 40 },
+    }).detail,
+    /40%/,
   );
 });

@@ -78,6 +78,9 @@ export default {
         "thumb-active": palette.thumbActive,
         input: palette.input,
         poster: palette.poster,
+        control: "var(--imd-control)",
+        selected: "var(--imd-selected)",
+        backdrop: "var(--imd-backdrop)",
         wash: {
           DEFAULT: "var(--imd-wash-05)",
           3: "var(--imd-wash-03)",
@@ -88,23 +91,23 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Geist", "system-ui", "sans-serif"],
       },
       fontWeight: {
         650: "650",
       },
       borderRadius: {
-        app: "10px",
+        app: "6px",
+        control: "4px",
       },
       boxShadow: {
-        panel: "var(--imd-shadow-panel)",
-        accent:
-          "0 6px 16px color-mix(in srgb, var(--imd-accent) 28%, transparent)",
+        panel: "none",
+        accent: "none",
       },
       letterSpacing: {
-        title: "-0.04em",
-        tightish: "-0.02em",
-        kicker: "0.18em",
+        title: "-0.02em",
+        tightish: "-0.01em",
+        kicker: "0.08em",
       },
       transitionDuration: {
         140: "140ms",

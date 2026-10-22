@@ -55,3 +55,55 @@ export function catalogLoaderDetail(
   if ((status.download?.receivedBytes ?? 0) > 0) return undefined;
   return FIRST_BUILD_DETAIL;
 }
+
+export type CatalogIndicatorState = "loaded" | "starting" | "failed";
+
+export interface CatalogIndicator {
+  state: CatalogIndicatorState;
+  label: string;
+  tip: string;
+  detail: string;
+}
+
+/** Top-bar catalogue status: a word, a colour and a tooltip, never colour alone. */
+export function catalogIndicator(
+  status: {
+    phase: string;
+    catalogUsable?: boolean;
+    message?: string;
+    error?: string | null;
+    tmdbHydration?: { complete: boolean; percent: number } | null;
+  } | null,
+): CatalogIndicator {
+  if (status?.phase === "error") {
+    return {
+      state: "failed",
+      label: "Failed",
+      tip: "Catalogue has terminated",
+      detail:
+        status.error?.trim() ||
+        status.message?.trim() ||
+        "The catalogue failed to start or stopped unexpectedly.",
+    };
+  }
+  if (isCatalogUiBlocked(status)) {
+    return {
+      state: "starting",
+      label: "Starting",
+      tip: "Catalogue is starting",
+      detail:
+        status?.message?.trim() ||
+        "Searching and ranking unlock as soon as the catalogue is ready.",
+    };
+  }
+  const hydration = status?.tmdbHydration;
+  return {
+    state: "loaded",
+    label: "Loaded",
+    tip: "Catalogue is running",
+    detail:
+      hydration && !hydration.complete
+        ? `TMDb posters and synopses are still filling in (${hydration.percent}%).`
+        : "Your local IMDb catalogue is loaded.",
+  };
+}

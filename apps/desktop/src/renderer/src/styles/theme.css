@@ -1,5 +1,5 @@
 @theme {
-  --font-sans: Inter, system-ui, sans-serif;
+  --font-sans: Geist, system-ui, sans-serif;
   --leading-compact: 1.2;
   --leading-label: 1.3;
   --leading-detail: 1.35;
@@ -9,64 +9,72 @@
   --stroke-width-icon: 1.75;
 }
 
+/* Dark paper: flat neutral-grey sheets separated by hairline rules. */
 :root,
 html[data-theme="dark"] {
   color-scheme: dark;
-  --imd-canvas: #0e0e10;
-  --imd-ink: #f5f5f7;
-  --imd-muted: #9a9aa2;
-  --imd-faint: #96969f;
-  --imd-line: rgb(255 255 255 / 0.08);
+  --imd-canvas: #161616;
+  --imd-rail: #1c1c1c;
+  --imd-raised: #232323;
+  --imd-selected: #2b2b2b;
+  --imd-backdrop: #202020;
+  --imd-ink: #ececec;
+  --imd-muted: #b0b0b0;
+  --imd-faint: #949494;
+  --imd-line: rgb(255 255 255 / 0.1);
+  --imd-control: #737373;
   --imd-accent: #ceaa34;
-  --imd-accent-2: color-mix(in srgb, var(--imd-accent) 68%, white);
-  --imd-accent-soft: color-mix(in srgb, var(--imd-accent) 14%, transparent);
+  --imd-accent-2: var(--imd-accent);
+  --imd-accent-soft: var(--imd-selected);
   --imd-accent-ink: #1a0c06;
   --imd-accent-text: #ceaa34;
-  --imd-danger: #e25e5a;
-  --imd-danger-fg: #f3c2ba;
-  --imd-raised: #17171b;
-  --imd-rail: #16161a;
-  --imd-track: #2c2c32;
-  --imd-thumb: #3f3f46;
-  --imd-thumb-active: color-mix(in srgb, var(--imd-accent) 62%, black);
-  --imd-input: rgb(8 8 10 / 0.55);
-  --imd-poster: #1c1c24;
+  --imd-danger: #e0716a;
+  --imd-danger-fg: #e0716a;
+  --imd-track: #4a4a4a;
+  --imd-thumb: #5a5a5a;
+  --imd-thumb-active: var(--imd-accent);
+  --imd-input: #232323;
+  --imd-poster: #272727;
   --imd-wash-03: rgb(255 255 255 / 0.03);
   --imd-wash-05: rgb(255 255 255 / 0.05);
   --imd-wash-06: rgb(255 255 255 / 0.06);
   --imd-wash-08: rgb(255 255 255 / 0.08);
   --imd-wash-09: rgb(255 255 255 / 0.09);
-  --imd-body-glow: rgb(255 255 255 / 0.04);
-  --imd-scrollbar: #3a3a42;
-  --imd-shadow-panel: 0 12px 32px rgb(0 0 0 / 0.38);
-  --imd-title-shadow: 0 10px 28px rgb(0 0 0 / 0.95), 0 2px 8px rgb(0 0 0 / 0.8);
+  --imd-body-glow: transparent;
+  --imd-scrollbar: #3a3a3a;
+  --imd-shadow-panel: none;
+  --imd-title-shadow: none;
 }
 
+/* Light paper: the same system on off-white sheets. */
 html[data-theme="light"] {
   color-scheme: light;
-  --imd-canvas: #f3f3f5;
-  --imd-ink: #17171b;
-  --imd-muted: #5e5e66;
-  --imd-faint: #65656e;
-  --imd-accent-text: #80671d;
-  --imd-line: rgb(20 20 24 / 0.1);
-  --imd-danger: #d24a46;
-  --imd-danger-fg: #8f2a26;
+  --imd-canvas: #f4f4f4;
+  --imd-rail: #ececec;
   --imd-raised: #ffffff;
-  --imd-rail: #ececee;
-  --imd-track: #d4d4da;
-  --imd-thumb: #b4b4bc;
-  --imd-input: rgb(255 255 255 / 0.78);
-  --imd-poster: #e4e4ea;
-  --imd-wash-03: rgb(16 16 20 / 0.035);
-  --imd-wash-05: rgb(16 16 20 / 0.05);
-  --imd-wash-06: rgb(16 16 20 / 0.06);
-  --imd-wash-08: rgb(16 16 20 / 0.08);
-  --imd-wash-09: rgb(16 16 20 / 0.09);
-  --imd-body-glow: rgb(16 16 20 / 0.05);
-  --imd-scrollbar: #c4c4cc;
-  --imd-shadow-panel: 0 12px 32px rgb(0 0 0 / 0.12);
-  --imd-title-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  --imd-selected: #e2e2e2;
+  --imd-backdrop: #e6e6e6;
+  --imd-ink: #161616;
+  --imd-muted: #4a4a4a;
+  --imd-faint: #5c5c5c;
+  --imd-line: rgb(0 0 0 / 0.1);
+  --imd-control: #808080;
+  --imd-accent-text: #80671d;
+  --imd-danger: #b3352f;
+  --imd-danger-fg: #b3352f;
+  --imd-track: #c8c8c8;
+  --imd-thumb: #a0a0a0;
+  --imd-input: #ffffff;
+  --imd-poster: #e2e2e2;
+  --imd-wash-03: rgb(0 0 0 / 0.03);
+  --imd-wash-05: rgb(0 0 0 / 0.05);
+  --imd-wash-06: rgb(0 0 0 / 0.06);
+  --imd-wash-08: rgb(0 0 0 / 0.08);
+  --imd-wash-09: rgb(0 0 0 / 0.09);
+  --imd-body-glow: transparent;
+  --imd-scrollbar: #c4c4c4;
+  --imd-shadow-panel: none;
+  --imd-title-shadow: none;
 }
 
 @layer base {
@@ -87,17 +95,7 @@ html[data-theme="light"] {
 
   body {
     overflow: hidden;
-    background:
-      radial-gradient(
-        900px 520px at 8% -20%,
-        color-mix(in srgb, var(--color-accent) 8%, transparent),
-        transparent 50%
-      ),
-      radial-gradient(
-        800px 480px at 100% 110%,
-        var(--imd-body-glow),
-        transparent 46%
-      ),
-      var(--color-canvas);
+    background: var(--color-canvas);
+    font-size: 14px;
   }
 }

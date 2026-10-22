@@ -14,16 +14,16 @@ function labelMinutes(minutes: number): string {
 export function runtimeCaption(min: number | null, max: number | null): string {
   const low = min ?? RUNTIME_FLOOR;
   const high = max ?? RUNTIME_CEILING;
-  if (low <= RUNTIME_FLOOR && high >= RUNTIME_CEILING) return "· any length";
-  if (low <= RUNTIME_FLOOR) return `· up to ${labelMinutes(high)}`;
-  if (high >= RUNTIME_CEILING) return `· ${labelMinutes(low)}+`;
-  return `· ${labelMinutes(low)} – ${labelMinutes(high)}`;
+  if (low <= RUNTIME_FLOOR && high >= RUNTIME_CEILING) return "Any length";
+  if (low <= RUNTIME_FLOOR) return `Up to ${labelMinutes(high)}`;
+  if (high >= RUNTIME_CEILING) return `${labelMinutes(low)}+`;
+  return `${labelMinutes(low)} – ${labelMinutes(high)}`;
 }
 
 export function yearCaption(min: number | null, max: number | null): string {
   const low = min ?? YEAR_FLOOR;
   const high = max ?? YEAR_CEILING;
-  if (low <= YEAR_FLOOR && high >= YEAR_CEILING) return "· any year";
-  if (low === high) return `· ${low}`;
-  return `· ${low} – ${high}`;
+  if (low <= YEAR_FLOOR && high >= YEAR_CEILING) return "Any year";
+  if (low === high) return `${low}`;
+  return `${low} – ${high}`;
 }

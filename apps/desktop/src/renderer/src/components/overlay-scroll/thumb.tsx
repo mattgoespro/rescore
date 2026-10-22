@@ -14,13 +14,13 @@ export default function Thumb({
 }): JSX.Element {
   return (
     <div
-      className="pointer-events-none absolute inset-y-1.5 right-0.75 z-2 w-2 rounded-full bg-rail"
+      className="pointer-events-none absolute inset-y-1.5 right-0.75 z-2 w-1.5 rounded-[2px] bg-transparent"
       aria-hidden="true"
     >
       <div
         className={cn(
-          "pointer-events-auto absolute right-px w-1.5 cursor-ns-resize rounded-full bg-thumb opacity-100 transition-[background,width] duration-160",
-          dragging && "w-2 bg-thumb-active",
+          "pointer-events-auto absolute right-0 w-1.5 cursor-ns-resize rounded-[2px] bg-thumb opacity-100 transition-[background] duration-160",
+          dragging && "bg-thumb-active",
         )}
         style={{ top, height }}
         onPointerDown={onPointerDown}

@@ -83,13 +83,8 @@ export default function SuggestField<
   const open = hits.length > 0;
 
   return (
-    <div className="mb-1 flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted">
+    <div className="flex min-w-0 flex-col gap-2 text-[13px] text-muted">
       <label htmlFor={inputId}>{label}</label>
-      {hint ? (
-        <p className="m-0 text-[11px] leading-label font-normal text-pretty text-faint">
-          {hint}
-        </p>
-      ) : null}
       <div className="relative">
         <input
           id={inputId}
@@ -113,6 +108,11 @@ export default function SuggestField<
         values={values}
         onRemove={(id) => onChange(values.filter((value) => value.id !== id))}
       />
+      {hint ? (
+        <p className="m-0 text-xs leading-label text-pretty text-faint">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

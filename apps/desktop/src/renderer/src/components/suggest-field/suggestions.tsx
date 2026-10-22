@@ -19,7 +19,7 @@ export default function Suggestions<
     <div
       id={id}
       role="listbox"
-      className="absolute inset-x-0 top-[calc(100%+0.25rem)] z-6 overflow-hidden rounded-app border border-line bg-raised shadow-panel"
+      className="absolute inset-x-0 top-[calc(100%+0.25rem)] z-6 overflow-hidden rounded-control border border-control bg-raised p-1"
     >
       {hits.map((hit, index) => (
         <button
@@ -29,8 +29,8 @@ export default function Suggestions<
           role="option"
           aria-selected={index === active}
           className={cn(
-            "block w-full border-0 bg-transparent px-2.5 py-2 text-left",
-            index === active ? "bg-accent-soft" : "hover:bg-accent-soft",
+            "block h-8 w-full rounded-[3px] border-0 bg-transparent px-2.5 text-left text-[13px] text-ink",
+            index === active ? "bg-selected" : "hover:bg-wash-6",
           )}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onSelect(hit)}
