@@ -11,6 +11,7 @@ import { RatingsStore } from "../services/ratings-store.js";
 import { bayesianScore } from "./bayesian.js";
 import { CatalogDatabase } from "./database.js";
 import Database from "better-sqlite3";
+import { libraryListSql } from "./query.js";
 import { migrations } from "./schema.js";
 
 const dirs: string[] = [];
@@ -303,6 +304,188 @@ test("bulk load rebuilds FTS after inserts", () => {
   });
   assert.equal(page.data.length, 1);
   assert.equal(page.data[0]?.id, "tt0000013");
+  catalog.close();
+});
+
+function genreIds(
+  catalog: CatalogDatabase,
+  filter: { genres?: string[]; withoutGenres?: string[] },
+): string[] {
+  return catalog
+    .listTitles({
+      page: 1,
+      pageSize: 100,
+      sort: "votes",
+      order: "desc",
+      kind: "movie",
+      includeTotal: false,
+      ...filter,
+    })
+    .data.map((title) => title.id)
+    .sort();
+}
+
+test("genre filters match stored genres for any-of and exclusion", () => {
+  const catalog = openCatalog();
+  const sets = [["Action"], ["Drama"], ["Action", "Drama"], ["Horror"], []];
+  for (let index = 0; index < 15; index += 1) {
+    seedTitle(catalog, {
+      id: `tt${String(index + 1).padStart(7, "0")}`,
+      title: `Title ${index}`,
+      rating: 7,
+      votes: 100 + index,
+      genres: sets[index % sets.length]!,
+    });
+  }
+  const all = catalog.listTitles({
+    page: 1,
+    pageSize: 100,
+    sort: "votes",
+    order: "desc",
+  }).data;
+  const expect = (keep: (genres: string[]) => boolean) =>
+    all
+      .filter((title) => keep(title.genres))
+      .map((title) => title.id)
+      .sort();
+  assert.deepEqual(
+    genreIds(catalog, { genres: ["Drama", "Horror"] }),
+    expect((g) => g.includes("Drama") || g.includes("Horror")),
+  );
+  assert.deepEqual(
+    genreIds(catalog, { withoutGenres: ["Action"] }),
+    expect((g) => !g.includes("Action")),
+  );
+  assert.deepEqual(
+    genreIds(catalog, { genres: ["Action"], withoutGenres: ["Drama"] }),
+    expect((g) => g.includes("Action") && !g.includes("Drama")),
+  );
+  assert.deepEqual(genreIds(catalog, { genres: ["Musical"] }), []);
+  assert.deepEqual(
+    genreIds(catalog, { withoutGenres: ["Musical"] }),
+    expect(() => true),
+  );
+  catalog.close();
+});
+
+test("genre filters follow a reingest that changes genres", async () => {
+  const catalog = openCatalog();
+  const dir = dirs.at(-1)!;
+  const header =
+    "tconst\ttitleType\tprimaryTitle\toriginalTitle\tisAdult\tstartYear\tendYear\truntimeMinutes\tgenres";
+  const ratings = new Map([
+    ["tt0000001", { rating: 8, votes: 100 }],
+    ["tt0000002", { rating: 7, votes: 80 }],
+  ]);
+  await ingestTitles(
+    catalog,
+    writeGzipTsv(dir, "basics-a.tsv.gz", [
+      header,
+      "tt0000001\tmovie\tOne\tOne\t0\t1999\t\\N\t120\tAction",
+      "tt0000002\tmovie\tTwo\tTwo\t0\t1999\t\\N\t90\tDrama",
+    ]),
+    ratings,
+  );
+  assert.deepEqual(genreIds(catalog, { genres: ["Action"] }), ["tt0000001"]);
+  await ingestTitles(
+    catalog,
+    writeGzipTsv(dir, "basics-b.tsv.gz", [
+      header,
+      "tt0000001\tmovie\tOne\tOne\t0\t1999\t\\N\t120\tSci-Fi",
+      "tt0000002\tmovie\tTwo\tTwo\t0\t1999\t\\N\t90\tAction,Drama",
+    ]),
+    ratings,
+  );
+  assert.deepEqual(genreIds(catalog, { genres: ["Action"] }), ["tt0000002"]);
+  assert.deepEqual(genreIds(catalog, { genres: ["Sci-Fi"] }), ["tt0000001"]);
+  assert.deepEqual(genreIds(catalog, { withoutGenres: ["Drama"] }), [
+    "tt0000001",
+  ]);
+  catalog.close();
+});
+
+test("bulk load rebuilds genre masks", () => {
+  const catalog = openCatalog();
+  catalog.beginBulkLoad();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "A",
+    rating: 7,
+    votes: 10,
+    genres: ["Western"],
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "B",
+    rating: 7,
+    votes: 20,
+    genres: ["Comedy"],
+  });
+  catalog.endBulkLoad();
+  assert.deepEqual(genreIds(catalog, { genres: ["Western"] }), ["tt0000001"]);
+  assert.deepEqual(genreIds(catalog, { withoutGenres: ["Western"] }), [
+    "tt0000002",
+  ]);
+  catalog.close();
+});
+
+test("a stored genre without a mask bit still filters through title_genres", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "A",
+    rating: 7,
+    votes: 10,
+    genres: ["Horror"],
+  });
+  seedTitle(catalog, {
+    id: "tt0000002",
+    title: "B",
+    rating: 7,
+    votes: 20,
+    genres: ["Comedy"],
+  });
+  const raw = new Database(join(dirs.at(-1)!, "catalog.sqlite"));
+  raw.prepare("DELETE FROM genre_bits WHERE genre = 'Horror'").run();
+  raw.close();
+  assert.deepEqual(genreIds(catalog, { genres: ["Horror"] }), ["tt0000001"]);
+  assert.deepEqual(genreIds(catalog, { withoutGenres: ["Horror"] }), [
+    "tt0000002",
+  ]);
+  catalog.close();
+});
+
+test("library reads drive from library rows even with stale statistics", () => {
+  const catalog = openCatalog();
+  for (let index = 1; index <= 50; index += 1) {
+    seedTitle(catalog, {
+      id: `tt${String(index).padStart(7, "0")}`,
+      title: `Title ${index}`,
+      rating: 7,
+      votes: index,
+    });
+  }
+  const path = join(dirs.at(-1)!, "catalog.sqlite");
+  const raw = new Database(path);
+  raw.exec("ANALYZE");
+  catalog.saveLibrary("tt0000007", "watched", 8, null);
+  catalog.saveLibrary("tt0000003", "watchlist", null, null);
+  for (const status of [undefined, "watched"] as const) {
+    const plan = (
+      raw
+        .prepare(`EXPLAIN QUERY PLAN ${libraryListSql(status)}`)
+        .all(...(status ? [status] : [])) as Array<{ detail: string }>
+    ).map((row) => row.detail);
+    assert.match(plan[0] ?? "", /^SCAN l\b/, status ?? "all");
+  }
+  raw.close();
+  assert.deepEqual(
+    catalog
+      .listLibrary()
+      .map((entry) => entry.title.id)
+      .sort(),
+    ["tt0000003", "tt0000007"],
+  );
   catalog.close();
 });
 

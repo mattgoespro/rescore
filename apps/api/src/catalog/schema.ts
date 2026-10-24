@@ -5,6 +5,42 @@ import { now } from "./now.js";
 export const TMDB_HYDRATION_PENDING_SQL =
   "poster_url IS NULL OR synopsis IS NULL OR certification IS NULL OR COALESCE(languages_checked, 0) != 1";
 
+/**
+ * `titles.genre_mask` mirrors `title_genres` as one bit per genre so genre
+ * filters test an indexed integer instead of probing `title_genres` for every
+ * title the sort walks. Bits are assigned once, in first-seen order, up to 53
+ * so a mask stays exact as a JS number; a genre past that has no bit and its
+ * filters keep the `EXISTS` form.
+ */
+export const GENRE_BIT_LIMIT = 53;
+
+const ASSIGN_GENRE_BITS_SQL = `INSERT INTO genre_bits(genre, bit)
+   SELECT genre, (SELECT count(*) FROM genre_bits) + row_number() OVER (ORDER BY genre) - 1
+   FROM (SELECT DISTINCT genre FROM title_genres WHERE genre NOT IN (SELECT genre FROM genre_bits))
+   LIMIT max(0, ${GENRE_BIT_LIMIT} - (SELECT count(*) FROM genre_bits));`;
+
+const REBUILD_GENRE_MASKS_SQL = `UPDATE titles SET genre_mask = m.mask
+   FROM (SELECT g.title_id, sum(1 << b.bit) AS mask
+         FROM title_genres g JOIN genre_bits b ON b.genre = g.genre
+         GROUP BY g.title_id) AS m
+   WHERE titles.id = m.title_id AND titles.genre_mask IS NOT m.mask;
+   UPDATE titles SET genre_mask = 0
+   WHERE genre_mask != 0 AND NOT EXISTS (
+     SELECT 1 FROM title_genres g JOIN genre_bits b ON b.genre = g.genre
+     WHERE g.title_id = titles.id);`;
+
+export const GENRE_MASK_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS title_genres_mask_ai AFTER INSERT ON title_genres BEGIN
+    INSERT OR IGNORE INTO genre_bits(genre, bit)
+      SELECT new.genre, count(*) FROM genre_bits HAVING count(*) < ${GENRE_BIT_LIMIT};
+    UPDATE titles SET genre_mask = genre_mask | (1 << (SELECT bit FROM genre_bits WHERE genre = new.genre))
+      WHERE id = new.title_id AND EXISTS (SELECT 1 FROM genre_bits WHERE genre = new.genre);
+   END;`;
+
+export const GENRE_MASK_DELETE_TRIGGER = `CREATE TRIGGER IF NOT EXISTS title_genres_mask_ad AFTER DELETE ON title_genres BEGIN
+    UPDATE titles SET genre_mask = genre_mask & ~(1 << (SELECT bit FROM genre_bits WHERE genre = old.genre))
+      WHERE id = old.title_id AND EXISTS (SELECT 1 FROM genre_bits WHERE genre = old.genre);
+   END;`;
+
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS titles (
@@ -117,6 +153,19 @@ export const migrations = [
      ON titles(kind, imdb_rating DESC, imdb_votes DESC, year);
    CREATE INDEX IF NOT EXISTS titles_kind_year_idx
      ON titles(kind, year DESC, imdb_votes, imdb_rating);`,
+  // The votes index widens to carry Discover's floors and genre mask, so sparse
+  // filters skip titles without a row lookup. For You ranks every kind by
+  // votes, which the kind-led index could only gather and sort.
+  `ALTER TABLE titles ADD COLUMN genre_mask INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE IF NOT EXISTS genre_bits (genre TEXT PRIMARY KEY, bit INTEGER NOT NULL UNIQUE);
+   ${ASSIGN_GENRE_BITS_SQL}
+   ${REBUILD_GENRE_MASKS_SQL}
+   ${GENRE_MASK_INSERT_TRIGGER}
+   ${GENRE_MASK_DELETE_TRIGGER}
+   DROP INDEX IF EXISTS titles_kind_votes_desc_idx;
+   CREATE INDEX IF NOT EXISTS titles_kind_votes_cover_idx
+     ON titles(kind, imdb_votes DESC, year, imdb_rating, genre_mask);
+   CREATE INDEX IF NOT EXISTS titles_votes_desc_idx ON titles(imdb_votes DESC, id);`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN
@@ -150,6 +199,20 @@ export function restoreFtsTriggers(db: Database.Database): void {
   db.exec(
     `${FTS_INSERT_TRIGGER}; ${FTS_DELETE_TRIGGER}; ${FTS_UPDATE_TRIGGER}`,
   );
+}
+
+export function dropGenreMaskTriggers(db: Database.Database): void {
+  db.exec(
+    "DROP TRIGGER IF EXISTS title_genres_mask_ai; DROP TRIGGER IF EXISTS title_genres_mask_ad;",
+  );
+}
+
+export function restoreGenreMaskTriggers(db: Database.Database): void {
+  db.exec(`${GENRE_MASK_INSERT_TRIGGER}; ${GENRE_MASK_DELETE_TRIGGER}`);
+}
+
+export function rebuildGenreMasks(db: Database.Database): void {
+  db.exec(`${ASSIGN_GENRE_BITS_SQL} ${REBUILD_GENRE_MASKS_SQL}`);
 }
 
 export function rebuildFtsIndex(db: Database.Database): void {

@@ -5,8 +5,11 @@ import { invalidateQueryCache, invalidateCountCache } from "./query-cache.js";
 import { now } from "./now.js";
 import {
   dropFtsTriggers,
+  dropGenreMaskTriggers,
   rebuildFtsIndex,
+  rebuildGenreMasks,
   restoreFtsTriggers,
+  restoreGenreMaskTriggers,
 } from "./schema.js";
 import type { CatalogPersonRow, CatalogTitleRow } from "./types.js";
 import {
@@ -29,11 +32,14 @@ export function beginBulkLoad(db: Database.Database): void {
   db.pragma("synchronous = OFF");
   db.pragma("temp_store = MEMORY");
   dropFtsTriggers(db);
+  dropGenreMaskTriggers(db);
 }
 
 export function endBulkLoad(db: Database.Database): void {
   rebuildFtsIndex(db);
   restoreFtsTriggers(db);
+  rebuildGenreMasks(db);
+  restoreGenreMaskTriggers(db);
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
   invalidateQueryCache(db);

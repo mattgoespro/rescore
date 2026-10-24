@@ -271,7 +271,7 @@ function mergeCondition(condition: string, extra: string | null): string {
  * sorts every match; naming the index keeps the scan in result order.
  */
 const sortIndex: Partial<Record<TitleQuery["sort"], string>> = {
-  votes: "titles_kind_votes_desc_idx",
+  votes: "titles_kind_votes_cover_idx",
   rating: "titles_kind_rating_idx",
   year: "titles_kind_year_idx",
 };
@@ -430,14 +430,21 @@ export function libraryEntriesFromWrites(
   });
 }
 
+/**
+ * CROSS JOIN keeps the library as the outer loop. ANALYZE taken while the
+ * library was empty leaves it without statistics, and the planner then scans
+ * every title probing for an entry.
+ */
+export function libraryListSql(status?: LibraryStatus): string {
+  return `SELECT l.status,l.personal_rating,l.rated_at,l.note,l.updated_at AS library_updated_at,t.* FROM library_entries l CROSS JOIN titles t ON t.id=l.title_id ${status ? "WHERE l.status=?" : ""} ORDER BY l.updated_at DESC, l.title_id`;
+}
+
 export function listLibrary(
   db: Database.Database,
   status?: LibraryStatus,
 ): LibraryEntryDto[] {
   const rows = db
-    .prepare(
-      `SELECT l.status,l.personal_rating,l.rated_at,l.note,l.updated_at AS library_updated_at,t.* FROM library_entries l JOIN titles t ON t.id=l.title_id ${status ? "WHERE l.status=?" : ""} ORDER BY l.updated_at DESC`,
-    )
+    .prepare(libraryListSql(status))
     .all(...(status ? [status] : [])) as Array<
     TitleRow & {
       status: LibraryStatus;
@@ -480,6 +487,35 @@ export function listForYouCandidates(
     )
     .all(params) as TitleRow[];
   return hydrateTitles(db, rows);
+}
+
+/**
+ * The `genre_mask` bits for `genres`, or null when one of them is stored but
+ * has no bit, which leaves the filter to `title_genres`. A genre no title has
+ * contributes nothing, matching what the `EXISTS` form would find.
+ */
+function genreBits(db: Database.Database, genres: string[]): number | null {
+  const placeholders = genres.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT genre, bit FROM genre_bits WHERE genre IN (${placeholders})`,
+    )
+    .all(...genres) as Array<{ genre: string; bit: number }>;
+  const bits = new Map(rows.map((row) => [row.genre, row.bit]));
+  const stored = db.prepare(
+    "SELECT 1 FROM title_genres WHERE genre = ? LIMIT 1",
+  );
+  // JS bitwise operators truncate to 32 bits, so the mask is a sum of
+  // distinct powers of two.
+  const set = new Set<number>();
+  for (const genre of genres) {
+    const bit = bits.get(genre);
+    if (bit !== undefined) set.add(bit);
+    else if (stored.get(genre)) return null;
+  }
+  let mask = 0;
+  for (const bit of set) mask += 2 ** bit;
+  return mask;
 }
 
 function hasSkippedTitles(db: Database.Database): boolean {
@@ -532,7 +568,14 @@ function buildWhere(
       }
     }
   }
-  if (query.genres?.length) {
+  const genreMask = query.genres?.length ? genreBits(db, query.genres) : null;
+  const withoutGenreMask = query.withoutGenres?.length
+    ? genreBits(db, query.withoutGenres)
+    : null;
+  if (genreMask !== null) {
+    where.push("(t.genre_mask & @genreMask) != 0");
+    params.genreMask = genreMask;
+  } else if (query.genres?.length) {
     const placeholders = query.genres.map((_, index) => {
       const key = `genre${index}`;
       params[key] = query.genres![index]!;
@@ -542,7 +585,10 @@ function buildWhere(
       `EXISTS (SELECT 1 FROM title_genres g WHERE g.title_id=t.id AND g.genre IN (${placeholders.join(",")}))`,
     );
   }
-  if (query.withoutGenres?.length) {
+  if (withoutGenreMask !== null) {
+    where.push("(t.genre_mask & @withoutGenreMask) = 0");
+    params.withoutGenreMask = withoutGenreMask;
+  } else if (query.withoutGenres?.length) {
     const placeholders = query.withoutGenres.map((_, index) => {
       const key = `withoutGenre${index}`;
       params[key] = query.withoutGenres![index]!;
