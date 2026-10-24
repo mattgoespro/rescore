@@ -49,7 +49,6 @@ const SCROLLABLE_TARGET_ID = "discover-results-scroll";
 
 export default function Discover({
   library,
-  libraryRevision,
   rankingMode,
   filters,
   setFilters,
@@ -60,7 +59,6 @@ export default function Discover({
   inspector,
 }: {
   library: LibraryEntry[];
-  libraryRevision: number;
   rankingMode: RankingMode;
   filters: DiscoverFilters;
   setFilters: (filters: DiscoverFilters) => void;
@@ -119,16 +117,15 @@ export default function Discover({
       results.cancel();
     };
   }, [filterKey, historyReplay, results]);
-  const previousRevision = useRef({ libraryRevision, rankingMode });
+  // Library writes do not search again: visibleDiscoverItems hides watched,
+  // watchlist, and skipped titles from `library`, and taste ranking applies
+  // from the next search. Only a ranking mode change re-ranks what is loaded.
+  const previousRankingMode = useRef(rankingMode);
   useEffect(() => {
-    const previous = previousRevision.current;
-    previousRevision.current = { libraryRevision, rankingMode };
-    if (
-      previous.libraryRevision !== libraryRevision ||
-      previous.rankingMode !== rankingMode
-    )
-      void results.refresh();
-  }, [libraryRevision, rankingMode, results]);
+    if (previousRankingMode.current === rankingMode) return;
+    previousRankingMode.current = rankingMode;
+    void results.refresh();
+  }, [rankingMode, results]);
   useEffect(() => () => results.dispose(), [results]);
   useEffect(() => {
     onError(snapshot.error);

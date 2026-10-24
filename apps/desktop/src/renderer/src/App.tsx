@@ -522,7 +522,6 @@ export default function App(): JSX.Element {
           ) : view === "discover" ? (
             <Discover
               library={library}
-              libraryRevision={libraryRevision}
               rankingMode={settings.rankingMode}
               filters={filters}
               setFilters={setFilters}
