@@ -40,6 +40,67 @@ test("Search ignores superseded results and keeps the loaded depth when refreshi
   );
   assert.equal(results.getSnapshot().completion?.reset, false);
 });
+test("Search prefetches the next page and appends it without another request", async () => {
+  const requested: Array<string | null | undefined> = [];
+  const results = createDiscoverResults(async (filters) => {
+    requested.push(filters.cursor);
+    return filters.cursor === "c1"
+      ? page("second", "c2")
+      : filters.cursor === "c2"
+        ? page("third")
+        : page("first", "c1");
+  });
+  results.configure(defaultFilters());
+  await results.replace();
+  assert.deepEqual(requested, [null, "c1"]);
+  await results.loadMore();
+  assert.deepEqual(requested, [null, "c1", "c2"]);
+  await results.loadMore();
+  assert.deepEqual(requested, [null, "c1", "c2"]);
+  assert.deepEqual(
+    results.getSnapshot().items.map((x) => x.imdbId),
+    ["first", "second", "third"],
+  );
+  assert.equal(results.getSnapshot().canLoadMore, false);
+});
+test("Search drops a prefetched page when the filters change", async () => {
+  const requested: Array<{ query: string; cursor?: string | null }> = [];
+  const results = createDiscoverResults(async (filters) => {
+    requested.push({ query: filters.query, cursor: filters.cursor });
+    return page(
+      `${filters.query}:${filters.cursor ?? "start"}`,
+      filters.cursor ? null : "c1",
+    );
+  });
+  results.configure(defaultFilters());
+  await results.replace();
+  results.configure({ ...defaultFilters(), query: "new" });
+  await results.replace();
+  await results.loadMore();
+  assert.deepEqual(
+    results.getSnapshot().items.map((x) => x.imdbId),
+    ["new:start", "new:c1"],
+  );
+  assert.deepEqual(requested.at(-1), { query: "new", cursor: "c1" });
+});
+test("Search retries a failed prefetch when the list reaches its end", async () => {
+  let failed = false;
+  const results = createDiscoverResults(async (filters) => {
+    if (filters.cursor && !failed) {
+      failed = true;
+      throw new Error("offline");
+    }
+    return filters.cursor ? page("second") : page("first", "c1");
+  });
+  results.configure(defaultFilters());
+  await results.replace();
+  await results.loadMore();
+  assert.equal(results.getSnapshot().error, "");
+  assert.deepEqual(
+    results.getSnapshot().items.map((x) => x.imdbId),
+    ["first", "second"],
+  );
+});
 test("Search disposal prevents late updates and admits a fresh mount", async () => {
   let resolve!: (p: PagedMovies) => void;
   const results = createDiscoverResults(

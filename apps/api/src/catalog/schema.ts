@@ -111,6 +111,12 @@ export const migrations = [
      ON titles(COALESCE(tmdb_checked_at, 0), imdb_votes DESC, id)
      WHERE poster_url = '' OR synopsis = '';`,
   `ALTER TABLE library_entries ADD COLUMN rated_at TEXT;`,
+  // Discover's rating and year sorts walk these in result order; the trailing
+  // columns let the vote, rating, and year floors filter without a row lookup.
+  `CREATE INDEX IF NOT EXISTS titles_kind_rating_idx
+     ON titles(kind, imdb_rating DESC, imdb_votes DESC, year);
+   CREATE INDEX IF NOT EXISTS titles_kind_year_idx
+     ON titles(kind, year DESC, imdb_votes, imdb_rating);`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN

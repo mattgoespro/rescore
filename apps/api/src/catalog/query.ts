@@ -161,17 +161,6 @@ function seekColumns(
   }
 }
 
-function rowCursor(row: TitleRow): TitleCursor {
-  return {
-    id: row.id,
-    title: row.title,
-    year: row.year,
-    rating: row.imdb_rating,
-    votes: row.imdb_votes,
-    updatedAt: row.updated_at,
-  };
-}
-
 /**
  * SQLite treats NULL as smaller than any other value, so it sorts first in
  * ASC and last in DESC. "Strictly after" a non-null value in DESC therefore
@@ -226,15 +215,49 @@ function buildKeysetCondition(
   return branches.length ? `(${branches.join(" OR ")})` : "0=1";
 }
 
-function buildCursorCondition(
-  query: TitleQuery,
-  order: "ASC" | "DESC",
-  params: Record<string, string | number>,
-): string | null {
-  if (!query.cursor) return null;
-  const cursor = decodeTitleCursor(query.cursor);
-  if (!cursor) return null;
-  return buildKeysetCondition(seekColumns(query.sort, order, cursor), params);
+interface Segment {
+  condition: string | null;
+  params: Record<string, string | number>;
+}
+
+/**
+ * The keyset predicate as ordered segments, each one index range. A single OR
+ * across the leading column defeats the sort index: SQLite gathers every
+ * remaining match and sorts it before applying LIMIT. Bounding the leading
+ * column with `<=` / `>=` lets the scan walk the index and stop at the page
+ * size; the strict comparison inside narrows the tie back to the tail columns.
+ * NULLs in the leading column sit at the far end of that range, so they become
+ * a segment of their own, read only once the bounded one runs short.
+ */
+function keysetSegments(columns: SeekColumn[]): Segment[] {
+  const [lead, ...tail] = columns;
+  const params: Record<string, string | number> = {};
+  const tie = buildKeysetCondition(tail, params);
+  if (lead!.value === null) {
+    const segments: Segment[] = [
+      { condition: `(${lead!.expr} IS NULL AND ${tie})`, params },
+    ];
+    if (lead!.direction === "ASC")
+      segments.push({ condition: `${lead!.expr} IS NOT NULL`, params: {} });
+    return segments;
+  }
+  params[lead!.param] = lead!.value;
+  const after = lead!.direction === "DESC" ? "<" : ">";
+  const segments: Segment[] = [
+    {
+      condition: `(${lead!.expr} ${after}= @${lead!.param} AND (${lead!.expr} ${after} @${lead!.param} OR ${tie}))`,
+      params,
+    },
+  ];
+  if (lead!.direction === "DESC")
+    segments.push({ condition: `${lead!.expr} IS NULL`, params: {} });
+  return segments;
+}
+
+function cursorSegments(query: TitleQuery, order: "ASC" | "DESC"): Segment[] {
+  const cursor = query.cursor ? decodeTitleCursor(query.cursor) : null;
+  if (!cursor) return [{ condition: null, params: {} }];
+  return keysetSegments(seekColumns(query.sort, order, cursor));
 }
 
 function mergeCondition(condition: string, extra: string | null): string {
@@ -242,31 +265,16 @@ function mergeCondition(condition: string, extra: string | null): string {
   return condition ? `${condition} AND ${extra}` : `WHERE ${extra}`;
 }
 
-function computeNextCursor(
-  db: Database.Database,
-  query: TitleQuery,
-  order: "ASC" | "DESC",
-  condition: string,
-  params: Record<string, string | number>,
-  from: string,
-  rows: TitleRow[],
-): string | null {
-  if (rows.length < query.pageSize) return null;
-  const lastRow = rows[rows.length - 1];
-  if (!lastRow) return null;
-  const peekParams: Record<string, string | number> = { ...params };
-  const peekCondition = mergeCondition(
-    condition,
-    buildKeysetCondition(
-      seekColumns(query.sort, order, rowCursor(lastRow)),
-      peekParams,
-    ),
-  );
-  const hasMore = db
-    .prepare(`SELECT 1 AS found FROM ${from} ${peekCondition} LIMIT 1`)
-    .get(peekParams);
-  return hasMore ? encodeTitleCursor(lastRow) : null;
-}
+/**
+ * Indexes whose order matches each sort under a `kind` filter. Without
+ * statistics the planner prefers whichever index narrows a filter most, then
+ * sorts every match; naming the index keeps the scan in result order.
+ */
+const sortIndex: Partial<Record<TitleQuery["sort"], string>> = {
+  votes: "titles_kind_votes_desc_idx",
+  rating: "titles_kind_rating_idx",
+  year: "titles_kind_year_idx",
+};
 
 export function listTitles(
   db: Database.Database,
@@ -287,23 +295,35 @@ export function listTitles(
   const counts = queryCache(db).counts;
   const cached = counts.get(cacheKey);
 
+  // CROSS JOIN pins the full-text hits as the outer loop. Otherwise the planner
+  // can walk a sort index over every title and re-run MATCH for each one.
   const from = fts
-    ? "titles t JOIN titles_fts f ON f.rowid = t.rowid"
+    ? "titles_fts f CROSS JOIN titles t ON t.rowid = f.rowid"
     : "titles t";
-  const rowParams: Record<string, string | number> = { ...params };
-  const cursorCondition = useCursor
-    ? buildCursorCondition(query, order, rowParams)
-    : null;
-  const rowCondition = mergeCondition(condition, cursorCondition);
-  const rows = db
-    .prepare(
-      `SELECT t.* FROM ${from} ${rowCondition} ORDER BY ${orderBy(query.sort, order)} LIMIT @limit${useCursor ? "" : " OFFSET @offset"}`,
-    )
-    .all({
-      ...rowParams,
-      limit: query.pageSize,
-      ...(useCursor ? {} : { offset }),
-    }) as TitleRow[];
+  const index = sortIndex[query.sort];
+  const rowFrom =
+    index && query.kind && !fts && params.id === undefined
+      ? `titles t INDEXED BY ${index}`
+      : from;
+  // One row past the page answers whether another page exists.
+  const fetched: TitleRow[] = [];
+  for (const segment of cursorSegments(query, order)) {
+    const limit = query.pageSize + 1 - fetched.length;
+    if (limit <= 0) break;
+    fetched.push(
+      ...(db
+        .prepare(
+          `SELECT t.* FROM ${rowFrom} ${mergeCondition(condition, segment.condition)} ORDER BY ${orderBy(query.sort, order)} LIMIT @limit${useCursor ? "" : " OFFSET @offset"}`,
+        )
+        .all({
+          ...params,
+          ...segment.params,
+          limit,
+          ...(useCursor ? {} : { offset }),
+        }) as TitleRow[]),
+    );
+  }
+  const rows = fetched.slice(0, query.pageSize);
 
   let total: number | null;
   if (includeTotal) {
@@ -325,15 +345,11 @@ export function listTitles(
     total = null;
   }
 
-  const nextCursor = computeNextCursor(
-    db,
-    query,
-    order,
-    condition,
-    params,
-    from,
-    rows,
-  );
+  const lastRow = rows[rows.length - 1];
+  const nextCursor =
+    fetched.length > query.pageSize && lastRow
+      ? encodeTitleCursor(lastRow)
+      : null;
 
   return {
     data: hydrateTitles(db, rows),

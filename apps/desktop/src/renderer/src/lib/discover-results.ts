@@ -22,6 +22,9 @@ export function createDiscoverResults(
   let cursor: string | null = null;
   let generation = 0;
   let disposed = false;
+  // The page after the loaded ones, requested as soon as its cursor arrives so
+  // reaching the end of the list appends it without a round trip.
+  let ahead: { cursor: string; page: Promise<PagedMovies> } | null = null;
   const listeners = new Set<() => void>();
   function publish(change: Partial<typeof snapshot>): void {
     snapshot = { ...snapshot, ...change };
@@ -29,6 +32,18 @@ export function createDiscoverResults(
   }
   function cancel(): void {
     generation++;
+    ahead = null;
+  }
+  function prefetch(capturedFilters: DiscoverFilters, next: string): void {
+    const page = request({ ...capturedFilters, cursor: next });
+    page.catch(() => undefined);
+    ahead = { cursor: next, page };
+  }
+  function nextPage(capturedFilters: DiscoverFilters): Promise<PagedMovies> {
+    const taken = ahead?.cursor === cursor ? ahead : null;
+    ahead = null;
+    const fresh = () => request({ ...capturedFilters, cursor });
+    return taken ? taken.page.catch(fresh) : fresh();
   }
   function configure(next: DiscoverFilters): void {
     disposed = false;
@@ -47,14 +62,19 @@ export function createDiscoverResults(
     const id = ++generation;
     const target = snapshot.items.length;
     const capturedFilters = { ...filters, page: 1 };
-    if (replace) cursor = null;
+    if (replace) {
+      cursor = null;
+      ahead = null;
+    }
     publish({
       loading: replace ? true : snapshot.loading,
       loadingMore: !replace,
       error: "",
     });
     try {
-      let data = await request({ ...capturedFilters, cursor });
+      let data = await (replace
+        ? request({ ...capturedFilters, cursor })
+        : nextPage(capturedFilters));
       if (disposed || id !== generation) return;
       const fresh = [...data.results];
       while (
@@ -74,6 +94,7 @@ export function createDiscoverResults(
         canLoadMore: data.canLoadMore,
         completion: { id, reset: replace && !preserve },
       });
+      if (data.canLoadMore && cursor) prefetch(capturedFilters, cursor);
     } catch (error) {
       if (!disposed && id === generation)
         publish({

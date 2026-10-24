@@ -939,6 +939,60 @@ test("rating sort cursor paging keeps the votes tie-break across pages", () => {
   catalog.close();
 });
 
+test("cursor paging matches one full read for every sort, order, and null lead", () => {
+  const catalog = openCatalog();
+  const values = [null, 1990, 2005, 2005, 2020];
+  catalog.insertTitleRows(
+    Array.from({ length: 23 }, (_, i) => ({
+      id: `tt${String(i + 1).padStart(7, "0")}`,
+      title: `Title ${i % 4}`,
+      originalTitle: `Title ${i % 4}`,
+      kind: i % 7 === 6 ? "tv" : "movie",
+      year: values[i % 5]!,
+      runtimeMinutes: 100,
+      imdbRating: i % 6 === 0 ? null : 6 + (i % 3),
+      imdbVotes: i % 5 === 0 ? null : 100 * (i % 4),
+      genres: ["Drama"],
+    })),
+  );
+  for (const sort of ["votes", "rating", "year", "title"] as const) {
+    for (const order of ["asc", "desc"] as const) {
+      for (const kind of [undefined, "movie"]) {
+        const base = { page: 1, sort, order, kind, includeTotal: false };
+        const all = catalog
+          .listTitles({ ...base, pageSize: 100 })
+          .data.map((title) => title.id);
+        const paged: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = catalog.listTitles({ ...base, pageSize: 2, cursor });
+          paged.push(...page.data.map((title) => title.id));
+          cursor = page.pagination.nextCursor ?? undefined;
+        } while (cursor);
+        assert.deepEqual(paged, all, `${sort} ${order} ${kind ?? "any"}`);
+      }
+    }
+  }
+  catalog.close();
+});
+
+test("a full final page reports no further cursor", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, { id: "tt0000001", title: "A", rating: 7, votes: 10 });
+  seedTitle(catalog, { id: "tt0000002", title: "B", rating: 7, votes: 20 });
+  const page = catalog.listTitles({
+    page: 1,
+    pageSize: 2,
+    sort: "votes",
+    order: "desc",
+    kind: "movie",
+    includeTotal: false,
+  });
+  assert.equal(page.data.length, 2);
+  assert.equal(page.pagination.nextCursor, null);
+  catalog.close();
+});
+
 test("poster candidates stay limited to the requested ids", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {
