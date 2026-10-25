@@ -276,11 +276,20 @@ const sortIndex: Partial<Record<TitleQuery["sort"], string>> = {
   year: "titles_kind_year_idx",
 };
 
+/**
+ * Full-text matches from which a search walks the sort index instead of the
+ * hits. The join fetches and sorts every hit before the page, which costs
+ * hundreds of milliseconds for a common word or a first letter; the walk
+ * stops at the page but crosses the whole index when hits are few.
+ */
+export const FTS_SET_THRESHOLD = 2000;
+
 export function listTitles(
   db: Database.Database,
   query: TitleQuery,
 ): TitleListResponse {
-  const { condition, params, fts } = buildWhere(query, db);
+  const index = query.kind ? sortIndex[query.sort] : undefined;
+  const { condition, params, fts } = buildWhere(query, db, Boolean(index));
   const order = query.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
   const useCursor = Boolean(query.cursor);
   const offset = useCursor ? 0 : (query.page - 1) * query.pageSize;
@@ -300,9 +309,8 @@ export function listTitles(
   const from = fts
     ? "titles_fts f CROSS JOIN titles t ON t.rowid = f.rowid"
     : "titles t";
-  const index = sortIndex[query.sort];
   const rowFrom =
-    index && query.kind && !fts && params.id === undefined
+    index && !fts && params.id === undefined
       ? `titles t INDEXED BY ${index}`
       : from;
   // One row past the page answers whether another page exists.
@@ -546,6 +554,7 @@ function libraryExclusionClause(
 function buildWhere(
   query: TitleQuery,
   db: Database.Database,
+  sortIndexed = false,
 ): {
   condition: string;
   params: Record<string, string | number>;
@@ -561,7 +570,12 @@ function buildWhere(
       params.id = raw.toLowerCase();
     } else {
       const match = toFtsQuery(raw);
-      if (match) {
+      if (match && sortIndexed && commonMatch(db, match)) {
+        where.push(
+          "t.rowid IN (SELECT rowid FROM titles_fts WHERE titles_fts MATCH @fts)",
+        );
+        params.fts = match;
+      } else if (match) {
         where.push("titles_fts MATCH @fts");
         params.fts = match;
         fts = true;
@@ -662,6 +676,15 @@ function buildWhere(
     params,
     fts,
   };
+}
+
+function commonMatch(db: Database.Database, match: string): boolean {
+  const { n } = db
+    .prepare(
+      `SELECT count(*) AS n FROM (SELECT 1 FROM titles_fts WHERE titles_fts MATCH ? LIMIT ${FTS_SET_THRESHOLD})`,
+    )
+    .get(match) as { n: number };
+  return n >= FTS_SET_THRESHOLD;
 }
 
 function toFtsQuery(raw: string): string | null {

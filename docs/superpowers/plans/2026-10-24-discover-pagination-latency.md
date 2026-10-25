@@ -87,3 +87,28 @@ The watched-only list already used the faster plan, so its change is noise. A th
 The Discover cases ran 10–35% slower in this round's post runs although no Discover code changed. This is session-to-session drift on this machine: text search, untouched since round one, ranged 22–30 ms. Single-digit-millisecond differences in these tables are within noise.
 
 What remains of the Library list's time is hydrating 360 titles, attaching their genres, people and languages: about 30 ms.
+
+## Round four: common-word text search
+
+**Cause.** A text search drove from the full-text hits (`titles_fts f CROSS JOIN titles t`), so every hit was fetched, filtered and sorted before the first page could be taken. A common word or a first letter matches a large part of the catalogue: "the" has 98,927 hits and "s" has 129,811. Search runs while the user types (400 ms debounce), so the first searches someone sees are the slowest.
+
+**Change.** When the sort has a matching index under a `kind` filter, `buildWhere` counts the hits up to `FTS_SET_THRESHOLD` (2,000). If the threshold is reached, the match becomes `t.rowid IN (SELECT rowid FROM titles_fts WHERE titles_fts MATCH @fts)`. SQLite builds that set once and walks the sort index, stopping at the page. Below the threshold, the search keeps the `CROSS JOIN`, which is faster when hits are few: the index walk crosses the whole index to find them (about 13 ms for a word with no hits). Measured per word, the two strategies cross between roughly 1,000 and 3,000 hits; at 2,000 either one is within about 3 ms of the other. The bounded count costs about 0.3 ms, or 19 ms for a single letter, where FTS expands the prefix either way.
+
+A test seeds more titles than the threshold. For a common word, a rare word and an absent word, it checks that cursor-paged results match across both strategies for votes, rating and year in both directions, with a watched title hidden. With the set filter inverted, the test fails.
+
+**Benchmark.** Same harness, plus nine search cases using the default Discover filters. Each figure is the mean of two runs' medians, and every run returned identical ID sequences.
+
+| Demo case | Matches | Page 1 before → after | Change | Next page before → after | Change |
+|---|---|---|---|---|---|
+| Typing search "s", Best match | 129,811 | 245.4 → 57.5 ms | −77% | 245.6 → 58.0 ms | −76% |
+| Search "the", Best match | 98,927 | 210.7 → 22.9 ms | −89% | 214.3 → 22.3 ms | −90% |
+| Search "the", by IMDb rating | 98,927 | 216.8 → 25.9 ms | −88% | 212.0 → 22.8 ms | −89% |
+| Search "love", Best match | 9,023 | 44.2 → 4.8 ms | −89% | 42.8 → 4.5 ms | −89% |
+| Search "love", newest first | 9,023 | 49.7 → 12.2 ms | −75% | 51.5 → 18.8 ms | −64% |
+| Search "night", Best match | 3,772 | 25.9 → 4.7 ms | −82% | 25.6 → 2.7 ms | −90% |
+| Text search "star", no floors | 2,369 | 21.8 → 6.0 ms | −72% | 22.2 → 6.2 ms | −72% |
+| Search "dark", Best match (join kept) | 1,913 | 3.3 → 3.4 ms | noise | — | — |
+| Search "matrix" (join kept) | 23 | 0.6 → 0.9 ms | noise | — | — |
+| Search "zzyzx", no matches (join kept) | 0 | 0.7 → 0.6 ms | noise | — | — |
+
+The non-search cases moved by under 1 ms in either direction; their code path is unchanged. "s" still costs about 57 ms, most of it FTS expanding a one-letter prefix twice: once to count, once to build the set. An FTS5 `prefix=` index would cut that, at the cost of a full-text rebuild and more disk.

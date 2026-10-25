@@ -11,7 +11,7 @@ import { RatingsStore } from "../services/ratings-store.js";
 import { bayesianScore } from "./bayesian.js";
 import { CatalogDatabase } from "./database.js";
 import Database from "better-sqlite3";
-import { libraryListSql } from "./query.js";
+import { FTS_SET_THRESHOLD, libraryListSql } from "./query.js";
 import { migrations } from "./schema.js";
 
 const dirs: string[] = [];
@@ -1153,6 +1153,75 @@ test("cursor paging matches one full read for every sort, order, and null lead",
           cursor = page.pagination.nextCursor ?? undefined;
         } while (cursor);
         assert.deepEqual(paged, all, `${sort} ${order} ${kind ?? "any"}`);
+      }
+    }
+  }
+  catalog.close();
+});
+
+test("a common search word pages the same through the sort index as through the full-text join", () => {
+  const catalog = openCatalog();
+  const years = [null, 1990, 2005, 2005, 2020];
+  catalog.insertTitleRows(
+    Array.from({ length: FTS_SET_THRESHOLD + 150 }, (_, i) => ({
+      id: `tt${String(i + 1).padStart(7, "0")}`,
+      title: i % 50 === 0 ? `Other ${i}` : `Word ${i % 300}`,
+      originalTitle: null,
+      kind: "movie",
+      year: years[i % 5]!,
+      runtimeMinutes: 100,
+      imdbRating: i % 7 === 0 ? null : 5 + (i % 5),
+      imdbVotes: i % 11 === 0 ? null : 10 * (i % 40),
+      genres: ["Drama"],
+    })),
+  );
+  catalog.saveLibrary("tt0000002", "watched", 8, null);
+  // Every title is a movie: with `kind` the common word walks the sort
+  // index, without it the same query reads the full-text join.
+  const read = (
+    query: string,
+    kind: string | undefined,
+    sort: "votes" | "rating" | "year",
+    order: "asc" | "desc",
+  ) => {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = catalog.listTitles({
+        page: 1,
+        pageSize: 40,
+        sort,
+        order,
+        kind,
+        query,
+        hideWatched: true,
+        includeTotal: false,
+        cursor,
+      });
+      ids.push(...page.data.map((title) => title.id));
+      cursor = page.pagination.nextCursor ?? undefined;
+    } while (cursor);
+    return ids;
+  };
+  for (const query of ["word", "other", "zzyzx"]) {
+    for (const sort of ["votes", "rating", "year"] as const) {
+      for (const order of ["asc", "desc"] as const) {
+        const viaIndex = read(query, "movie", sort, order);
+        assert.deepEqual(
+          viaIndex,
+          read(query, undefined, sort, order),
+          `${query} ${sort} ${order}`,
+        );
+        if (query === "word") {
+          assert.ok(
+            viaIndex.length > FTS_SET_THRESHOLD,
+            "enough matches for the index walk",
+          );
+          assert.ok(
+            !viaIndex.includes("tt0000002"),
+            "watched title stays hidden",
+          );
+        }
       }
     }
   }
