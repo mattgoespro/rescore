@@ -889,6 +889,63 @@ test("known nconsts are resolved from the people table", () => {
   catalog.close();
 });
 
+test("people search matches a prefix in any case and ranks by best-known credit", () => {
+  const catalog = openCatalog();
+  seedTitle(catalog, {
+    id: "tt0000001",
+    title: "Big",
+    rating: 8,
+    votes: 900000,
+  });
+  seedTitle(catalog, { id: "tt0000002", title: "Small", rating: 7, votes: 40 });
+  catalog.insertPeople([
+    {
+      titleId: "tt0000002",
+      nconst: "nm0000001",
+      name: "Dennis Obscure",
+      role: "director",
+      position: 0,
+    },
+    {
+      titleId: "tt0000001",
+      nconst: "nm0000002",
+      name: "Denis Famous",
+      role: "director",
+      position: 0,
+    },
+    {
+      titleId: "tt0000001",
+      nconst: "nm0000003",
+      name: "Dena Actor",
+      role: "cast",
+      position: 0,
+    },
+    {
+      titleId: "tt0000001",
+      nconst: "nm0000004",
+      name: "Den_Under",
+      role: "director",
+      position: 1,
+    },
+  ]);
+  const names = (query: string, role: "director" | "cast") =>
+    catalog.searchPeople(query, role).map((person) => person.name);
+  assert.deepEqual(names("den", "director"), [
+    "Den_Under",
+    "Denis Famous",
+    "Dennis Obscure",
+  ]);
+  assert.deepEqual(names("DENIS", "director"), ["Denis Famous"]);
+  assert.deepEqual(names("den", "cast"), ["Dena Actor"]);
+  assert.deepEqual(
+    names("den_", "director"),
+    ["Den_Under"],
+    "underscore is literal",
+  );
+  assert.deepEqual(names("d", "director"), [], "one letter is too broad");
+  catalog.close();
+});
+
 test("skipped titles never appear in title search", () => {
   const catalog = openCatalog();
   seedTitle(catalog, {

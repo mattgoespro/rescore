@@ -150,6 +150,22 @@ export class CatalogClient {
     return this.genreCache;
   }
 
+  /** Credited people whose names start with `query`, one row per name. */
+  async searchPeople(
+    query: string,
+    role: "director" | "cast",
+  ): Promise<Array<{ id: string; name: string }>> {
+    const response = await this.request<{
+      data: Array<{ nconst: string; name: string }>;
+    }>("/v1/people", { q: query.trim(), role });
+    const seen = new Set<string>();
+    return response.data.flatMap((person) => {
+      if (seen.has(person.name)) return [];
+      seen.add(person.name);
+      return [{ id: person.name, name: person.name }];
+    });
+  }
+
   async forYouPage(limit = 80): Promise<ForYouResponse> {
     return this.request<ForYouResponse>("/v1/for-you", { limit });
   }

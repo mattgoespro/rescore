@@ -11,3 +11,5 @@ export { default as IconCheck } from "./check";
 export { default as IconBookmark } from "./bookmark";
 export { default as IconExternal } from "./external";
 export { default as IconClose } from "./close";
+export { default as IconChevronDown } from "./chevron-down";
+export { default as IconPlus } from "./plus";

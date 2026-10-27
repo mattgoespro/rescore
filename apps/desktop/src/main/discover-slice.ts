@@ -32,6 +32,10 @@ export function discoverQueryParams(
     votesMin: filters.voteCountMin || undefined,
     runtimeMin: filters.runtimeMin ?? undefined,
     runtimeMax: filters.runtimeMax ?? undefined,
+    director: filters.directors.length
+      ? filters.directors.join(",")
+      : undefined,
+    cast: filters.cast.length ? filters.cast.join(",") : undefined,
     genre: names.genres.length ? names.genres.join(",") : undefined,
     withoutGenre: names.withoutGenres.length
       ? names.withoutGenres.join(",")

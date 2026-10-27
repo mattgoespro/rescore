@@ -12,6 +12,7 @@ export default function SuggestField<
   T extends { id: string | number; name: string },
 >({
   label,
+  name = "excludeLanguages",
   hint,
   placeholder,
   values,
@@ -20,6 +21,7 @@ export default function SuggestField<
   minQueryLength = 2,
 }: {
   label: string;
+  name?: string;
   hint?: string;
   placeholder: string;
   values: T[];
@@ -58,10 +60,7 @@ export default function SuggestField<
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
-    if (!hits.length) {
-      if (event.key === "Escape") setHits([]);
-      return;
-    }
+    if (!hits.length) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setActive((index) => (index + 1) % hits.length);
@@ -77,7 +76,11 @@ export default function SuggestField<
       add(hits[active]);
       return;
     }
-    if (event.key === "Escape") setHits([]);
+    if (event.key === "Escape") {
+      // Close only the suggestions, not a popover around the field.
+      event.stopPropagation();
+      setHits([]);
+    }
   }
 
   const open = hits.length > 0;
@@ -88,7 +91,7 @@ export default function SuggestField<
       <div className="relative">
         <input
           id={inputId}
-          name="excludeLanguages"
+          name={name}
           type="text"
           role="combobox"
           value={query}

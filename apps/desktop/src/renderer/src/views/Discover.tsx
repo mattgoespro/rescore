@@ -33,7 +33,10 @@ import {
   removeSearchHistory,
   saveSearchHistory,
 } from "../lib/search-history-store";
-import FilterPanel from "../components/filter-panel";
+import FilterBar from "../components/filter-bar";
+import HistoryMenu from "../components/filter-panel/history-menu";
+import SortField from "../components/filter-panel/sort-field";
+import TitleKindField from "../components/filter-panel/title-kind-field";
 import MovieCard from "../components/movie-card";
 import OverlayScroll from "../components/overlay-scroll";
 import VirtualList from "../components/virtual-list";
@@ -198,26 +201,10 @@ export default function Discover({
   return (
     <section
       ref={containerRef}
-      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr_auto] inspect:grid-cols-[288px_minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none"
+      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none"
     >
-      <FilterPanel
-        filters={filters}
-        setFilters={setFilters}
-        genres={genres}
-        history={history}
-        activeHistoryId={activeHistoryId}
-        onApplyHistory={(entry) => {
-          const next = applySearchHistory(filters, entry);
-          replayKey.current = JSON.stringify({ ...next, page: 1 });
-          setFilters(next);
-          setHistoryReplay((revision) => revision + 1);
-        }}
-        onRemoveHistory={(id) => {
-          void removeSearchHistory(id).then(setHistory);
-        }}
-      />
       <div className="flex min-h-0 min-w-0 flex-col pt-6 pr-0 pb-4 pl-6">
-        <div className="mb-5 flex items-end justify-between gap-4 pr-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pr-6">
           <div className="min-w-0">
             <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
               Discover
@@ -230,7 +217,46 @@ export default function Discover({
               {countLabel}
             </p>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-72">
+              <TitleKindField
+                value={filters.titleKind}
+                onChange={(titleKind) =>
+                  setFilters({
+                    ...filters,
+                    titleKind,
+                    genres: [],
+                    withoutGenres: [],
+                    sortBy:
+                      titleKind !== "movie" && filters.sortBy === "revenue.desc"
+                        ? "popularity.desc"
+                        : filters.sortBy,
+                    page: 1,
+                  })
+                }
+              />
+            </div>
+            <div className="w-52">
+              <SortField
+                value={filters.sortBy}
+                onChange={(sortBy) =>
+                  setFilters({ ...filters, sortBy, page: 1 })
+                }
+              />
+            </div>
+            <HistoryMenu
+              entries={history}
+              activeId={activeHistoryId}
+              onApply={(entry) => {
+                const next = applySearchHistory(filters, entry);
+                replayKey.current = JSON.stringify({ ...next, page: 1 });
+                setFilters(next);
+                setHistoryReplay((revision) => revision + 1);
+              }}
+              onRemove={(id) => {
+                void removeSearchHistory(id).then(setHistory);
+              }}
+            />
             <div
               className={segmentedGroup("icon")}
               role="group"
@@ -258,6 +284,13 @@ export default function Discover({
               </button>
             </div>
           </div>
+        </div>
+        <div className="mb-5 pr-6">
+          <FilterBar
+            filters={filters}
+            setFilters={setFilters}
+            genres={genres}
+          />
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <OverlayScroll
