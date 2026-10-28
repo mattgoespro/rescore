@@ -204,13 +204,15 @@ export default function Discover({
       className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none"
     >
       <div className="flex min-h-0 min-w-0 flex-col pt-6 pr-0 pb-4 pl-6">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pr-6">
-          <div className="min-w-0">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pr-6">
+          {/* The status sits beside the heading in a fixed slot, so its text
+              coming and going never moves the header or the filter bar. */}
+          <div className="flex min-w-0 items-baseline gap-3">
             <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
               Discover
             </h1>
             <p
-              className="m-0 mt-1 text-sm text-muted tabular"
+              className="m-0 w-32 shrink-0 truncate text-sm text-muted tabular"
               role="status"
               aria-live="polite"
             >
