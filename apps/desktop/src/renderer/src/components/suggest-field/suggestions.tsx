@@ -19,7 +19,7 @@ export default function Suggestions<
     <div
       id={id}
       role="listbox"
-      className="absolute inset-x-0 top-[calc(100%+0.25rem)] z-6 overflow-hidden rounded-control border border-control bg-raised p-1"
+      className="absolute inset-x-0 top-[calc(100%+0.25rem)] z-6 overflow-hidden rounded-control border border-line bg-raised p-1"
     >
       {hits.map((hit, index) => (
         <button

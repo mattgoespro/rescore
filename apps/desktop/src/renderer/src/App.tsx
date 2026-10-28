@@ -28,6 +28,7 @@ import {
 } from "../../shared/types";
 import CatalogLoader from "./components/catalog-loader";
 import Inspector from "./components/inspector";
+import { useNotify } from "./components/notifications";
 import TopBar from "./components/top-bar";
 import { applyAppearance } from "./lib/appearance";
 import { catalogLoaderDetail, isCatalogUiBlocked } from "./lib/catalog-busy";
@@ -63,10 +64,11 @@ export default function App(): JSX.Element {
   const [selected, setSelected] = useState<MovieSummary | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [error, setError] = useState("");
+  // Confirmations are announced to screen readers only; destructive actions
+  // raise a notification (bottom right) that can undo them.
   const [notice, setNotice] = useState("");
-  const [undoEntry, setUndoEntry] = useState<LibraryEntry | null>(null);
+  const notify = useNotify();
   const [libraryBusy, setLibraryBusy] = useState(false);
-  const undoButton = useRef<HTMLButtonElement>(null);
   const queryInput = useRef<HTMLInputElement>(null);
   const libraryActing = useRef(false);
   const settingsDirty = useRef(false);
@@ -87,11 +89,12 @@ export default function App(): JSX.Element {
     [view],
   );
 
+  // A library action can unmount the control that had focus (Remove, say);
+  // focus then returns to the page rather than the document body.
   useEffect(() => {
     if (document.activeElement !== document.body) return;
-    if (undoEntry) undoButton.current?.focus();
-    else if (notice) document.getElementById("main-content")?.focus();
-  }, [undoEntry, notice, libraryBusy]);
+    if (notice) document.getElementById("main-content")?.focus();
+  }, [notice, libraryBusy]);
   const [booting, setBooting] = useState(true);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(
     null,
@@ -287,7 +290,6 @@ export default function App(): JSX.Element {
     try {
       const next = await window.api.upsertLibrary({ movie, status, rating });
       setLibrary(next);
-      if (undoEntry?.imdbId === movie.imdbId) setUndoEntry(null);
       setNotice(
         rating != null
           ? `Rated ${movie.title} ${rating} out of 10.`
@@ -318,8 +320,12 @@ export default function App(): JSX.Element {
     setError("");
     try {
       setLibrary(await window.api.removeLibrary(id, mediaType));
-      setUndoEntry(entry);
       setNotice(`${entry.title} removed from your library.`);
+      notify({
+        tone: "success",
+        message: `${entry.title} removed from your library.`,
+        undo: () => undoRemove(entry),
+      });
       setProfile(await window.api.profile().catch(() => profile));
     } catch {
       setError(
@@ -331,9 +337,8 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function undoRemove(): Promise<void> {
-    if (!undoEntry || libraryActing.current) return;
-    const entry = undoEntry;
+  async function undoRemove(entry: LibraryEntry): Promise<void> {
+    if (libraryActing.current) return;
     libraryActing.current = true;
     setLibraryBusy(true);
     setError("");
@@ -346,13 +351,18 @@ export default function App(): JSX.Element {
           ratedAt: entry.ratedAt,
         }),
       );
-      setUndoEntry(null);
       setNotice(`${entry.title} restored to your library.`);
+      notify({
+        tone: "success",
+        message: `${entry.title} restored to your library.`,
+      });
       setProfile(await window.api.profile().catch(() => profile));
     } catch {
-      setError(
-        "Could not restore this title. Check the catalogue service, then select Undo again.",
-      );
+      notify({
+        tone: "error",
+        message: `Could not restore ${entry.title}. Check the catalogue service and try again.`,
+        undo: () => undoRemove(entry),
+      });
     } finally {
       libraryActing.current = false;
       setLibraryBusy(false);
@@ -429,7 +439,7 @@ export default function App(): JSX.Element {
             <div
               role="alert"
               className={cn(
-                "mb-4 rounded-control border border-danger bg-transparent px-3 py-2.5 text-[13px] text-danger",
+                "mb-4 rounded-control bg-danger/12 px-3 py-2.5 text-[13px] text-danger",
                 (discoverLayout || forYouLayout) && "shrink-0",
                 (discoverLayout || forYouLayout) && "mx-6 mt-4 mb-0",
               )}
@@ -447,34 +457,10 @@ export default function App(): JSX.Element {
               role="status"
               aria-live="polite"
               aria-atomic="true"
-              className={notice ? "my-2 text-[13px] text-muted" : "sr-only"}
+              className="sr-only"
             >
               {notice}
             </p>
-            {undoEntry && (
-              <div className="mb-2 flex items-center gap-2">
-                <button
-                  ref={undoButton}
-                  type="button"
-                  className={btn("primary", "compact")}
-                  disabled={libraryBusy}
-                  onClick={() => void undoRemove()}
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  className={btn("ghost", "compact")}
-                  disabled={libraryBusy}
-                  onClick={() => {
-                    setUndoEntry(null);
-                    setNotice("");
-                  }}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
           </div>
           {view === "settings" ? (
             <SettingsView

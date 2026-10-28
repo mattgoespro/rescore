@@ -90,24 +90,6 @@ export default function FieldEditor({
           }
         />
       );
-    case "directors":
-      return (
-        <PeopleEditor
-          role="director"
-          label="Directed by"
-          names={filters.directors}
-          onChange={(directors) => patch({ directors })}
-        />
-      );
-    case "cast":
-      return (
-        <PeopleEditor
-          role="cast"
-          label="Starring"
-          names={filters.cast}
-          onChange={(cast) => patch({ cast })}
-        />
-      );
   }
 }
 
@@ -268,44 +250,6 @@ function LanguagesEditor({
             .map((language) => language.id)
             .slice(0, 12),
         })
-      }
-      search={search}
-    />
-  );
-}
-
-function PeopleEditor({
-  role,
-  label,
-  names,
-  onChange,
-}: {
-  role: "director" | "cast";
-  label: string;
-  names: string[];
-  onChange: (names: string[]) => void;
-}): JSX.Element {
-  const search = useCallback(
-    async (query: string) =>
-      (await window.api.people(query, role)).filter(
-        (person) => !names.includes(person.name),
-      ),
-    [role, names],
-  );
-  return (
-    <SuggestField
-      label={label}
-      name={role === "director" ? "directors" : "cast"}
-      hint={
-        names.length > 1
-          ? "A title must credit every name here."
-          : "Suggestions come from the IMDb credits."
-      }
-      placeholder="Start typing a name…"
-      minQueryLength={3}
-      values={names.map((name) => ({ id: name, name }))}
-      onChange={(people) =>
-        onChange(people.map((person) => person.name).slice(0, 10))
       }
       search={search}
     />

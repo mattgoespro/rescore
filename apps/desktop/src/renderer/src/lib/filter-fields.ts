@@ -13,31 +13,19 @@ import {
 } from "../components/filter-panel/constants";
 
 export type FilterFieldId =
-  | "genres"
-  | "released"
-  | "quality"
-  | "languages"
-  | "library"
-  | "runtime"
-  | "directors"
-  | "cast";
-
-export type FilterGroup = "Content" | "People" | "Quality" | "Library";
+  "genres" | "released" | "quality" | "runtime" | "languages" | "library";
 
 /**
- * One filter in the Discover bar. Pinned fields always show as a pill; the
- * rest wait in "Add filter" until added or set, so a new field costs one
- * menu entry until someone uses it. Type, sort and the query are view
- * controls, not filters, and are never fields here.
+ * One filter in the Discover bar, shown as a pill that opens its editor.
+ * Type, sort and the query are view controls, not filters, and are never
+ * fields here.
  */
 export interface FilterFieldSpec {
   id: FilterFieldId;
   /** Pill label, read before the summary ("Genres", "Hiding"). */
   label: string;
-  /** Name in "Add filter" and in the editor's accessible label. */
+  /** The editor's accessible label. */
   name: string;
-  group: FilterGroup;
-  pinned: boolean;
   changed: (filters: DiscoverFilters) => boolean;
   /** The whole setting, for the pill's tooltip and accessible name. */
   summary: (filters: DiscoverFilters, genres: readonly Genre[]) => string;
@@ -72,12 +60,6 @@ function sameSet(a: readonly unknown[], b: readonly unknown[]): boolean {
   return a.length === b.length && a.every((value) => b.includes(value));
 }
 
-function shortList(names: string[]): string {
-  return names.length <= 2
-    ? names.join(", ")
-    : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
-}
-
 export function compactCount(value: number): string {
   if (value < 1000) return String(value);
   const thousands = value / 1000;
@@ -94,8 +76,6 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     id: "genres",
     label: "Genres",
     name: "Genres",
-    group: "Content",
-    pinned: true,
     changed: (f) => f.genres.length > 0 || f.withoutGenres.length > 0,
     summary: (f, genres) => {
       const parts: string[] = [];
@@ -114,8 +94,6 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     id: "released",
     label: "Released",
     name: "Release year",
-    group: "Content",
-    pinned: true,
     changed: (f) =>
       !sameRange(
         [f.yearMin, f.yearMax],
@@ -130,8 +108,6 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     id: "quality",
     label: "Quality",
     name: "Quality floor",
-    group: "Quality",
-    pinned: true,
     changed: (f) =>
       f.ratingMin !== base.ratingMin ||
       f.ratingMax !== base.ratingMax ||
@@ -149,11 +125,23 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     }),
   },
   {
+    id: "runtime",
+    label: "Runtime",
+    name: "Runtime",
+    changed: (f) =>
+      !sameRange(
+        [f.runtimeMin, f.runtimeMax],
+        [base.runtimeMin, base.runtimeMax],
+        RUNTIME_FLOOR,
+        RUNTIME_CEILING,
+      ),
+    summary: (f) => runtimeCaption(f.runtimeMin, f.runtimeMax),
+    clear: () => ({ runtimeMin: base.runtimeMin, runtimeMax: base.runtimeMax }),
+  },
+  {
     id: "languages",
     label: "Hiding",
     name: "Languages",
-    group: "Content",
-    pinned: true,
     changed: (f) => !sameSet(f.excludeLanguages, base.excludeLanguages),
     summary: (f) =>
       f.excludeLanguages.length === 0
@@ -167,8 +155,6 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     id: "library",
     label: "Hiding",
     name: "Your library",
-    group: "Library",
-    pinned: true,
     changed: (f) =>
       f.hideWatched !== base.hideWatched ||
       f.hideWatchlist !== base.hideWatchlist,
@@ -185,42 +171,6 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
       hideWatchlist: base.hideWatchlist,
     }),
   },
-  {
-    id: "runtime",
-    label: "Runtime",
-    name: "Runtime",
-    group: "Content",
-    pinned: false,
-    changed: (f) =>
-      !sameRange(
-        [f.runtimeMin, f.runtimeMax],
-        [base.runtimeMin, base.runtimeMax],
-        RUNTIME_FLOOR,
-        RUNTIME_CEILING,
-      ),
-    summary: (f) => runtimeCaption(f.runtimeMin, f.runtimeMax),
-    clear: () => ({ runtimeMin: base.runtimeMin, runtimeMax: base.runtimeMax }),
-  },
-  {
-    id: "directors",
-    label: "Director",
-    name: "Director",
-    group: "People",
-    pinned: false,
-    changed: (f) => f.directors.length > 0,
-    summary: (f) => (f.directors.length ? shortList(f.directors) : "Anyone"),
-    clear: () => ({ directors: [] }),
-  },
-  {
-    id: "cast",
-    label: "Cast",
-    name: "Cast",
-    group: "People",
-    pinned: false,
-    changed: (f) => f.cast.length > 0,
-    summary: (f) => (f.cast.length ? shortList(f.cast) : "Anyone"),
-    clear: () => ({ cast: [] }),
-  },
 ];
 
 /** "Episode length" for TV, where runtime is per episode. */
@@ -236,24 +186,6 @@ export function fieldLabel(
 /** Filters that differ from a fresh search; type, sort and query never count. */
 export function activeFilterCount(filters: DiscoverFilters): number {
   return FILTER_FIELDS.filter((field) => field.changed(filters)).length;
-}
-
-/** Pills to show: pinned fields, plus any optional field set or just added. */
-export function visibleFields(
-  filters: DiscoverFilters,
-  added: ReadonlySet<FilterFieldId>,
-): FilterFieldSpec[] {
-  return FILTER_FIELDS.filter(
-    (field) => field.pinned || field.changed(filters) || added.has(field.id),
-  );
-}
-
-export function addableFields(
-  filters: DiscoverFilters,
-  added: ReadonlySet<FilterFieldId>,
-): FilterFieldSpec[] {
-  const shown = new Set(visibleFields(filters, added).map((f) => f.id));
-  return FILTER_FIELDS.filter((field) => !shown.has(field.id));
 }
 
 /** Every filter back to its default; the query, type and sort stay. */

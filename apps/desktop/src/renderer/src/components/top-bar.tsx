@@ -53,7 +53,7 @@ export default function TopBar({
       />
       <nav
         aria-label="Primary"
-        className="flex shrink-0 gap-0.5 rounded-app border border-line p-0.75 app-no-drag"
+        className="flex shrink-0 gap-0.5 rounded-app bg-wash-6 p-0.75 app-no-drag"
       >
         {NAV.map((item) => (
           <button
@@ -85,7 +85,7 @@ export default function TopBar({
           <button
             type="button"
             aria-describedby={tipId}
-            className="flex h-8 items-center gap-2 rounded-control border border-line bg-transparent px-2.5 text-xs font-medium text-muted"
+            className="flex h-8 items-center gap-2 rounded-control bg-wash-6 px-2.5 text-xs font-medium text-muted"
           >
             <span
               aria-hidden="true"
@@ -96,7 +96,7 @@ export default function TopBar({
           <div
             id={tipId}
             role="tooltip"
-            className="invisible absolute top-10 right-0 z-50 flex w-60 flex-col gap-1 rounded-control border border-control bg-raised px-3 py-2.5 text-left group-focus-within:visible group-hover:visible"
+            className="invisible absolute top-10 right-0 z-50 flex w-60 flex-col gap-1 rounded-control border border-line bg-raised px-3 py-2.5 text-left group-focus-within:visible group-hover:visible"
           >
             <span className="text-[13px] font-semibold text-ink">
               {status.tip}

@@ -147,16 +147,6 @@ export function registerIpc(
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>
     withCatalog(null, () => getClient().title(imdbId)),
   );
-  ipcMain.handle("catalog:people", (_event, query: unknown, role: unknown) => {
-    if (
-      typeof query !== "string" ||
-      !query.trim() ||
-      query.length > 200 ||
-      (role !== "director" && role !== "cast")
-    )
-      return [];
-    return withCatalog([], () => getClient().searchPeople(query, role));
-  });
   ipcMain.handle("catalog:fillMedia", (_event, ids: string[]) =>
     withCatalog([], () => getClient().fillMedia(ids)),
   );

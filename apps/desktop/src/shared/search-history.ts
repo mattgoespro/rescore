@@ -42,8 +42,6 @@ export function searchHistoryKey(entry: {
     full.voteCountMin,
     full.runtimeMin,
     full.runtimeMax,
-    [...full.directors].sort(),
-    [...full.cast].sort(),
     full.hideWatched,
     full.hideWatchlist,
   ]);
@@ -126,8 +124,6 @@ export function applySearchHistory(
     genres: entry.genres.map((genre) => genre.id),
     withoutGenres: [...(entry.filters?.withoutGenres ?? [])],
     excludeLanguages: [...(entry.filters?.excludeLanguages ?? [])],
-    directors: [...(entry.filters?.directors ?? [])],
-    cast: [...(entry.filters?.cast ?? [])],
     yearMin: entry.yearMin,
     yearMax: entry.yearMax,
     ratingMin: entry.ratingMin,
@@ -238,8 +234,6 @@ function historyFilters(
     genres: [...rest.genres],
     withoutGenres: [...rest.withoutGenres],
     excludeLanguages: [...rest.excludeLanguages],
-    directors: [...(rest.directors ?? [])],
-    cast: [...(rest.cast ?? [])],
   };
 }
 
@@ -270,14 +264,6 @@ function normalizeHistoryFilters(raw: unknown): SearchHistoryEntry["filters"] {
   }
   if (Array.isArray(input.excludeLanguages))
     filters.excludeLanguages = input.excludeLanguages.filter(isLanguageCode);
-  for (const key of ["directors", "cast"] as const) {
-    if (Array.isArray(input[key]))
-      filters[key] = input[key]
-        .filter((name): name is string => typeof name === "string")
-        .map((name) => name.trim())
-        .filter((name) => name.length > 0 && name.length <= 200)
-        .slice(0, 10);
-  }
   return historyFilters(filters);
 }
 

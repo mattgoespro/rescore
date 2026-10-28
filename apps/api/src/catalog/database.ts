@@ -193,31 +193,18 @@ export class CatalogDatabase {
     limit = 8,
   ): Array<{ nconst: string; name: string }> {
     const trimmed = query.trim();
-    // One letter matches a large share of a million names; it ranks nothing useful.
-    if (trimmed.length < 2) return [];
-    // The NOCASE range walks people_name_nocase_idx (LIKE alone cannot, as
-    // the column is not declared NOCASE); LIKE then keeps exact prefix
-    // matches. People rank by their best-known credit in the role.
+    if (!trimmed) return [];
     return this.db
       .prepare(
         `SELECT p.nconst, p.name
 FROM people p
-JOIN title_people tp ON tp.nconst = p.nconst AND tp.role = @role
-JOIN titles t ON t.id = tp.title_id
-WHERE p.name >= @prefix COLLATE NOCASE
-  AND p.name < @ceiling COLLATE NOCASE
-  AND p.name LIKE @pattern ESCAPE '\\'
+JOIN title_people tp ON tp.nconst = p.nconst
+WHERE tp.role = ? AND p.name LIKE ? || '%'
 GROUP BY p.nconst
-ORDER BY max(t.imdb_votes) DESC, p.name
-LIMIT @limit`,
+ORDER BY p.name
+LIMIT ?`,
       )
-      .all({
-        role,
-        prefix: trimmed,
-        ceiling: `${trimmed}\u{10FFFF}`,
-        pattern: `${trimmed.replace(/[\\%_]/g, "\\$&")}%`,
-        limit,
-      }) as Array<{ nconst: string; name: string }>;
+      .all(role, trimmed, limit) as Array<{ nconst: string; name: string }>;
   }
 
   title(id: string): TitleDto | null {

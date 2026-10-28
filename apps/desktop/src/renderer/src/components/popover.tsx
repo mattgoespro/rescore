@@ -115,7 +115,7 @@ export default function Popover({
       aria-label={label}
       tabIndex={-1}
       className={cn(
-        "fixed z-40 rounded-control border border-control bg-raised p-4 outline-none",
+        "fixed z-40 rounded-control border border-line bg-raised p-4 outline-none",
         className,
       )}
       style={{

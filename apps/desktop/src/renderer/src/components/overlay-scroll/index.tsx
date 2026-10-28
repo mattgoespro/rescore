@@ -17,10 +17,12 @@ const OverlayScroll = forwardRef<
     className?: string;
     children: ReactNode;
     id?: string;
+    /** Accessible name of the scrolling region. */
+    label?: string;
     onScroll?: (event: UIEvent<HTMLDivElement>) => void;
   }
 >(function OverlayScroll(
-  { className = "", children, id, onScroll },
+  { className = "", children, id, label = "Titles", onScroll },
   ref,
 ): JSX.Element {
   const viewRef = useRef<HTMLDivElement | null>(null);
@@ -126,7 +128,7 @@ const OverlayScroll = forwardRef<
         )}
         tabIndex={0}
         role="region"
-        aria-label="Titles"
+        aria-label={label}
         onScroll={(event) => {
           sync();
           onScroll?.(event);

@@ -13,6 +13,7 @@ import type {
   ThemeMode,
 } from "../../../shared/types";
 import CatalogLoader from "../components/catalog-loader";
+import { useNotify } from "../components/notifications";
 import BackgroundService from "../components/background-service";
 import Select from "../components/select";
 import { applyAppearance } from "../lib/appearance";
@@ -56,6 +57,7 @@ export default function SettingsView({
   onError: (message: string) => void;
   onDirtyChange: (dirty: boolean) => void;
 }): JSX.Element {
+  const notify = useNotify();
   const [catalogApiUrl, setCatalogApiUrl] = useState(settings.catalogApiUrl);
   const [serviceRequired, setServiceRequired] = useState(true);
   useEffect(() => {
@@ -289,7 +291,7 @@ export default function SettingsView({
                   onChange={(event) =>
                     void commitAppearance(themeMode, event.target.value)
                   }
-                  className="size-9 shrink-0 cursor-pointer rounded-control border border-control bg-transparent p-1 [&::-webkit-color-swatch]:rounded-[2px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+                  className="size-9 shrink-0 cursor-pointer rounded-control border border-transparent bg-wash-6 p-1 [&::-webkit-color-swatch]:rounded-[2px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
                 />
                 <input
                   type="text"
@@ -388,7 +390,7 @@ export default function SettingsView({
                   if (confirm("Clear local ratings, watchlist, and skips?")) {
                     try {
                       onLibraryChange(await window.api.clearLibrary());
-                      setFeedback("Library cleared.");
+                      notify({ tone: "success", message: "Library cleared." });
                     } catch {
                       onError(
                         "Could not clear the library. Check the catalogue service and try again.",

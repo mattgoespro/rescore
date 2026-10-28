@@ -41,6 +41,7 @@ import MovieCard from "../components/movie-card";
 import OverlayScroll from "../components/overlay-scroll";
 import VirtualList from "../components/virtual-list";
 import CatalogLoader from "../components/catalog-loader";
+import { useNotify } from "../components/notifications";
 import { IconGrid, IconList } from "../components/icons";
 import { enterDelayMs } from "../motion";
 import { cn } from "../lib/cn";
@@ -72,6 +73,7 @@ export default function Discover({
   inspector: ReactNode;
 }): JSX.Element {
   const { containerRef, media } = useVisibleMedia();
+  const notify = useNotify();
   const results = useMemo(
     () => createDiscoverResults((filters) => window.api.discover(filters)),
     [],
@@ -256,43 +258,63 @@ export default function Discover({
                 setHistoryReplay((revision) => revision + 1);
               }}
               onRemove={(id) => {
-                void removeSearchHistory(id).then(setHistory);
+                const removed = history.find((entry) => entry.id === id);
+                void removeSearchHistory(id).then((next) => {
+                  setHistory(next);
+                  if (!removed) return;
+                  const { id: _id, savedAt: _savedAt, ...input } = removed;
+                  notify({
+                    tone: "success",
+                    message: "Saved search removed.",
+                    undo: () =>
+                      saveSearchHistory(input).then(setHistory, () =>
+                        notify({
+                          tone: "error",
+                          message: "Could not restore that saved search.",
+                        }),
+                      ),
+                  });
+                });
               }}
             />
-            <div
-              className={segmentedGroup("icon")}
-              role="group"
-              aria-label="Result layout"
-            >
-              <button
-                type="button"
-                className={segmentedCell(layout === "list", "icon")}
-                aria-label="List view"
-                aria-pressed={layout === "list"}
-                onClick={() => setLayout("list")}
-              >
-                <IconList className="size-3.5" />
-                <span aria-hidden="true">List</span>
-              </button>
-              <button
-                type="button"
-                className={segmentedCell(layout === "grid", "icon")}
-                aria-label="Grid view"
-                aria-pressed={layout === "grid"}
-                onClick={() => setLayout("grid")}
-              >
-                <IconGrid className="size-3.5" />
-                <span aria-hidden="true">Grid</span>
-              </button>
-            </div>
           </div>
         </div>
-        <div className="mb-5 pr-6">
+        <div className="mb-4 pr-6">
           <FilterBar
             filters={filters}
             setFilters={setFilters}
             genres={genres}
           />
+        </div>
+        {/* How the results are drawn sits with the results, apart from the
+            filters that choose them. */}
+        <div className="mb-3 flex justify-end pr-6">
+          <div
+            className={segmentedGroup("icon")}
+            role="group"
+            aria-label="Result layout"
+          >
+            <button
+              type="button"
+              className={segmentedCell(layout === "list", "icon")}
+              aria-label="List view"
+              aria-pressed={layout === "list"}
+              onClick={() => setLayout("list")}
+            >
+              <IconList className="size-3.5" />
+              <span aria-hidden="true">List</span>
+            </button>
+            <button
+              type="button"
+              className={segmentedCell(layout === "grid", "icon")}
+              aria-label="Grid view"
+              aria-pressed={layout === "grid"}
+              onClick={() => setLayout("grid")}
+            >
+              <IconGrid className="size-3.5" />
+              <span aria-hidden="true">Grid</span>
+            </button>
+          </div>
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <OverlayScroll

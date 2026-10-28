@@ -68,7 +68,7 @@ export default function MovieCard({
             : "flex min-w-0 flex-col gap-0.5"
         }
       >
-        <Title title={movie.title} grid={grid} />
+        <Title title={movie.title} />
         <Caption
           compact={!grid}
           kind={kind}

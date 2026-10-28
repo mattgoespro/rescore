@@ -7,12 +7,8 @@ test("default discover filters do not advertise catalogue fields IMDb dumps lack
   assert.equal("keywords" in filters, false);
   assert.equal("providers" in filters, false);
   assert.equal("language" in filters, false);
-});
-
-test("director and cast filters start empty; the credits tables answer them", () => {
-  const filters = defaultFilters();
-  assert.deepEqual(filters.directors, []);
-  assert.deepEqual(filters.cast, []);
+  assert.equal("cast" in filters, false);
+  assert.equal("directors" in filters, false);
 });
 
 test("best match is the taste sort, with the selected default language exclusions", () => {

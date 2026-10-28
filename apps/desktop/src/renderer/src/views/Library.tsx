@@ -249,7 +249,7 @@ export default function Library({
                   />
                   {entry.rating != null ? (
                     <span
-                      className="grid size-8 place-items-center rounded-control border border-accent text-[13px] font-semibold text-accent-text tabular"
+                      className="grid size-8 place-items-center rounded-control bg-accent/15 text-[13px] font-semibold text-accent-text tabular"
                       aria-label={`Your rating ${entry.rating} out of 10`}
                     >
                       {entry.rating}

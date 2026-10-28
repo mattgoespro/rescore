@@ -47,30 +47,6 @@ test("history round trips the whole form and clears unrelated current filters", 
   );
 });
 
-test("history keeps director and cast filters and drops malformed names", () => {
-  const filters: DiscoverFilters = {
-    ...defaultFilters(),
-    directors: ["Michael Mann"],
-    cast: ["Al Pacino", "Robert De Niro"],
-  };
-  const snapshot = snapshotSearchHistory(filters, []);
-  assert.equal(isDefaultSearchHistory(snapshot), false);
-  const [entry] = normalizeSearchHistory([
-    {
-      ...snapshot,
-      id: "people",
-      savedAt: "fixture",
-      filters: {
-        ...snapshot.filters!,
-        cast: ["Al Pacino", "  ", 7, "Robert De Niro"] as unknown as string[],
-      },
-    },
-  ]);
-  const replayed = applySearchHistory(defaultFilters(), entry!);
-  assert.deepEqual(replayed.directors, ["Michael Mann"]);
-  assert.deepEqual(replayed.cast, ["Al Pacino", "Robert De Niro"]);
-});
-
 test("saved exclusions retain IMDb and compatibility codes but reject unknown values", () => {
   const snapshot = snapshotSearchHistory(defaultFilters(), []);
   const [entry] = normalizeSearchHistory([

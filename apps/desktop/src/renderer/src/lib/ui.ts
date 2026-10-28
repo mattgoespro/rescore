@@ -1,8 +1,9 @@
 import { cn } from "./cn";
 
 /**
- * Dark paper buttons: one filled primary per screen, outlined secondary,
- * text-only tertiary ("link") and outlined danger. Flat, 4px corners.
+ * Filled-surface buttons, no outlines: one solid primary per screen, a wash
+ * for secondary, text-only tertiary ("link") and a red tint for danger.
+ * The border stays, transparent, so every variant keeps the same box.
  */
 export function btn(
   ...variants: Array<
@@ -30,23 +31,25 @@ export function btn(
         ? "h-8 px-3 text-xs"
         : "h-9 px-3.5 text-sm",
     primary
-      ? "border-accent bg-accent text-accent-ink hover:bg-accent/90"
+      ? "border-transparent bg-accent text-accent-ink hover:bg-accent/90"
       : danger
-        ? "border-danger bg-transparent text-danger hover:bg-wash-6"
+        ? "border-transparent bg-danger/12 text-danger hover:bg-danger/20"
         : ghost || link
           ? "border-transparent bg-transparent text-muted hover:bg-wash-6 hover:text-ink"
-          : "border-control bg-transparent text-ink hover:bg-wash-6",
+          : "border-transparent bg-wash-6 text-ink hover:bg-wash-9",
     link && "no-underline",
   );
 }
 
-/** Square outlined icon button (refresh, history, settings). */
+/** Square icon button on a wash, or bare (refresh, history, settings). */
 export function iconBtn(
   ...variants: Array<"busy" | "bare" | false | undefined>
 ): string {
   return cn(
     "grid size-9 shrink-0 place-items-center rounded-control border p-0 text-muted transition-colors duration-140 app-no-drag hover:bg-wash-6 hover:text-ink disabled:cursor-not-allowed",
-    variants.includes("bare") ? "border-transparent" : "border-control",
+    variants.includes("bare")
+      ? "border-transparent"
+      : "border-transparent bg-wash-6 hover:bg-wash-9",
     variants.includes("busy") &&
       "[&_svg]:animate-catalog motion-reduce:[&_svg]:animate-catalog-reduced!",
   );
@@ -70,7 +73,7 @@ export const rangeInputClass =
   "h-3 w-full min-w-0 flex-1 cursor-pointer appearance-none bg-transparent outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent-text focus-visible:outline-offset-2 [&::-webkit-slider-runnable-track]:h-0.5 [&::-webkit-slider-runnable-track]:bg-track [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:size-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[2px] [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-accent";
 
 export const overlayPanelClass =
-  "fixed z-40 overflow-auto overscroll-contain rounded-control border border-control bg-raised p-1";
+  "fixed z-40 overflow-auto overscroll-contain rounded-control border border-line bg-raised p-1";
 
 export const progressBarClass = "h-0.5 overflow-hidden bg-track";
 export const progressFillClass = "h-full bg-accent";
@@ -80,21 +83,21 @@ export const sectionLabelClass = "kicker";
 
 export function chipClass(selected: boolean): string {
   return cn(
-    "inline-flex h-8 items-center justify-center gap-1 rounded-control border px-2 text-[13px] font-medium whitespace-nowrap transition-colors duration-140",
+    "inline-flex h-8 items-center justify-center gap-1 rounded-full border border-transparent px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-140",
     selected
-      ? "border-accent bg-selected text-accent-text"
-      : "border-control bg-transparent text-ink hover:bg-wash-6",
+      ? "bg-accent/15 text-accent-text"
+      : "bg-wash-6 text-ink hover:bg-wash-9",
   );
 }
 
 /**
  * Segmented radio group. "text" fills its row and sizes each option to its
- * label; "icon" hugs its content. The selected cell sits 3px inside the
- * outline on every side.
+ * label; "icon" hugs its content. Options sit on one wash track, and the
+ * selected one is lifted 3px inside it on every side.
  */
 export function segmentedGroup(density: "text" | "icon"): string {
   return cn(
-    "flex gap-[3px] rounded-control border border-control p-[3px]",
+    "flex gap-[3px] rounded-md bg-wash-6 p-[3px]",
     density === "text" ? "w-full" : "w-fit",
   );
 }
@@ -104,19 +107,19 @@ export function segmentedCell(
   density: "text" | "icon",
 ): string {
   return cn(
-    "flex h-7 min-w-0 items-center justify-center gap-1.5 truncate rounded-[2px] border-0 text-[13px] focus-visible:outline-offset-0",
+    "flex h-7 min-w-0 items-center justify-center gap-1.5 truncate rounded-control border-0 text-[13px] focus-visible:outline-offset-0",
     density === "icon" ? "px-2.5" : "flex-auto px-2",
     selected
-      ? "bg-selected font-semibold text-accent-text"
+      ? "bg-lifted font-semibold text-ink"
       : "bg-transparent font-medium text-muted hover:bg-wash-6 hover:text-ink",
   );
 }
 
 export function ratingCell(filled: boolean): string {
   return cn(
-    "h-8 flex-1 rounded-control border p-0 text-[13px] font-semibold transition-colors duration-140 disabled:cursor-wait",
+    "h-8 flex-1 rounded-control border-0 p-0 text-[13px] font-semibold transition-colors duration-140 disabled:cursor-wait",
     filled
-      ? "border-accent bg-selected text-accent-text"
-      : "border-control bg-transparent text-muted hover:bg-wash-6 hover:text-ink",
+      ? "bg-accent text-accent-ink hover:bg-accent/90"
+      : "bg-wash-6 text-muted hover:bg-wash-9 hover:text-ink",
   );
 }

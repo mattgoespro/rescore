@@ -1,21 +1,16 @@
 import type { JSX } from "react";
-import { cn } from "../../lib/cn";
+import OverflowTooltip from "../overflow-tooltip";
 
-export default function Title({
-  title,
-  grid,
-}: {
-  title: string;
-  grid: boolean;
-}): JSX.Element {
+/**
+ * One line in every layout, so captions line up across a row; a title that
+ * does not fit ends in an ellipsis and shows in full in a tooltip.
+ */
+export default function Title({ title }: { title: string }): JSX.Element {
   return (
-    <h2
-      className={cn(
-        "m-0 text-sm leading-snug font-semibold wrap-anywhere",
-        grid && "line-clamp-2",
-      )}
-    >
-      {title}
-    </h2>
+    <OverflowTooltip
+      as="h2"
+      text={title}
+      className="m-0 text-sm leading-snug font-semibold"
+    />
   );
 }

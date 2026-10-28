@@ -29,7 +29,7 @@ export default function Trigger({
       disabled={disabled}
       className={cn(
         "flex field-control items-center justify-between gap-2.5 text-left text-ink",
-        open ? "border-accent" : "border-control focus-visible:border-accent",
+        open ? "bg-lifted ring-2 ring-accent/55" : "hover:bg-wash-9",
       )}
       aria-label={ariaLabel}
       aria-describedby={ariaLabel ? `${menuId}-value` : undefined}

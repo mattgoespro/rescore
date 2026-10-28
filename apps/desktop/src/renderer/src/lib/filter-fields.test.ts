@@ -3,11 +3,9 @@ import { test } from "node:test";
 import { defaultFilters } from "../../../shared/types";
 import {
   activeFilterCount,
-  addableFields,
   compactCount,
   FILTER_FIELDS,
   resetFilters,
-  visibleFields,
   type FilterFieldId,
 } from "./filter-fields";
 
@@ -23,6 +21,13 @@ test("a fresh search has no active filters", () => {
   assert.equal(activeFilterCount(defaultFilters()), 0);
 });
 
+test("the bar shows every filter, runtime included", () => {
+  assert.deepEqual(
+    FILTER_FIELDS.map((f) => f.id),
+    ["genres", "released", "quality", "runtime", "languages", "library"],
+  );
+});
+
 test("each changed field counts once; query, type and sort are ignored", () => {
   const filters = {
     ...defaultFilters(),
@@ -32,7 +37,7 @@ test("each changed field counts once; query, type and sort are ignored", () => {
     genres: [80, 18],
     withoutGenres: [27],
     hideWatched: false,
-    directors: ["Michael Mann"],
+    runtimeMax: 120,
   };
   assert.equal(activeFilterCount(filters), 3);
 });
@@ -68,35 +73,11 @@ test("pill summaries read as the current setting", () => {
     field("quality").summary(filters, genres),
     "IMDb 7.5+, 1.5k+ votes",
   );
+  assert.equal(field("runtime").summary(filters, genres), "Any length");
   assert.equal(field("languages").summary(filters, genres), "no languages");
   assert.equal(
     field("library").summary(filters, genres),
     "watched and watchlist",
-  );
-  assert.equal(field("directors").summary(filters, genres), "Anyone");
-});
-
-test("optional fields show once added or set, and leave Add filter", () => {
-  const fresh = defaultFilters();
-  const pinned = visibleFields(fresh, new Set()).map((f) => f.id);
-  assert.deepEqual(pinned, [
-    "genres",
-    "released",
-    "quality",
-    "languages",
-    "library",
-  ]);
-  assert.deepEqual(
-    addableFields(fresh, new Set()).map((f) => f.id),
-    ["runtime", "directors", "cast"],
-  );
-  const withCast = { ...fresh, cast: ["Florence Pugh"] };
-  assert.ok(visibleFields(withCast, new Set()).some((f) => f.id === "cast"));
-  assert.ok(
-    visibleFields(fresh, new Set(["runtime"])).some((f) => f.id === "runtime"),
-  );
-  assert.ok(
-    !addableFields(fresh, new Set(["runtime"])).some((f) => f.id === "runtime"),
   );
 });
 
@@ -109,7 +90,6 @@ test("reset clears every filter but keeps the query, type and sort", () => {
     genres: [18],
     ratingMin: 5,
     runtimeMax: 90,
-    cast: ["Al Pacino"],
     page: 3,
   };
   const reset = resetFilters(filters);

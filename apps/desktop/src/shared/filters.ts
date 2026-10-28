@@ -16,10 +16,6 @@ export interface DiscoverFilters {
   voteCountMin: number;
   runtimeMin: number | null;
   runtimeMax: number | null;
-  /** Credited directors by exact name; a title must match every one. */
-  directors: string[];
-  /** Credited cast by exact name; a title must match every one. */
-  cast: string[];
   sortBy: string;
   hideWatched: boolean;
   hideWatchlist: boolean;
@@ -71,8 +67,6 @@ export function defaultFilters(): DiscoverFilters {
     voteCountMin: 1000,
     runtimeMin: null,
     runtimeMax: null,
-    directors: [],
-    cast: [],
     // Major languages supported by the catalogue for Pakistan, Bangladesh,
     // and Sri Lanka: Urdu, Punjabi, Pashto, Sindhi, Bengali, Sinhala, Tamil.
     excludeLanguages: ["ur", "pa", "ps", "sd", "bn", "si", "ta"],

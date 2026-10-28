@@ -8,25 +8,6 @@ import {
   loadDiscoverSlice,
 } from "./discover-slice";
 
-test("discover query sends director and cast names only when set", () => {
-  const none = discoverQueryParams(defaultFilters(), {
-    genres: [],
-    withoutGenres: [],
-  });
-  assert.equal("director" in none, false);
-  assert.equal("cast" in none, false);
-  const people = discoverQueryParams(
-    {
-      ...defaultFilters(),
-      directors: ["Michael Mann"],
-      cast: ["Al Pacino", "Robert De Niro"],
-    },
-    { genres: [], withoutGenres: [] },
-  );
-  assert.equal(people.director, "Michael Mann");
-  assert.equal(people.cast, "Al Pacino,Robert De Niro");
-});
-
 test("discover query omits the rating ceiling and fixes the page size", () => {
   const params = discoverQueryParams(
     {

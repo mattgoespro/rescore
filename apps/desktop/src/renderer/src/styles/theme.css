@@ -17,6 +17,8 @@ html[data-theme="dark"] {
   --imd-rail: #1c1c1c;
   --imd-raised: #232323;
   --imd-selected: #2b2b2b;
+  /* A selected option on a wash track: one step lighter than the track. */
+  --imd-lifted: #333333;
   --imd-backdrop: #202020;
   --imd-ink: #ececec;
   --imd-muted: #b0b0b0;
@@ -53,6 +55,7 @@ html[data-theme="light"] {
   --imd-rail: #ececec;
   --imd-raised: #ffffff;
   --imd-selected: #e2e2e2;
+  --imd-lifted: #ffffff;
   --imd-backdrop: #e6e6e6;
   --imd-ink: #161616;
   --imd-muted: #4a4a4a;

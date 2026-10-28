@@ -323,10 +323,10 @@ function Reasons({
         <span
           key={reason.label}
           className={cn(
-            "max-w-full rounded-[3px] border px-1.5 py-0.5 text-xs wrap-break-word",
+            "max-w-full rounded-[3px] px-1.5 py-0.5 text-xs wrap-break-word",
             highlightFirst && index === 0
-              ? "border-accent font-semibold text-accent-text"
-              : "border-line text-muted",
+              ? "bg-accent/15 font-semibold text-accent-text"
+              : "bg-wash-6 text-muted",
           )}
         >
           {reason.label} · {reason.detail}

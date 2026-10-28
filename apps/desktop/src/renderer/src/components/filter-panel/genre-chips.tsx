@@ -36,13 +36,12 @@ export default function GenreChips({
               state === "any" ? false : state === "include" ? true : "mixed"
             }
             className={cn(
-              "inline-flex h-8 items-center gap-1 rounded-control border px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-140",
+              "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-140",
               state === "include" &&
-                "border-accent bg-selected text-accent-text",
+                "bg-accent font-semibold text-accent-ink hover:bg-accent/90",
               state === "exclude" &&
-                "border-danger bg-transparent text-danger line-through",
-              state === "any" &&
-                "border-control bg-transparent text-ink hover:bg-wash-6",
+                "bg-danger/15 text-danger line-through hover:bg-danger/20",
+              state === "any" && "bg-wash-6 text-ink hover:bg-wash-9",
             )}
             onClick={() => onCycle(genre.id, state)}
           >
