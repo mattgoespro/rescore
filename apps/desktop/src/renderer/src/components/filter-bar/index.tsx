@@ -16,6 +16,34 @@ import FieldEditor from "./editors";
 
 type Open = FilterFieldId | "add" | null;
 
+/**
+ * Excluded values pinned at the end of a pill: the one name, or a count once
+ * there are several. It never shrinks, so a long lead truncates first.
+ */
+function ExclusionTail({
+  excluded,
+}: {
+  excluded: string[];
+}): JSX.Element | null {
+  if (excluded.length === 1)
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-danger">
+        <span aria-hidden="true" className="text-faint">
+          ·
+        </span>
+        not <span className="font-medium line-through">{excluded[0]}</span>
+      </span>
+    );
+  if (excluded.length > 1)
+    return (
+      <span className="inline-flex h-5 shrink-0 items-center gap-0.5 rounded-[3px] border border-danger px-1.5 text-xs font-semibold text-danger">
+        <span aria-hidden="true">−</span>
+        {excluded.length}
+      </span>
+    );
+  return null;
+}
+
 const EDITOR_WIDTH: Record<FilterFieldId, number> = {
   genres: 440,
   released: 360,
@@ -92,6 +120,7 @@ export default function FilterBar({
         const isOpen = open === field.id;
         const label = fieldLabel(field, filters);
         const summary = field.summary(filters, genres);
+        const tail = field.exclusionTail?.(filters, genres);
         return (
           <span key={field.id} className="inline-flex items-center gap-0.5">
             <button
@@ -113,7 +142,16 @@ export default function FilterBar({
               <span className={isChanged ? "text-accent-text" : "text-muted"}>
                 {label}
               </span>
-              <span className="truncate font-medium">{summary}</span>
+              {tail ? (
+                <>
+                  <span className="min-w-0 truncate font-medium">
+                    {tail.lead}
+                  </span>
+                  <ExclusionTail excluded={tail.excluded} />
+                </>
+              ) : (
+                <span className="truncate font-medium">{summary}</span>
+              )}
               <IconChevronDown className="size-3.5 shrink-0" />
             </button>
             {!field.pinned ? (

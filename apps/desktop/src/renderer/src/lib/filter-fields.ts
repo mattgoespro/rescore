@@ -39,7 +39,17 @@ export interface FilterFieldSpec {
   group: FilterGroup;
   pinned: boolean;
   changed: (filters: DiscoverFilters) => boolean;
+  /** The whole setting, for the pill's tooltip and accessible name. */
   summary: (filters: DiscoverFilters, genres: readonly Genre[]) => string;
+  /**
+   * For fields that both include and exclude: the pill shows `lead`, which
+   * may truncate, then the excluded values pinned after it so a long lead
+   * can never push them out of view.
+   */
+  exclusionTail?: (
+    filters: DiscoverFilters,
+    genres: readonly Genre[],
+  ) => { lead: string; excluded: string[] };
   /** The filter values that put this field back to its default. */
   clear: () => Partial<DiscoverFilters>;
 }
@@ -89,11 +99,15 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     changed: (f) => f.genres.length > 0 || f.withoutGenres.length > 0,
     summary: (f, genres) => {
       const parts: string[] = [];
-      if (f.genres.length) parts.push(shortList(genreNames(f.genres, genres)));
+      if (f.genres.length) parts.push(genreNames(f.genres, genres).join(", "));
       if (f.withoutGenres.length)
-        parts.push(`not ${shortList(genreNames(f.withoutGenres, genres))}`);
-      return parts.length ? parts.join(", ") : "Any";
+        parts.push(`not ${genreNames(f.withoutGenres, genres).join(", ")}`);
+      return parts.length ? parts.join("; ") : "Any";
     },
+    exclusionTail: (f, genres) => ({
+      lead: f.genres.length ? genreNames(f.genres, genres).join(", ") : "Any",
+      excluded: genreNames(f.withoutGenres, genres),
+    }),
     clear: () => ({ genres: [], withoutGenres: [] }),
   },
   {

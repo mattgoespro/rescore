@@ -49,9 +49,21 @@ test("pill summaries read as the current setting", () => {
   };
   assert.equal(
     field("genres").summary(filters, genres),
-    "Drama, Comedy +1, not Romance",
+    "Drama, Comedy, Crime; not Romance",
   );
   assert.equal(field("genres").summary(defaultFilters(), genres), "Any");
+  assert.deepEqual(field("genres").exclusionTail!(filters, genres), {
+    lead: "Drama, Comedy, Crime",
+    excluded: ["Romance"],
+  });
+  assert.deepEqual(
+    field("genres").exclusionTail!(
+      { ...defaultFilters(), withoutGenres: [18, 80] },
+      genres,
+    ),
+    { lead: "Any", excluded: ["Drama", "Crime"] },
+    "exclusions alone still lead with Any",
+  );
   assert.equal(
     field("quality").summary(filters, genres),
     "IMDb 7.5+, 1.5k+ votes",
