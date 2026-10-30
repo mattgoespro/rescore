@@ -37,6 +37,7 @@ export default function Inspector({
   creditsReady,
   creditsFailed,
   busy = false,
+  tasteReady = true,
   onClose,
   onUpsert,
   onRemove,
@@ -49,6 +50,8 @@ export default function Inspector({
   creditsReady?: boolean;
   creditsFailed?: boolean;
   busy?: boolean;
+  /** Before the taste model is ready every match is 0; the stat is hidden. */
+  tasteReady?: boolean;
   /** Offered where the panel stands in for another one, as in For You. */
   onClose?: () => void;
   onUpsert: (
@@ -87,8 +90,9 @@ export default function Inspector({
     details?.imdbId === movie.imdbId ? details.languages : movie.languages
   )?.[0];
   const language = originalLanguage ? languageName(originalLanguage) : null;
-  const matchValue =
-    match ?? ("match" in movie ? (movie as { match?: number }).match : null);
+  const matchValue = tasteReady
+    ? (match ?? ("match" in movie ? (movie as { match?: number }).match : null))
+    : null;
   const subject = details ?? movie;
 
   return (

@@ -254,8 +254,13 @@ export class TmdbHydrationCoordinator {
       if (interactive) existing.interactive = true;
       return existing.promise;
     }
-    if ((this.retryAfter.get(catalog)?.get(id) ?? 0) > Date.now())
-      return Promise.resolve(false);
+    const retries = this.retryAfter.get(catalog);
+    const retryAt = retries?.get(id);
+    if (retryAt !== undefined) {
+      if (retryAt > Date.now()) return Promise.resolve(false);
+      // An expired backoff is dropped, so failures do not pile up.
+      retries!.delete(id);
+    }
     let finish!: (complete: boolean) => void;
     const promise = new Promise<boolean>((resolve) => {
       finish = resolve;
@@ -771,7 +776,8 @@ function yieldEventLoop(): Promise<void> {
 }
 
 function drainPriorityIds(): string[] {
-  const ids = priorityIds.splice(0, priorityIds.length);
+  const ids = [...priorityIds].reverse();
+  priorityIds.clear();
   return ids;
 }
 
@@ -783,7 +789,12 @@ let posterInflight: Promise<PosterEnrichmentResult | null> | null = null;
 let activeTmdbCoordinator: TmdbHydrationCoordinator | null = null;
 let activeTmdbKeySignature: string | null = null;
 let activeTmdbWorkersPerKey: number | null = null;
-const priorityIds: string[] = [];
+/**
+ * Titles to look up first, newest last. Without a TMDb key nothing drains
+ * it, so it keeps only the latest requests.
+ */
+const priorityIds = new Set<string>();
+const PRIORITY_LIMIT = 2_000;
 let loggedMissingKey = false;
 
 export const MISSING_TMDB_KEY_MESSAGE =
@@ -792,8 +803,14 @@ export const MISSING_TMDB_KEY_MESSAGE =
 export function prioritizePosterIds(ids: string[]): void {
   for (const id of ids) {
     const key = id.toLowerCase();
-    if (!key || priorityIds.includes(key)) continue;
-    priorityIds.unshift(key);
+    if (!key) continue;
+    // Re-adding moves a title to the front of the next drain.
+    priorityIds.delete(key);
+    priorityIds.add(key);
+  }
+  for (const key of priorityIds) {
+    if (priorityIds.size <= PRIORITY_LIMIT) break;
+    priorityIds.delete(key);
   }
 }
 

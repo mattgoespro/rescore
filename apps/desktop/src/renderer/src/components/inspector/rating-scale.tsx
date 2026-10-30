@@ -1,6 +1,11 @@
 import type { JSX } from "react";
 import { ratingCell } from "../../lib/ui";
 
+/**
+ * Ten radios for the rating. While a save runs they stay focusable, marked
+ * aria-disabled rather than disabled: a disabled button drops keyboard focus,
+ * which arrow-key rating would lose on every step.
+ */
 export default function RatingScale({
   rating,
   onRate,
@@ -20,13 +25,15 @@ export default function RatingScale({
         <button
           key={n}
           type="button"
-          disabled={disabled}
+          aria-disabled={disabled}
           role="radio"
           aria-label={`${n} out of 10`}
           aria-checked={rating === n}
           tabIndex={n === (rating ?? 1) ? 0 : -1}
           className={ratingCell(rating != null && rating >= n)}
-          onClick={() => onRate(n)}
+          onClick={() => {
+            if (!disabled) onRate(n);
+          }}
           onKeyDown={(event) => {
             let next: number;
             switch (event.key) {
@@ -48,6 +55,7 @@ export default function RatingScale({
                 return;
             }
             event.preventDefault();
+            if (disabled) return;
             onRate(next);
             event.currentTarget.parentElement
               ?.querySelectorAll<HTMLButtonElement>("button")

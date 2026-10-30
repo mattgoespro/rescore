@@ -8,8 +8,13 @@ export default function Directors({
 }): JSX.Element | null {
   if (!directors.length) return null;
   return (
-    <p className="my-2 mb-3 text-xs leading-copy text-muted tabular">
-      {directors.map((d) => d.name).join(", ")}
-    </p>
+    <section className="mb-3 flex flex-col gap-1">
+      <h3 className="kicker">
+        {directors.length === 1 ? "Director" : "Directors"}
+      </h3>
+      <p className="m-0 text-[13px] leading-copy text-ink">
+        {directors.map((d) => d.name).join(", ")}
+      </p>
+    </section>
   );
 }

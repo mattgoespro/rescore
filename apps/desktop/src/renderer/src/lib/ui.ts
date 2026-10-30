@@ -117,7 +117,7 @@ export function segmentedCell(
 
 export function ratingCell(filled: boolean): string {
   return cn(
-    "h-8 flex-1 rounded-control border-0 p-0 text-[13px] font-semibold transition-colors duration-140 disabled:cursor-wait",
+    "h-8 flex-1 rounded-control border-0 p-0 text-[13px] font-semibold transition-colors duration-140 aria-disabled:cursor-wait",
     filled
       ? "bg-accent text-accent-ink hover:bg-accent/90"
       : "bg-wash-6 text-muted hover:bg-wash-9 hover:text-ink",

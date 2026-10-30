@@ -96,7 +96,10 @@ export class CatalogClient {
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch {
-        lastError = new CatalogError("Cannot reach the local catalog API.", 0);
+        lastError = new CatalogError(
+          "Cannot reach the local catalogue API.",
+          0,
+        );
         if (attempt + 1 < retries) await sleep(400 * (attempt + 1));
         continue;
       }
@@ -105,14 +108,14 @@ export class CatalogClient {
           error?: string;
         } | null;
         throw new CatalogError(
-          body?.error ?? `Catalog request failed (${response.status})`,
+          body?.error ?? `Catalogue request failed (${response.status})`,
           response.status,
         );
       }
       return response.json() as Promise<T>;
     }
     throw (
-      lastError ?? new CatalogError("Cannot reach the local catalog API.", 0)
+      lastError ?? new CatalogError("Cannot reach the local catalogue API.", 0)
     );
   }
 

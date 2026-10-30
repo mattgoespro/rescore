@@ -38,7 +38,7 @@ export default function Actions({
   const current = entry?.status;
 
   function choose(status: WatchStatus): void {
-    if (status === current) return;
+    if (busy || status === current) return;
     void onUpsert(
       movie,
       status,
@@ -55,6 +55,7 @@ export default function Actions({
           : 0;
     if (!step) return;
     event.preventDefault();
+    if (busy) return;
     const next = (index + step + STATUSES.length) % STATUSES.length;
     group.current?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
     choose(STATUSES[next]!.value);
@@ -80,7 +81,8 @@ export default function Actions({
             role="radio"
             aria-checked={current === status.value}
             tabIndex={index === focusIndex ? 0 : -1}
-            disabled={busy}
+            // Focusable while a save runs; a disabled radio would drop focus.
+            aria-disabled={busy}
             className={segmentedCell(current === status.value, "text")}
             onClick={() => choose(status.value)}
             onKeyDown={(event) => onKeyDown(event, index)}

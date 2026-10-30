@@ -411,6 +411,7 @@ export default function App(): JSX.Element {
           : null
       }
       busy={libraryBusy}
+      tasteReady={profile?.ready === true}
       genreMap={genreMap}
       creditsReady={catalogStatus?.creditsReady !== false}
       creditsFailed={catalogStatus?.creditsFailed === true}
