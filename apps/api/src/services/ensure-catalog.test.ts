@@ -26,31 +26,18 @@ test("health stays ready when titles exist even if a check is in flight", () => 
   assert.equal(catalogHealthReady(482_500, "building", true), true);
 });
 
-test("catalog is usable after IMDb preparation even while TMDb is incomplete", () => {
+test("catalog is usable once titles are ready, before cast and TMDb metadata", () => {
+  assert.equal(isCatalogUsable({ titlesReady: true }), true);
   assert.equal(
-    isCatalogUsable({ titlesReady: true, creditsReady: true }),
+    isCatalogUsable({ titlesReady: true, titlesRebuilding: false }),
     true,
   );
+  assert.equal(isCatalogUsable({ titlesReady: false }), false);
+});
+
+test("a forced title rebuild holds browsing until titles are reconciled", () => {
   assert.equal(
-    isCatalogUsable({
-      titlesReady: true,
-      creditsReady: false,
-    }),
-    false,
-  );
-  assert.equal(
-    isCatalogUsable({
-      titlesReady: true,
-      creditsReady: true,
-      creditsFailed: true,
-    }),
-    false,
-  );
-  assert.equal(
-    isCatalogUsable({
-      titlesReady: false,
-      creditsReady: false,
-    }),
+    isCatalogUsable({ titlesReady: true, titlesRebuilding: true }),
     false,
   );
 });

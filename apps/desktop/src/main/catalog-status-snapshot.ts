@@ -15,6 +15,7 @@ export function catalogStatusSnapshot(
     error: change.error !== undefined ? change.error : current.error,
     download:
       change.download !== undefined ? change.download : current.download,
+    setup: change.setup !== undefined ? change.setup : current.setup,
     titlesReady:
       change.titlesReady !== undefined
         ? change.titlesReady

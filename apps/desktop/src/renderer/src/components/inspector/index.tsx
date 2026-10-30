@@ -159,7 +159,7 @@ export default function Inspector({
               !creditsFailed &&
               !(details?.directors?.length || details?.cast?.length) ? (
               <p className="my-2 mb-3 text-xs leading-copy text-muted">
-                Loading credits…
+                Loading cast and directors…
               </p>
             ) : null}
             {details?.directors ? (

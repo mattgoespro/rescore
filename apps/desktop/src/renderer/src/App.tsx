@@ -27,6 +27,7 @@ import {
   titleKey,
 } from "../../shared/types";
 import CatalogLoader from "./components/catalog-loader";
+import SetupScreen from "./components/setup-screen";
 import Inspector from "./components/inspector";
 import { useNotify } from "./components/notifications";
 import TopBar from "./components/top-bar";
@@ -498,6 +499,11 @@ export default function App(): JSX.Element {
                 </button>
               </div>
             </section>
+          ) : (booting || catalogBusy) && catalogStatus?.setup ? (
+            <SetupScreen
+              setup={catalogStatus.setup}
+              rebuilding={catalogStatus.titlesReady === true}
+            />
           ) : booting || catalogBusy ? (
             <CatalogLoader
               label={catalogStatus?.message ?? "Loading your ranking studio…"}

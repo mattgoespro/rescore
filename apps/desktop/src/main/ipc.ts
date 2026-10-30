@@ -28,11 +28,17 @@ import {
   type LibraryUpsert,
 } from "./library-taste";
 import type { AppStore } from "./store";
+import { watchCreditsArrival } from "./credits-arrival";
 import { applyWindowChrome } from "./window-chrome";
 
 let store: AppStore;
 let getWindow: () => BrowserWindow | null;
 let catalog: CatalogRuntime;
+
+/** Catalogue status from the runtime: reloads taste once cast and directors arrive. */
+export const noteCatalogStatus = watchCreditsArrival(() =>
+  workflow?.invalidate(),
+);
 
 function trustedServiceSender(event: Electron.IpcMainInvokeEvent): boolean {
   if (

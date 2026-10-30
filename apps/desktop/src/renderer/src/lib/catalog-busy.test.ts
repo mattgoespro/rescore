@@ -26,17 +26,27 @@ test("a finished catalog is not blocked", () => {
   );
 });
 
-test("a settings rebuild blocks even when titles already exist", () => {
+test("a settings rebuild blocks while its titles are unusable", () => {
   assert.equal(
     isCatalogUiBlocked({
       phase: "building",
-      catalogUsable: true,
+      catalogUsable: false,
     }),
     true,
   );
 });
 
-test("titles without credits stay blocked", () => {
+test("browsing opens while cast and directors are still building", () => {
+  assert.equal(
+    isCatalogUiBlocked({
+      phase: "building",
+      catalogUsable: true,
+    }),
+    false,
+  );
+});
+
+test("an unusable or unstarted catalog stays blocked", () => {
   assert.equal(
     isCatalogUiBlocked({
       phase: "ready",
@@ -94,7 +104,7 @@ test("rebuild feedback is present while the splash blocks the app", () => {
   const status = {
     phase: "building",
     message: "Rebuilding catalog from IMDb datasets…",
-    catalogUsable: true,
+    catalogUsable: false,
   };
   assert.equal(isCatalogUiBlocked(status), true);
   assert.equal(
@@ -106,7 +116,7 @@ test("rebuild feedback is present while the splash blocks the app", () => {
 test("a blocked rebuild does not have an inline strip", () => {
   const status = {
     phase: "building",
-    catalogUsable: true,
+    catalogUsable: false,
     message: "Rebuilding catalog from IMDb datasets…",
   };
   assert.equal(isCatalogUiBlocked(status), true);
@@ -162,4 +172,33 @@ test("catalogue indicator names every state in words", () => {
     }).detail,
     /40%/,
   );
+});
+
+test("the loaded indicator says when cast and directors are missing", () => {
+  assert.match(
+    catalogIndicator({
+      phase: "building",
+      catalogUsable: true,
+      creditsReady: false,
+    }).detail,
+    /still loading/,
+  );
+  const failed = catalogIndicator({
+    phase: "ready",
+    catalogUsable: true,
+    creditsReady: false,
+    creditsFailed: true,
+  });
+  assert.equal(failed.state, "loaded");
+  assert.match(failed.detail, /could not be loaded/);
+});
+
+test("the indicator shows setup progress while the title steps run", () => {
+  const setup = catalogIndicator({
+    phase: "building",
+    catalogUsable: false,
+    setup: { fraction: 0.564 },
+  });
+  assert.equal(setup.state, "starting");
+  assert.equal(setup.label, "Setting up · 56%");
 });

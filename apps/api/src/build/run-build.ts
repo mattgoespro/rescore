@@ -6,6 +6,7 @@ import { parseRatingsTsv } from "../services/dataset.js";
 import {
   downloadCreditDumps,
   downloadTitleDumps,
+  TITLE_DUMP_NAMES,
   titleDumpUrls,
 } from "./download-dumps.js";
 import { shouldDeferTitleIngest } from "./defer-ingest.js";
@@ -19,6 +20,7 @@ import {
 } from "./import-credits.js";
 import { log, setProgressSink } from "./progress.js";
 import { withCreditsWrite } from "./rebuild-window.js";
+import { setupReport, type SetupReport } from "./setup-progress.js";
 import type {
   CatalogBuildOptions,
   CatalogBuildResult,
@@ -41,10 +43,12 @@ export async function buildCatalogTitles(
   options: CatalogBuildOptions = {},
 ): Promise<CatalogBuildResult> {
   setProgressSink(options.onProgress);
+  const setup = setupReport(TITLE_DUMP_NAMES, options.onSetup);
   try {
-    return await runBuildTitles(catalog, options.force === true);
+    return await runBuildTitles(catalog, options.force === true, setup);
   } finally {
     setProgressSink(undefined);
+    options.onSetup?.(null);
   }
 }
 
@@ -131,6 +135,7 @@ async function probeTitleDumps(): Promise<TitleRemoteProbes> {
 async function runBuildTitles(
   catalog: CatalogDatabase,
   force: boolean,
+  setup: SetupReport,
 ): Promise<CatalogBuildResult> {
   const existing = catalog.catalogMeta();
 
@@ -138,8 +143,9 @@ async function runBuildTitles(
     return reconcileTitles(
       catalog,
       existing,
-      await downloadTitleDumps(force),
+      await downloadTitleDumps(force, undefined, setup),
       force,
+      setup,
     );
   }
 
@@ -171,8 +177,9 @@ async function runBuildTitles(
   return reconcileTitles(
     catalog,
     existing,
-    await downloadTitleDumps(force, probes),
+    await downloadTitleDumps(force, probes, setup),
     force,
+    setup,
   );
 }
 
@@ -181,6 +188,7 @@ async function reconcileTitles(
   existing: { builtAt: string | null; revision: string | null },
   files: { ratings: string; basics: string },
   force: boolean,
+  setup: SetupReport,
 ): Promise<CatalogBuildResult> {
   const fingerprint = titleDumpKey(files);
   if (
@@ -199,14 +207,32 @@ async function reconcileTitles(
     };
   }
 
+  const { tracker } = setup;
   log("Loading IMDb ratings", "reconcile");
-  const ratings = await parseRatingsTsv(files.ratings);
+  tracker.indexStage("ratings");
+  setup.report(true);
+  const ratings = await parseRatingsTsv(files.ratings, (read, total) => {
+    tracker.indexBytes(read, total);
+    setup.report();
+  });
   const firstBuild = catalog.titleCount() === 0;
   catalog.setBuildInProgress(true);
   if (firstBuild) catalog.setCreditsReady(false);
   try {
     log("Reconciling title.basics", "reconcile");
-    const imported = await ingestTitles(catalog, files.basics, ratings);
+    tracker.indexStage("titles");
+    setup.report(true);
+    const imported = await ingestTitles(catalog, files.basics, ratings, {
+      onRead: (read, total, kept) => {
+        tracker.indexBytes(read, total);
+        tracker.indexTitles(kept);
+        setup.report();
+      },
+      onScanned: () => {
+        tracker.indexStage("finishing");
+        setup.report(true);
+      },
+    });
     log(`Reconciled ${imported.toLocaleString()} titles`, "reconcile");
   } catch (error) {
     catalog.setBuildInProgress(false);

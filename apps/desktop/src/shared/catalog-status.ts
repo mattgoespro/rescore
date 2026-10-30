@@ -8,6 +8,28 @@ export interface CatalogDownloadProgress {
   totalBytes: number | null;
 }
 
+export interface CatalogSetupFile {
+  file: string;
+  receivedBytes: number;
+  totalBytes: number | null;
+  done: boolean;
+}
+
+/** The API's progress through the title steps that hold browsing. */
+export interface CatalogSetupProgress {
+  step: "download" | "index";
+  /** Both steps together, 0 to 1. */
+  fraction: number;
+  files: CatalogSetupFile[];
+  bytesPerSecond: number | null;
+  index: {
+    stage: "pending" | "ratings" | "titles" | "finishing" | "done";
+    fraction: number;
+    titles: number;
+  };
+  stepSecondsLeft: number | null;
+}
+
 export interface TmdbHydrationProgress {
   posters?: number;
   synopses?: number;
@@ -26,6 +48,7 @@ export interface CatalogStatus {
   builtAt: string | null;
   error: string | null;
   download: CatalogDownloadProgress | null;
+  setup?: CatalogSetupProgress | null;
   titlesReady?: boolean;
   creditsReady?: boolean;
   titlesUpdateAvailable: boolean;

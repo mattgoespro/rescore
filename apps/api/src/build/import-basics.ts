@@ -9,17 +9,22 @@ import {
 import { log } from "./progress.js";
 import { yieldEventLoop } from "../catalog/work-queue.js";
 import { withTitleIngest } from "./rebuild-window.js";
-import { TITLE_BATCH } from "./types.js";
+import { TITLE_BATCH, type TitleIngestProgress } from "./types.js";
 
 export async function importBasics(
   catalog: CatalogDatabase,
   file: string,
   ratings: Map<string, { rating: number; votes: number }>,
+  progress: TitleIngestProgress = {},
 ): Promise<number> {
   let batch: CatalogTitleRow[] = [];
   let scanned = 0;
   let imported = 0;
-  for await (const row of readTsvRows(file)) {
+  const onRead = progress.onRead;
+  for await (const row of readTsvRows(
+    file,
+    onRead && ((read, total) => onRead(read, total, imported)),
+  )) {
     scanned += 1;
     if (scanned % 1_000_000 === 0) {
       log(`  scanned ${scanned.toLocaleString()} basics`, "reconcile");
@@ -52,6 +57,7 @@ export async function importBasics(
     }
   }
   catalog.upsertTitleRows(batch);
+  progress.onScanned?.();
   return imported;
 }
 
@@ -59,10 +65,11 @@ export async function ingestTitles(
   catalog: CatalogDatabase,
   file: string,
   ratings: Map<string, { rating: number; votes: number }>,
+  progress: TitleIngestProgress = {},
 ): Promise<number> {
   const previousCount = catalog.titleCount();
   return withTitleIngest(catalog, async () => {
-    const imported = await importBasics(catalog, file, ratings);
+    const imported = await importBasics(catalog, file, ratings, progress);
     if (
       imported === 0 ||
       (previousCount >= 1000 && imported < previousCount / 2)

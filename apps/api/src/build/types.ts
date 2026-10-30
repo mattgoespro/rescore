@@ -1,3 +1,5 @@
+import type { CatalogSetupProgress } from "../types.js";
+
 export interface CatalogBuildResult {
   titleCount: number;
   builtAt: string;
@@ -19,6 +21,15 @@ export interface CatalogBuildProgress {
 export interface CatalogBuildOptions {
   force?: boolean;
   onProgress?: (progress: CatalogBuildProgress) => void;
+  /** Title steps' progress while they run, then null once they end. */
+  onSetup?: (setup: CatalogSetupProgress | null) => void;
+}
+
+/** How title indexing reports what it has read and kept. */
+export interface TitleIngestProgress {
+  onRead?: (readBytes: number, totalBytes: number, imported: number) => void;
+  /** Every row is read; the closing index rebuild starts next. */
+  onScanned?: () => void;
 }
 
 export interface Credit {

@@ -8,7 +8,7 @@ The product, npm packages, Windows service (`RescoreCatalogue`, display name Res
 
 `README.md`, `apps/api/README.md`, and `docs/cataloguing.md` still say IMDBrain. Identifiers stay `catalog` (`catalog.sqlite`, `CatalogDatabase`); the service docs say catalogue in prose.
 
-Names and browsing readiness follow the code. Browsing starts once IMDb titles and credits are ready. TMDb hydration continues in the background.
+Names and browsing readiness follow the code. Browsing starts once IMDb titles are ready. Cast, directors, and TMDb hydration continue in the background.
 
 ## Boundary
 

@@ -10,7 +10,7 @@ import {
   windowSymbolColor,
 } from "../shared/appearance";
 import { createCatalogRuntime, type CatalogRuntime } from "./catalog-runtime";
-import { registerIpc } from "./ipc";
+import { noteCatalogStatus, registerIpc } from "./ipc";
 import { AppStore } from "./store";
 import { windowBackgroundColor } from "./window-chrome";
 
@@ -141,6 +141,7 @@ app.whenReady().then(async () => {
     store,
     () => mainWindow,
     backgroundService,
+    noteCatalogStatus,
   );
   registerIpc(store, () => mainWindow, catalogRuntime, backgroundService);
   createWindow(store);

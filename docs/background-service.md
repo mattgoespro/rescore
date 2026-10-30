@@ -40,7 +40,7 @@ Windows administrator approval cannot be supplied automatically by the app. Cust
 
 ## Browsing during hydration
 
-The first IMDb titles and credits preparation must finish before browsing. TMDb hydration does not block the interface. Visible titles and opened details automatically request missing metadata through the same coordinator as background upkeep.
+The first IMDb titles preparation must finish before browsing. While it runs, the setup screen shows overall progress across its two steps (download titles, then index titles), each file's download, the titles indexed so far, and the current step's time left; the top bar reads "Setting up" with the same percent. The steps are weighted from a measured first launch: the download is about an eighth of the wait. Cast and directors, and TMDb hydration, do not block the interface: the preview panel shows that cast is loading, and if the credits import fails it says they will be tried again next launch. For You picks up directors and cast once they arrive. A forced rebuild from Settings holds browsing until its titles are reconciled, then reopens while credits rebuild. Visible titles and opened details automatically request missing metadata through the same coordinator as background upkeep.
 
 Concurrent requests for a title share one job. Completed lookups persist, including confirmed missing metadata, so background work skips titles already hydrated during browsing. Transient failures retry with backoff. Content updates without resetting filters, selection, or scroll position.
 

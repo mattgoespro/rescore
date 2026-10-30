@@ -38,6 +38,7 @@ interface HealthPayload {
   catalogMessage?: string;
   catalogError?: string | null;
   catalogDownload?: CatalogStatus["download"];
+  catalogSetup?: CatalogStatus["setup"];
   titleCount?: number;
   catalogBuiltAt?: string | null;
   titlesReady?: boolean;
@@ -61,6 +62,7 @@ export function createCatalogRuntime(
   store: AppStore,
   getWindow: () => BrowserWindow | null,
   service: BackgroundService,
+  onStatus?: (status: CatalogStatus) => void,
 ): CatalogRuntime {
   let spawned: ChildProcess | null = null;
   let childUrl = "";
@@ -235,7 +237,10 @@ export function createCatalogRuntime(
       })();
       return () => controller.abort();
     },
-    publish: (status) => sendToWindow(getWindow(), "catalog:status", status),
+    publish: (status) => {
+      sendToWindow(getWindow(), "catalog:status", status);
+      onStatus?.(status);
+    },
   });
   return lifecycle;
 }
@@ -334,6 +339,7 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
     builtAt,
     error,
     download: health.catalogDownload ?? null,
+    setup: health.catalogSetup ?? null,
     titlesReady: health.titlesReady,
     creditsReady: health.creditsReady,
     titlesUpdateAvailable: health.titlesUpdateAvailable === true,

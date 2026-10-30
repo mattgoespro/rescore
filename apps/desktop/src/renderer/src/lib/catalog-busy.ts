@@ -1,3 +1,5 @@
+import { setupPercent } from "./setup-progress";
+
 const FIRST_BUILD_DETAIL =
   "IMDb’s non-commercial datasets are several hundred MB. Your ratings, watchlist, and skips are kept.";
 
@@ -25,6 +27,11 @@ export function catalogRebuildFeedback(
   };
 }
 
+/**
+ * Browsing opens once the API reports titles usable. Cast, directors and TMDb
+ * metadata may still be building; a forced rebuild reports unusable until its
+ * titles are reconciled.
+ */
 export function isCatalogUiBlocked(
   status: {
     phase: string;
@@ -32,13 +39,7 @@ export function isCatalogUiBlocked(
   } | null,
 ): boolean {
   if (!status) return true;
-  if (
-    status.phase === "error" ||
-    status.phase === "starting" ||
-    status.phase === "building"
-  ) {
-    return true;
-  }
+  if (status.phase === "error" || status.phase === "starting") return true;
   return status.catalogUsable !== true;
 }
 
@@ -72,6 +73,9 @@ export function catalogIndicator(
     catalogUsable?: boolean;
     message?: string;
     error?: string | null;
+    creditsReady?: boolean;
+    creditsFailed?: boolean;
+    setup?: { fraction: number } | null;
     tmdbHydration?: { complete: boolean; percent: number } | null;
   } | null,
 ): CatalogIndicator {
@@ -84,6 +88,15 @@ export function catalogIndicator(
         status.error?.trim() ||
         status.message?.trim() ||
         "The catalogue failed to start or stopped unexpectedly.",
+    };
+  }
+  if (isCatalogUiBlocked(status) && status?.setup) {
+    return {
+      state: "starting",
+      label: `Setting up · ${setupPercent(status.setup.fraction)}%`,
+      tip: "Catalogue is setting up",
+      detail:
+        "Searching and ranking unlock when the IMDb titles are downloaded and indexed.",
     };
   }
   if (isCatalogUiBlocked(status)) {
@@ -101,9 +114,12 @@ export function catalogIndicator(
     state: "loaded",
     label: "Loaded",
     tip: "Catalogue is running",
-    detail:
-      hydration && !hydration.complete
-        ? `TMDb posters and synopses are still filling in (${hydration.percent}%).`
-        : "Your local IMDb catalogue is loaded.",
+    detail: status?.creditsFailed
+      ? "Cast and directors could not be loaded. They will be tried again next launch."
+      : status?.creditsReady === false
+        ? "Cast and directors are still loading."
+        : hydration && !hydration.complete
+          ? `TMDb posters and synopses are still filling in (${hydration.percent}%).`
+          : "Your local IMDb catalogue is loaded.",
   };
 }

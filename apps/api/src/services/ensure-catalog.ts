@@ -13,6 +13,7 @@ import {
 import type { CatalogDatabase } from "./catalog-db.js";
 import type {
   CatalogDownloadProgress,
+  CatalogSetupProgress,
   TmdbHydrationProgress,
 } from "../types.js";
 
@@ -25,6 +26,8 @@ export interface CatalogStatusDto {
   builtAt: string | null;
   error: string | null;
   download: CatalogDownloadProgress | null;
+  /** The title steps that hold browsing, while they run. */
+  setup: CatalogSetupProgress | null;
   titlesReady: boolean;
   creditsReady: boolean;
 }
@@ -36,6 +39,7 @@ let status: CatalogStatusDto = {
   builtAt: null,
   error: null,
   download: null,
+  setup: null,
   titlesReady: false,
   creditsReady: false,
 };
@@ -130,6 +134,13 @@ export function catalogStatus(): CatalogStatusDto {
   return {
     ...status,
     download: status.download ? { ...status.download } : null,
+    setup: status.setup
+      ? {
+          ...status.setup,
+          files: status.setup.files.map((file) => ({ ...file })),
+          index: { ...status.setup.index },
+        }
+      : null,
   };
 }
 
@@ -150,15 +161,21 @@ export function catalogHealthReady(
   return titleCount > 0 && !blockingBuild && phase !== "error";
 }
 
-/** IMDb readiness is independent of optional TMDb metadata availability. */
+/**
+ * Browsing needs IMDb titles only. Cast, directors and TMDb metadata fill in
+ * afterwards; a forced rebuild holds browsing until its titles are reconciled.
+ */
 export function isCatalogUsable(input: {
   titlesReady: boolean;
-  creditsReady: boolean;
-  creditsFailed?: boolean;
+  titlesRebuilding?: boolean;
 }): boolean {
-  return (
-    input.titlesReady && input.creditsReady && input.creditsFailed !== true
-  );
+  return input.titlesReady && input.titlesRebuilding !== true;
+}
+
+let titlesRebuilding = false;
+
+export function isTitlesRebuilding(): boolean {
+  return titlesRebuilding;
 }
 
 function catalogIsUsable(catalog: CatalogDatabase): boolean {
@@ -171,11 +188,14 @@ function catalogIsUsable(catalog: CatalogDatabase): boolean {
 
 function withReadiness(
   catalog: CatalogDatabase,
-  next: Omit<CatalogStatusDto, "titlesReady" | "creditsReady">,
+  next: Omit<CatalogStatusDto, "titlesReady" | "creditsReady" | "setup"> & {
+    setup?: CatalogSetupProgress | null;
+  },
 ): CatalogStatusDto {
   const ready = catalog.readiness();
   return {
     ...next,
+    setup: next.setup ?? null,
     titlesReady: ready.titlesReady,
     creditsReady: ready.creditsReady,
   };
@@ -193,12 +213,7 @@ export function refreshCatalogStatus(
   }
   const ready = catalog.readiness();
   publishCatalogHydration(catalog);
-  const usable = isCatalogUsable({
-    titlesReady: ready.titlesReady,
-    creditsReady: ready.creditsReady,
-    creditsFailed: catalog.creditsFailed(),
-  });
-  if (usable) {
+  if (ready.titlesReady && ready.creditsReady && !catalog.creditsFailed()) {
     const titleCount = catalog.titleCount();
     const meta = catalog.catalogMeta();
     status = withReadiness(catalog, {
@@ -209,19 +224,10 @@ export function refreshCatalogStatus(
       error: null,
       download: null,
     });
-  } else if (ready.titlesReady && ready.creditsReady) {
-    status = withReadiness(catalog, {
-      phase: "building",
-      message: "Loading posters, synopses, and age ratings…",
-      titleCount: catalog.titleCount(),
-      builtAt: catalog.catalogMeta().builtAt,
-      error: null,
-      download: null,
-    });
   } else if (ready.titlesReady) {
     status = withReadiness(catalog, {
       phase: "building",
-      message: "Loading credits…",
+      message: "Loading cast and directors…",
       titleCount: catalog.titleCount(),
       builtAt: catalog.catalogMeta().builtAt,
       error: null,
@@ -269,8 +275,8 @@ async function runEnsure(
   } else {
     status = withReadiness(catalog, {
       phase: "building",
-      message: imdbReady
-        ? "Loading posters, synopses, and age ratings…"
+      message: titlesReusable
+        ? "Loading cast and directors…"
         : catalog.isBuildInProgress()
           ? "Resuming an interrupted catalog build…"
           : "Building catalog from IMDb datasets…",
@@ -281,6 +287,7 @@ async function runEnsure(
     });
   }
 
+  titlesRebuilding = options.force === true;
   try {
     const result = await buildCatalogTitles(catalog, {
       force: options.force,
@@ -293,6 +300,11 @@ async function runEnsure(
           download: progress.download ?? null,
         });
       },
+      onSetup: (setup) => {
+        status = { ...status, setup };
+      },
+    }).finally(() => {
+      titlesRebuilding = false;
     });
     const creditsPending =
       options.force === true ||
@@ -301,7 +313,7 @@ async function runEnsure(
     if (creditsPending) {
       status = withReadiness(catalog, {
         phase: "building",
-        message: "Loading credits…",
+        message: "Loading cast and directors…",
         titleCount: catalog.titleCount(),
         builtAt: catalog.catalogMeta().builtAt,
         error: null,
@@ -320,24 +332,14 @@ async function runEnsure(
         },
       });
     }
-    const ready = catalog.readiness();
-    const imdbComplete =
-      ready.titlesReady && ready.creditsReady && !catalog.creditsFailed();
-    if (!imdbComplete) {
-      status = withReadiness(catalog, {
-        phase: "error",
-        message: "Credits could not be loaded.",
-        titleCount: catalog.titleCount(),
-        builtAt: catalog.catalogMeta().builtAt,
-        error:
-          "Credits could not be loaded. They will be tried again next launch.",
-        download: null,
-      });
-      return result.unchanged ? null : result;
-    }
+    // Missing cast and directors leave browsing open; creditsFailed tells the
+    // interface, and the next launch tries the import again.
+    const creditsMissing = !catalog.creditsReady() || catalog.creditsFailed();
     status = withReadiness(catalog, {
       phase: "ready",
-      message: `Catalog ready with ${result.titleCount.toLocaleString()} titles.`,
+      message: creditsMissing
+        ? `Catalog ready with ${result.titleCount.toLocaleString()} titles. Cast and directors could not be loaded.`
+        : `Catalog ready with ${result.titleCount.toLocaleString()} titles.`,
       titleCount: result.titleCount,
       builtAt: result.builtAt,
       error: null,

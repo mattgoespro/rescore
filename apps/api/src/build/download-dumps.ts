@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import {
   DATA_DIR,
@@ -7,6 +8,7 @@ import {
 } from "../config.js";
 import { ensureGzipFile, type RemoteProbe } from "../services/gzip-tsv.js";
 import { reportDownload } from "./progress.js";
+import type { SetupReport } from "./setup-progress.js";
 
 const TITLE_FILES = {
   basics: "title.basics.tsv.gz",
@@ -33,9 +35,13 @@ export function titleDumpUrls(): { ratings: string; basics: string } {
   };
 }
 
+/** The title dumps' file names, in download order. */
+export const TITLE_DUMP_NAMES = [DATASET_FILE, TITLE_FILES.basics];
+
 export async function downloadTitleDumps(
   force = false,
   probes?: { ratings: RemoteProbe; basics: RemoteProbe },
+  setup?: SetupReport,
 ): Promise<TitleDumpFiles> {
   const urls = titleDumpUrls();
   const dumps = [
@@ -52,7 +58,7 @@ export async function downloadTitleDumps(
       probe: probes?.basics,
     },
   ];
-  return downloadWave(dumps, force);
+  return downloadWave(dumps, force, setup);
 }
 
 export async function downloadCreditDumps(
@@ -69,6 +75,7 @@ export async function downloadCreditDumps(
 async function downloadWave<K extends string>(
   dumps: Array<{ key: K; name: string; url: string; probe?: RemoteProbe }>,
   force = false,
+  setup?: SetupReport,
 ): Promise<Record<K, string>> {
   const files = {} as Record<K, string>;
   await Promise.all(
@@ -83,6 +90,12 @@ async function downloadWave<K extends string>(
         dest,
         force,
         (bytes) => {
+          setup?.tracker.fileProgress(
+            dump.name,
+            bytes.receivedBytes,
+            bytes.totalBytes,
+          );
+          setup?.report();
           reportDownload({
             message: `Downloading ${dump.name} (${fileIndex} of ${dumps.length})`,
             download: {
@@ -96,6 +109,8 @@ async function downloadWave<K extends string>(
         },
         dump.probe,
       );
+      setup?.tracker.fileDone(dump.name, statSync(files[dump.key]).size);
+      setup?.report(true);
     }),
   );
   return files;

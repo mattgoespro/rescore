@@ -53,6 +53,7 @@ test("status snapshot rebuild stays building and still blocks the shell", () => 
     message: "Rebuilding catalog from IMDb datasets…",
     error: null,
     download: null,
+    catalogUsable: false,
   });
   assert.equal(next.phase, "building");
   assert.equal(next.tmdbHydration?.processed, 1200);

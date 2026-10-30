@@ -5,6 +5,7 @@ import {
   catalogHealthReady,
   catalogStatus,
   isCatalogUsable,
+  isTitlesRebuilding,
   readTmdbHydration,
 } from "../services/ensure-catalog.js";
 import type { RatingsStore } from "../services/ratings-store.js";
@@ -33,6 +34,7 @@ export function healthRouter(
       catalogMessage: runtime.message,
       catalogError: runtime.error,
       catalogDownload: runtime.download,
+      catalogSetup: runtime.setup,
       syncedAt: store.lastSyncedAt(),
       titleCount,
       ratingsCount: store.titleCount(),
@@ -44,8 +46,7 @@ export function healthRouter(
       creditsFailed: catalog.creditsFailed(),
       catalogUsable: isCatalogUsable({
         titlesReady: runtime.titlesReady,
-        creditsReady: runtime.creditsReady,
-        creditsFailed: catalog.creditsFailed(),
+        titlesRebuilding: isTitlesRebuilding(),
       }),
       tmdbHydration: hydration,
     };

@@ -9,7 +9,9 @@ On first start, if the catalog has no titles, the API downloads IMDb ratings
 and title basics in parallel, imports titles, then marks the catalog ready.
 Credits (crew, principals, names) download and import afterwards; quitting
 during that phase does not wipe titles. `GET /health` reports `ready`,
-`titlesReady`, `creditsReady`, `building`, and `catalogMessage`. Dumps are
+`titlesReady`, `creditsReady`, `building`, and `catalogMessage`; while the
+title steps run, `catalogSetup` adds per-file download bytes, indexing
+progress, an overall fraction and the current step's time left. Dumps are
 reused when a HEAD check matches the stored ETag/size and the gzip header is
 valid. `POST /v1/catalog/rebuild` rebuilds titles from the desktop Settings
 screen without re-downloading dumps that still match the remote files.
@@ -52,7 +54,7 @@ generated API `dist/` before compilation so obsolete tooling cannot be packaged.
 
 ## TMDb hydration
 
-Browsing starts after IMDb titles and credits are ready. Visible titles and
+Browsing starts after IMDb titles are ready; cast and directors load behind it. Visible titles and
 opened details hydrate on demand while background upkeep processes remaining
 rows by IMDb vote count. Both paths share prioritized, deduplicated jobs and
 provider limits. Completion is resumable: SQL `NULL` means pending, while an empty string means

@@ -631,6 +631,9 @@ export function createCatalogLifecycle(
             message: "Rebuilding catalog from IMDb datasets…",
             error: null,
             download: null,
+            setup: null,
+            // Browsing waits until the API reports the rebuilt titles usable.
+            catalogUsable: false,
           }),
           mode: "poll" as const,
         })),

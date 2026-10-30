@@ -73,9 +73,13 @@ async function loadFromFile(
 
 export async function parseRatingsTsv(
   file: string,
+  onRead?: (readBytes: number, totalBytes: number) => void,
 ): Promise<Map<string, ImdbRating>> {
   const ratings = new Map<string, ImdbRating>();
-  for await (const [tconst, averageRating, numVotes] of readTsvRows(file)) {
+  for await (const [tconst, averageRating, numVotes] of readTsvRows(
+    file,
+    onRead,
+  )) {
     const id = imdbValue(tconst)?.toLowerCase();
     if (!id || !IMDB_ID.test(id)) continue;
     const rating = Number(averageRating);

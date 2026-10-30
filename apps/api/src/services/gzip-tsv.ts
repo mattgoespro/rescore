@@ -164,7 +164,18 @@ export async function downloadGzip(
   }
 }
 
-export async function* readTsvRows(file: string): AsyncGenerator<string[]> {
+const READ_REPORT_ROWS = 4096;
+
+/**
+ * Rows of a gzipped TSV after its header. `onRead` hears how many compressed
+ * bytes of the file have been read, every few thousand rows and at the end.
+ */
+export async function* readTsvRows(
+  file: string,
+  onRead?: (readBytes: number, totalBytes: number) => void,
+): AsyncGenerator<string[]> {
+  const totalBytes = onRead ? statSync(file).size : 0;
+  let rows = 0;
   const source = createReadStream(file, { highWaterMark: 256 * 1024 });
   const decoded = createGunzip({ chunkSize: 256 * 1024 });
   const lines = createInterface({
@@ -181,9 +192,12 @@ export async function* readTsvRows(file: string): AsyncGenerator<string[]> {
         header = false;
         continue;
       }
+      if (onRead && ++rows % READ_REPORT_ROWS === 0)
+        onRead(Math.min(source.bytesRead, totalBytes), totalBytes);
       if (line) yield line.split("\t");
     }
     await complete;
+    onRead?.(totalBytes, totalBytes);
   } finally {
     lines.close();
     source.destroy();
