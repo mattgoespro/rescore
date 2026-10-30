@@ -31,8 +31,6 @@ export interface TitleQuery {
   hideWatchlist?: boolean;
   genres?: string[];
   withoutGenres?: string[];
-  directors?: string[];
-  cast?: string[];
   withoutLanguages?: string[];
   runtimeMin?: number;
   runtimeMax?: number;

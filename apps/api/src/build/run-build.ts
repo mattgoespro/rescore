@@ -20,7 +20,11 @@ import {
 } from "./import-credits.js";
 import { log, setProgressSink } from "./progress.js";
 import { withCreditsWrite } from "./rebuild-window.js";
-import { setupReport, type SetupReport } from "./setup-progress.js";
+import {
+  mergeSetupTimings,
+  setupReport,
+  type SetupReport,
+} from "./setup-progress.js";
 import type {
   CatalogBuildOptions,
   CatalogBuildResult,
@@ -43,9 +47,15 @@ export async function buildCatalogTitles(
   options: CatalogBuildOptions = {},
 ): Promise<CatalogBuildResult> {
   setProgressSink(options.onProgress);
-  const setup = setupReport(TITLE_DUMP_NAMES, options.onSetup);
+  const previous = catalog.setupTimings();
+  const setup = setupReport(TITLE_DUMP_NAMES, options.onSetup, previous);
   try {
-    return await runBuildTitles(catalog, options.force === true, setup);
+    const result = await runBuildTitles(catalog, options.force === true, setup);
+    // The next build weights its bar from what this one measured.
+    catalog.setSetupTimings(
+      mergeSetupTimings(previous, setup.tracker.timings()),
+    );
+    return result;
   } finally {
     setProgressSink(undefined);
     options.onSetup?.(null);
@@ -250,6 +260,7 @@ async function reconcileTitles(
   catalog.setBuildInProgress(false);
   catalog.setTitlesUpdateAvailable(false);
   const titleCount = catalog.titleCount();
+  setup.tracker.indexStage("done");
   log(`Titles ready: ${titleCount.toLocaleString()} titles`, "reconcile");
   void catalog.queueAnalyze();
   return { titleCount, builtAt, revision };

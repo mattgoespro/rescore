@@ -1,31 +1,33 @@
 import type { JSX } from "react";
-import type {
-  CatalogDownloadProgress,
-  TmdbHydrationProgress,
-} from "../../../../shared/types";
+import type { TmdbHydrationProgress } from "../../../../shared/types";
+import type { CatalogSetupProgress } from "../../../../shared/catalog-status";
+import { setupPercent, setupView } from "../../lib/setup-progress";
 import { progressBarClass, progressFillClass } from "../../lib/ui";
 import LoadingOverlay from "../loading-overlay";
 
 export default function CatalogLoader({
   label,
   detail,
-  download,
+  setup,
   hydration,
   layout = "page",
 }: {
   label: string;
   detail?: string;
-  download?: CatalogDownloadProgress | null;
+  /** Title steps' progress, as the setup screen shows it in full. */
+  setup?: CatalogSetupProgress | null;
   hydration?: TmdbHydrationProgress | null;
   layout?: "page" | "inline";
 }): JSX.Element {
-  const percent = download ? overallPercent(download) : null;
-  const caption = download ? downloadCaption(download) : null;
+  const percent = setup ? setupPercent(setup.fraction) : null;
+  const caption = setup
+    ? `${percent}% · ${setupView(setup, { rebuilding: true }).stepLine}`
+    : null;
   const inline = layout === "inline";
 
   return (
     <LoadingOverlay busy loadingText={label} inline={inline}>
-      {download ? (
+      {setup ? (
         <div
           className={
             inline
@@ -36,14 +38,14 @@ export default function CatalogLoader({
           <div
             className={progressBarClass}
             role="progressbar"
-            aria-label="Dataset download progress"
+            aria-label="Catalogue rebuild progress"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={Math.round(percent ?? 0)}
+            aria-valuenow={percent ?? 0}
           >
             <div
               className={`${progressFillClass} transition-[width] duration-200`}
-              style={{ width: `${Math.min(100, Math.max(0, percent ?? 0))}%` }}
+              style={{ width: `${percent ?? 0}%` }}
             />
           </div>
           {caption ? (
@@ -104,30 +106,4 @@ export default function CatalogLoader({
       ) : null}
     </LoadingOverlay>
   );
-}
-
-function overallPercent(download: CatalogDownloadProgress): number {
-  if (download.fileCount <= 0) return 0;
-  const fileFraction =
-    download.totalBytes && download.totalBytes > 0
-      ? Math.min(1, download.receivedBytes / download.totalBytes)
-      : 0;
-  return ((download.fileIndex - 1 + fileFraction) / download.fileCount) * 100;
-}
-
-function downloadCaption(download: CatalogDownloadProgress): string {
-  const received = formatBytes(download.receivedBytes);
-  const percent = Math.round(overallPercent(download));
-  if (download.totalBytes && download.totalBytes > 0) {
-    return `${percent}% · ${received} of ${formatBytes(download.totalBytes)}`;
-  }
-  if (download.receivedBytes <= 0) return "Starting download…";
-  return `${percent}% · ${received} downloaded`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
 }

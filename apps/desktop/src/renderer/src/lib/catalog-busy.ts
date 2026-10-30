@@ -3,7 +3,7 @@ import { setupPercent } from "./setup-progress";
 const FIRST_BUILD_DETAIL =
   "IMDb’s non-commercial datasets are several hundred MB. Your ratings, watchlist, and skips are kept.";
 
-const REBUILD_FALLBACK = "Rebuilding catalog…";
+const REBUILD_FALLBACK = "Rebuilding catalogue…";
 
 export function tmdbHealthPercent(
   filled: number,

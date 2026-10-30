@@ -22,7 +22,6 @@ import type {
 import {
   defaultFilters,
   defaultSettings,
-  mediaTypeOf,
   setMediaProxyOrigin,
   titleKey,
 } from "../../shared/types";
@@ -49,11 +48,13 @@ import Library from "./views/Library";
 import SettingsView from "./views/Settings";
 import { loadTmdbHealth } from "./lib/tmdb-health";
 
+/** Title details kept for instant reopening, most recently opened last. */
+const DETAILS_CACHE_LIMIT = 60;
+
 export default function App(): JSX.Element {
   const [view, setView] = useState<AppView>("discover");
   const [settings, setSettings] = useState<Settings>(defaultSettings());
-  const [movieGenres, setMovieGenres] = useState<Genre[]>([]);
-  const [tvGenres, setTvGenres] = useState<Genre[]>([]);
+  const [genres, setGenres] = useState<Genre[]>([]);
   const [library, setLibraryState] = useState<LibraryEntry[]>([]);
   const [libraryRevision, setLibraryRevision] = useState(0);
   const setLibrary = useCallback((next: LibraryEntry[]) => {
@@ -86,6 +87,8 @@ export default function App(): JSX.Element {
       )
         return;
       setView(next);
+      // A title picked in one view rarely belongs to the next one.
+      setSelected(null);
     },
     [view],
   );
@@ -101,17 +104,19 @@ export default function App(): JSX.Element {
     null,
   );
   const detailsCache = useRef(new Map<string, MovieDetails>());
+  const cacheDetails = useCallback((key: string, movie: MovieDetails) => {
+    const cache = detailsCache.current;
+    cache.delete(key);
+    cache.set(key, movie);
+    // Oldest first: a long browse keeps only the titles opened lately.
+    while (cache.size > DETAILS_CACHE_LIMIT)
+      cache.delete(cache.keys().next().value as string);
+  }, []);
 
-  const genres =
-    mediaTypeOf(filters.titleKind) === "tv" ? tvGenres : movieGenres;
-  const genreMap = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const genre of movieGenres) map.set(genre.id, genre.name);
-    for (const genre of tvGenres) {
-      if (!map.has(genre.id)) map.set(genre.id, genre.name);
-    }
-    return map;
-  }, [movieGenres, tvGenres]);
+  const genreMap = useMemo(
+    () => new Map(genres.map((genre) => [genre.id, genre.name])),
+    [genres],
+  );
 
   const refresh = useCallback(async () => {
     const [nextSettings, nextLibrary] = await Promise.all([
@@ -125,8 +130,7 @@ export default function App(): JSX.Element {
       window.api.genres().catch(() => [] as Genre[]),
       window.api.profile().catch(() => null),
     ]);
-    setMovieGenres(nextGenres);
-    setTvGenres(nextGenres);
+    setGenres(nextGenres);
     setProfile(nextProfile);
   }, []);
 
@@ -218,7 +222,7 @@ export default function App(): JSX.Element {
         );
         if (!cancelled) {
           setDetails(movie);
-          if (movie) detailsCache.current.set(key, movie);
+          if (movie) cacheDetails(key, movie);
         }
       } catch {
         if (!cancelled) setDetails(null);
@@ -248,8 +252,18 @@ export default function App(): JSX.Element {
       }
     };
     void fill();
+    let creditsReady: boolean | undefined;
     const unsubscribe = window.api.onCatalogStatus((status) => {
+      // Cast and directors load after browsing opens; an open title picks
+      // them up as soon as they land.
+      const creditsArrived =
+        creditsReady === false && status.creditsReady === true;
+      creditsReady = status.creditsReady;
       const completed = status.tmdbHydration?.completedIds ?? [];
+      if (creditsArrived) {
+        detailsCache.current.clear();
+        void loadDetails();
+      }
       if (!completed.includes(selected.imdbId)) return;
       clearPendingRetries(retryAt, completed, resolved);
       detailsCache.current.delete(key);
@@ -262,7 +276,7 @@ export default function App(): JSX.Element {
       unsubscribe();
       window.clearInterval(timer);
     };
-  }, [selected]);
+  }, [selected, cacheDetails]);
 
   async function saveSettings(patch: Partial<Settings>): Promise<void> {
     const previousUrl = settings.catalogApiUrl;
@@ -376,7 +390,7 @@ export default function App(): JSX.Element {
   const forYouLayout = view === "foryou" && !booting && !catalogBusy;
   const libraryLayout = view === "library" && !booting && !catalogBusy;
 
-  const inspector = (
+  const renderInspector = (onClose?: () => void) => (
     <Inspector
       movie={selected}
       details={details}
@@ -388,15 +402,20 @@ export default function App(): JSX.Element {
           ? (selected as { match?: number }).match
           : null
       }
-      docked={!discoverLayout}
       busy={libraryBusy}
       genreMap={genreMap}
       creditsReady={catalogStatus?.creditsReady !== false}
       creditsFailed={catalogStatus?.creditsFailed === true}
       onUpsert={upsert}
       onRemove={remove}
+      onClose={onClose}
     />
   );
+  // Discover always shows the panel; For You and Library show it while a
+  // title is open, with a way back to what it replaced.
+  const closableInspector = selected
+    ? renderInspector(() => setSelected(null))
+    : null;
 
   return (
     <div className="grid h-full grid-rows-[48px_1fr]">
@@ -429,7 +448,7 @@ export default function App(): JSX.Element {
             "relative h-full min-h-0 min-w-0",
             discoverLayout && "flex flex-col overflow-hidden p-0",
             forYouLayout && "flex flex-col overflow-hidden p-0",
-            libraryLayout && "flex flex-col overflow-hidden px-6 pt-6 pb-4",
+            libraryLayout && "flex flex-col overflow-hidden p-0",
             !discoverLayout &&
               !forYouLayout &&
               !libraryLayout &&
@@ -440,29 +459,23 @@ export default function App(): JSX.Element {
             <div
               role="alert"
               className={cn(
-                "mb-4 rounded-control bg-danger/12 px-3 py-2.5 text-[13px] text-danger",
-                (discoverLayout || forYouLayout) && "shrink-0",
-                (discoverLayout || forYouLayout) && "mx-6 mt-4 mb-0",
+                "rounded-control bg-danger/12 px-3 py-2.5 text-[13px] text-danger",
+                discoverLayout || forYouLayout || libraryLayout
+                  ? "mx-6 mt-4 shrink-0"
+                  : "mb-4",
               )}
             >
               {error}
             </div>
           ) : null}
-          <div
-            className={cn(
-              "shrink-0",
-              (discoverLayout || forYouLayout) && "mx-6",
-            )}
+          <p
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
           >
-            <p
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className="sr-only"
-            >
-              {notice}
-            </p>
-          </div>
+            {notice}
+          </p>
           {view === "settings" ? (
             <SettingsView
               settings={settings}
@@ -507,7 +520,6 @@ export default function App(): JSX.Element {
           ) : booting || catalogBusy ? (
             <CatalogLoader
               label={catalogStatus?.message ?? "Loading your ranking studio…"}
-              download={catalogStatus?.download}
               hydration={catalogStatus?.tmdbHydration}
               detail={catalogLoaderDetail(catalogStatus)}
             />
@@ -521,7 +533,7 @@ export default function App(): JSX.Element {
               selectedId={selected ? titleKey(selected) : null}
               onOpen={setSelected}
               onError={setError}
-              inspector={inspector}
+              inspector={renderInspector()}
             />
           ) : view === "foryou" ? (
             <ForYou
@@ -533,6 +545,7 @@ export default function App(): JSX.Element {
               onOpen={setSelected}
               onError={setError}
               rankingMode={settings.rankingMode}
+              inspector={closableInspector}
               onRankingModeChange={(rankingMode) =>
                 void saveSettings({ rankingMode }).catch((err: Error) =>
                   setError(err.message),
@@ -547,6 +560,7 @@ export default function App(): JSX.Element {
               onOpen={setSelected}
               onRemove={remove}
               busy={libraryBusy}
+              inspector={closableInspector}
             />
           ) : null}
         </main>

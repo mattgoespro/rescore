@@ -34,7 +34,7 @@ export interface CatalogStatusDto {
 
 let status: CatalogStatusDto = {
   phase: "idle",
-  message: "Catalog has not started yet.",
+  message: "Catalogue has not started yet.",
   titleCount: 0,
   builtAt: null,
   error: null,
@@ -218,7 +218,7 @@ export function refreshCatalogStatus(
     const meta = catalog.catalogMeta();
     status = withReadiness(catalog, {
       phase: "ready",
-      message: `Using existing catalog (${titleCount.toLocaleString()} titles).`,
+      message: `Using existing catalogue (${titleCount.toLocaleString()} titles).`,
       titleCount,
       builtAt: meta.builtAt,
       error: null,
@@ -266,7 +266,7 @@ async function runEnsure(
     const meta = catalog.catalogMeta();
     status = withReadiness(catalog, {
       phase: "ready",
-      message: `Using existing catalog (${titleCount.toLocaleString()} titles).`,
+      message: `Using existing catalogue (${titleCount.toLocaleString()} titles).`,
       titleCount,
       builtAt: meta.builtAt,
       error: null,
@@ -278,8 +278,8 @@ async function runEnsure(
       message: titlesReusable
         ? "Loading cast and directors…"
         : catalog.isBuildInProgress()
-          ? "Resuming an interrupted catalog build…"
-          : "Building catalog from IMDb datasets…",
+          ? "Resuming an interrupted catalogue build…"
+          : "Building catalogue from IMDb datasets…",
       titleCount: catalog.titleCount(),
       builtAt: catalog.catalogMeta().builtAt,
       error: null,
@@ -338,8 +338,8 @@ async function runEnsure(
     status = withReadiness(catalog, {
       phase: "ready",
       message: creditsMissing
-        ? `Catalog ready with ${result.titleCount.toLocaleString()} titles. Cast and directors could not be loaded.`
-        : `Catalog ready with ${result.titleCount.toLocaleString()} titles.`,
+        ? `Catalogue ready with ${result.titleCount.toLocaleString()} titles. Cast and directors could not be loaded.`
+        : `Catalogue ready with ${result.titleCount.toLocaleString()} titles.`,
       titleCount: result.titleCount,
       builtAt: result.builtAt,
       error: null,
@@ -353,7 +353,7 @@ async function runEnsure(
     const message = error instanceof Error ? error.message : String(error);
     status = withReadiness(catalog, {
       phase: "error",
-      message: "Catalog build failed.",
+      message: "Catalogue build failed.",
       titleCount: catalog.titleCount(),
       builtAt: catalog.catalogMeta().builtAt,
       error: message,

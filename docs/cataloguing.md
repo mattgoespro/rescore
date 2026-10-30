@@ -608,7 +608,6 @@ Invoke (renderer → main):
 | `catalog:discover`       | `discover(filters)` | section 6                                        |
 | `catalog:title`          | `movie(id)`         | `GET /v1/titles/:id`                             |
 | `catalog:providers`      | `providers()`       | **stub `[]`**                                    |
-| `catalog:searchPeople`   | `searchPeople()`    | **stub `[]`**                                    |
 | `catalog:searchKeywords` | `searchKeywords()`  | **stub `[]`**                                    |
 | `library:list`           | `listLibrary()`     | `GET /v1/library`                                |
 | `library:upsert`         | `upsertLibrary()`   | `PUT /v1/library/:id`                            |
@@ -679,7 +678,8 @@ Behavioral tests in `apps/api/src/catalog/catalog.test.ts` plus live query/build
 
 Do **not** implement these as working catalogue features. They exist as TypeScript fields or IPC handlers that return empty.
 
-- `catalog:providers`, `catalog:searchPeople`, `catalog:searchKeywords` → `[]`
+- `catalog:providers`, `catalog:searchKeywords` → `[]`
+- People search (`GET /v1/people`) and the `director` / `cast` title filters: removed, with the `people_name_idx` index only they read
 - Discover fields `withoutGenres`, `cast`, `directors`, `keywords`, `providers`, `language`, `ratingMax` are not query parameters
 - Separate people / keyword / watch-provider indexes
 - Desktop-direct TMDB or IMDb HTTP

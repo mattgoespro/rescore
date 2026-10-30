@@ -35,6 +35,7 @@ export default function OverflowTooltip({
   function show(): void {
     const node = ref.current;
     if (!node || node.scrollWidth <= node.clientWidth) return;
+    if (timer.current != null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const rect = node.getBoundingClientRect();
       setTip({ left: rect.left + rect.width / 2, top: rect.top });

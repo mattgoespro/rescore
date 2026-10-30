@@ -20,6 +20,9 @@ import EmptyState from "./empty-state";
 import Heading from "./heading";
 import HeroPoster from "./hero-poster";
 import { inspectorClass } from "./inspector-class";
+import { IconClose } from "../icons";
+import { iconBtn } from "../../lib/ui";
+import { cn } from "../../lib/cn";
 import OverlayScroll from "../overlay-scroll";
 import MetaCaption from "./meta-caption";
 import RatingScale from "./rating-scale";
@@ -33,8 +36,8 @@ export default function Inspector({
   genreMap,
   creditsReady,
   creditsFailed,
-  docked,
   busy = false,
+  onClose,
   onUpsert,
   onRemove,
 }: {
@@ -45,8 +48,9 @@ export default function Inspector({
   genreMap: Map<number, string>;
   creditsReady?: boolean;
   creditsFailed?: boolean;
-  docked?: boolean;
   busy?: boolean;
+  /** Offered where the panel stands in for another one, as in For You. */
+  onClose?: () => void;
   onUpsert: (
     movie: MovieSummary,
     status: WatchStatus,
@@ -56,7 +60,7 @@ export default function Inspector({
 }): JSX.Element {
   if (!movie) {
     return (
-      <aside className={inspectorClass(docked)}>
+      <aside className={inspectorClass()}>
         <EmptyState />
       </aside>
     );
@@ -89,9 +93,23 @@ export default function Inspector({
 
   return (
     <aside
-      className={`${inspectorClass(docked, true)} flex flex-col`}
+      className={`${inspectorClass(true)} flex flex-col`}
       aria-label="Title details"
     >
+      {onClose ? (
+        <button
+          type="button"
+          aria-label="Close title details"
+          title="Close"
+          className={cn(
+            iconBtn("bare"),
+            "absolute top-3 right-3 z-2 size-8 bg-canvas/75 backdrop-blur-sm hover:bg-canvas",
+          )}
+          onClick={onClose}
+        >
+          <IconClose className="size-3.5" />
+        </button>
+      ) : null}
       {/* The panel scrolls under an overlay thumb, so no scrollbar track
           narrows it and the poster can span it edge to edge. */}
       <OverlayScroll label="Title details content">

@@ -172,7 +172,7 @@ export default function SettingsView({
   async function rebuildCatalog(): Promise<void> {
     if (
       !confirm(
-        "Rebuild the catalog from IMDb’s non-commercial datasets? This can take several minutes. Dumps that still match IMDb (ETag, size, gzip) are not downloaded again. Your ratings, watchlist, and skips are kept.",
+        "Rebuild the catalogue from IMDb’s non-commercial datasets? This can take several minutes. Dumps that still match IMDb (ETag, size, gzip) are not downloaded again. Your ratings, watchlist, and skips are kept.",
       )
     ) {
       return;
@@ -208,7 +208,7 @@ export default function SettingsView({
           Settings
         </h1>
         <p className="mt-1 mb-0 max-w-[60ch] text-sm leading-copy text-pretty text-muted">
-          Catalog, imported ratings, and how titles are ranked.
+          Catalogue, imported ratings, and how titles are ranked.
         </p>
       </div>
       <p
@@ -325,7 +325,7 @@ export default function SettingsView({
           </p>
         </div>
         <div className="min-w-0 rounded-app border border-line bg-rail p-5">
-          <h2 className="kicker">Catalog</h2>
+          <h2 className="kicker">Catalogue</h2>
           <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
             {catalogSummary(catalogStatus)}
           </p>
@@ -335,14 +335,14 @@ export default function SettingsView({
             aria-busy={rebuild != null}
             onClick={() => void rebuildCatalog()}
           >
-            {rebuild?.button ?? "Rebuild catalog"}
+            {rebuild?.button ?? "Rebuild catalogue"}
           </button>
           {rebuild ? (
             <div className="mb-3" role="status" aria-live="polite">
               <CatalogLoader
                 layout="inline"
                 label={rebuild.label}
-                download={catalogStatus?.download}
+                setup={catalogStatus?.setup}
               />
             </div>
           ) : null}
@@ -444,7 +444,7 @@ export default function SettingsView({
             <h2 className="kicker">Ranking</h2>
             {!serviceRequired && (
               <label className="mb-1 flex min-w-0 flex-col gap-2 text-[13px] text-muted">
-                Catalog API URL
+                Catalogue API URL
                 <input
                   type="url"
                   id="settings-catalogApiUrl"
@@ -458,7 +458,7 @@ export default function SettingsView({
                   }
                   value={catalogApiUrl}
                   onChange={(e) => setCatalogApiUrl(e.target.value)}
-                  placeholder="http://127.0.0.1:3847…"
+                  placeholder="http://127.0.0.1:3847"
                 />
               </label>
             )}
@@ -605,7 +605,7 @@ function HealthBar({
 }
 
 function catalogSummary(status: CatalogStatus | null): string {
-  if (!status) return "Catalog status is not available yet.";
+  if (!status) return "Catalogue status is not available yet.";
   const count =
     status.titleCount > 0
       ? `${status.titleCount.toLocaleString()} titles`
@@ -613,9 +613,9 @@ function catalogSummary(status: CatalogStatus | null): string {
   const updateNotice = status.titlesUpdateAvailable
     ? " A newer IMDb dump is available. Rebuild when you want it."
     : "";
-  if (!status.builtAt) return `Local catalog: ${count}.${updateNotice}`;
+  if (!status.builtAt) return `Local catalogue: ${count}.${updateNotice}`;
   const built = new Date(status.builtAt);
   if (Number.isNaN(built.getTime()))
-    return `Local catalog: ${count}.${updateNotice}`;
-  return `Local catalog: ${count}, last built ${built.toLocaleString()}.${updateNotice}`;
+    return `Local catalogue: ${count}.${updateNotice}`;
+  return `Local catalogue: ${count}, last built ${built.toLocaleString()}.${updateNotice}`;
 }

@@ -96,7 +96,7 @@ export function createCatalogLifecycle(
   const initial: Context = {
     status: {
       phase: "starting",
-      message: "Starting the local catalog…",
+      message: "Starting the local catalogue…",
       titleCount: 0,
       builtAt: null,
       error: null,
@@ -628,7 +628,7 @@ export function createCatalogLifecycle(
         entry: assign(({ context }) => ({
           status: catalogStatusSnapshot(context.status, {
             phase: "building",
-            message: "Rebuilding catalog from IMDb datasets…",
+            message: "Rebuilding catalogue from IMDb datasets…",
             error: null,
             download: null,
             setup: null,

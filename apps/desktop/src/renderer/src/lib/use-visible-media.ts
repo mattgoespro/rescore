@@ -2,6 +2,26 @@ import { useEffect, useRef, useState } from "react";
 
 export const MEDIA_FILL_LIMIT = 40;
 export const MEDIA_RETRY_MS = 30_000;
+/** Media rows kept for titles scrolled past; the oldest give way first. */
+export const MEDIA_CACHE_LIMIT = 800;
+
+/** Adds rows to a media map, dropping the oldest beyond the limit. */
+export function mergeMediaRows<T extends { id: string }>(
+  current: ReadonlyMap<string, T>,
+  rows: readonly T[],
+  limit = MEDIA_CACHE_LIMIT,
+): Map<string, T> {
+  const next = new Map(current);
+  for (const row of rows) {
+    next.delete(row.id);
+    next.set(row.id, row);
+  }
+  for (const key of next.keys()) {
+    if (next.size <= limit) break;
+    next.delete(key);
+  }
+  return next;
+}
 
 export function mediaIdsToFill(input: {
   ids: Iterable<string>;
@@ -107,11 +127,7 @@ export function useVisibleMedia() {
         const rows = await window.api.fillMedia(ids);
         if (disposed) return;
         for (const row of rows) if (mediaFillSettled(row)) resolved.add(row.id);
-        setMedia((current) => {
-          const next = new Map(current);
-          for (const row of rows) next.set(row.id, row);
-          return next;
-        });
+        setMedia((current) => mergeMediaRows(current, rows));
       } catch {
         /* Keep available data; retry visible failures after backoff. */
       } finally {
@@ -143,7 +159,17 @@ export function useVisibleMedia() {
         }
       }
     };
-    const mutations = new MutationObserver(scan);
+    // Scrolling a virtual list mutates the DOM many times a frame; one scan
+    // per frame sees the same rows.
+    let frame = 0;
+    const scheduleScan = (): void => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (!disposed) scan();
+      });
+    };
+    const mutations = new MutationObserver(scheduleScan);
     mutations.observe(container, { childList: true, subtree: true });
     scan();
     const unsubscribe = window.api.onCatalogStatus((status) => {
@@ -157,6 +183,7 @@ export function useVisibleMedia() {
     const timer = window.setInterval(() => void fill(), MEDIA_RETRY_MS);
     return () => {
       disposed = true;
+      if (frame) window.cancelAnimationFrame(frame);
       observer.disconnect();
       mutations.disconnect();
       unsubscribe();

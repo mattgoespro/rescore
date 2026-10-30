@@ -11,6 +11,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
   type JSX,
+  type ReactNode,
 } from "react";
 import type {
   LibraryEntry,
@@ -55,6 +56,7 @@ export default function ForYou({
   onError,
   rankingMode,
   onRankingModeChange,
+  inspector,
 }: {
   library: LibraryEntry[];
   libraryRevision: number;
@@ -65,6 +67,8 @@ export default function ForYou({
   onError: (message: string) => void;
   rankingMode: RankingMode;
   onRankingModeChange: (mode: RankingMode) => void;
+  /** The open title's details, shown in place of the taste model. */
+  inspector: ReactNode | null;
 }): JSX.Element {
   const { containerRef, media } = useVisibleMedia();
   const results = useMemo(
@@ -97,8 +101,12 @@ export default function ForYou({
 
   const ready = (result?.profile ?? profile)?.ready;
 
-  const movies = visibleForYouItems(result?.movies ?? [], library).map(
-    (movie) => mergeTitleMedia(movie, media),
+  const movies = useMemo(
+    () =>
+      visibleForYouItems(result?.movies ?? [], library).map((movie) =>
+        mergeTitleMedia(movie, media),
+      ),
+    [result, library, media],
   );
   const refreshing = loading && movies.length > 0;
 
@@ -108,7 +116,10 @@ export default function ForYou({
   return (
     <section
       ref={containerRef}
-      className="grid min-h-0 flex-1 grid-cols-1 inspect:grid-cols-[minmax(0,1fr)_360px]"
+      className={cn(
+        "grid min-h-0 flex-1 grid-cols-1 inspect:grid-cols-[minmax(0,1fr)_360px]",
+        inspector != null && "grid-rows-[1fr_auto] inspect:grid-rows-none",
+      )}
     >
       <div className="flex min-h-0 min-w-0 flex-col gap-6 pt-6 pb-4 pl-6">
         <div className="flex shrink-0 flex-wrap items-end gap-4 pr-6">
@@ -180,6 +191,7 @@ export default function ForYou({
                   <TopPick
                     movie={movie}
                     active={selectedId === titleKey(movie)}
+                    ready={ready === true}
                     onOpen={onOpen}
                   />
                 ) : (
@@ -187,6 +199,7 @@ export default function ForYou({
                     movie={movie}
                     rank={index + 1}
                     active={selectedId === titleKey(movie)}
+                    ready={ready === true}
                     entering={entering}
                     onOpen={onOpen}
                   />
@@ -204,84 +217,86 @@ export default function ForYou({
         </div>
       </div>
 
-      <aside
-        aria-label="Your taste model"
-        className="hidden min-h-0 flex-col gap-6 overflow-auto border-l border-line bg-rail px-6 pt-6 pb-8 inspect:flex"
-      >
-        <div className="flex flex-col gap-1">
-          <h2 className="m-0 text-base font-semibold">Your taste model</h2>
-          <p className="m-0 text-[13px] leading-copy text-muted">
-            Trained on everything you rate, finish, save or skip.
-          </p>
-        </div>
-        <dl className="m-0 grid grid-cols-2 rounded-app border border-line">
-          <TasteStat
-            label="Rated"
-            value={countLabel(taste?.ratedCount)}
-            className="border-r border-b border-line"
-          />
-          <TasteStat
-            label="Your average"
-            value={
-              taste?.ratedCount && Number.isFinite(taste.globalAvg)
-                ? taste.globalAvg.toFixed(1)
-                : "—"
-            }
-            className="border-b border-line"
-          />
-          <TasteStat
-            label="Watchlist"
-            value={countLabel(taste?.watchlistCount)}
-            className="border-r border-line"
-          />
-          <TasteStat
-            label="Usual runtime"
-            value={
-              taste?.runtimeMean && Number.isFinite(taste.runtimeMean)
-                ? (formatRuntime(Math.round(taste.runtimeMean)) ?? "—")
-                : "—"
-            }
-          />
-        </dl>
-        {taste?.topGenres?.length ? (
-          <section className="flex flex-col gap-3">
-            <h3 className="kicker">Genres you rate highest</h3>
-            {taste.topGenres.slice(0, 5).map((genre) => (
-              <div key={genre.id} className="flex flex-col gap-1.5">
-                <div className="flex justify-between gap-3 text-[13px]">
-                  <span className="font-medium">
-                    {genreMap.get(Number(genre.id)) ?? genre.name}
-                  </span>
-                  <span className="text-muted tabular">
-                    avg {genre.avg} · {genre.count} rated
+      {inspector ?? (
+        <aside
+          aria-label="Your taste model"
+          className="hidden min-h-0 flex-col gap-6 overflow-auto border-l border-line bg-rail px-6 pt-6 pb-8 inspect:flex"
+        >
+          <div className="flex flex-col gap-1">
+            <h2 className="m-0 text-base font-semibold">Your taste model</h2>
+            <p className="m-0 text-[13px] leading-copy text-muted">
+              Trained on everything you rate, finish, save or skip.
+            </p>
+          </div>
+          <dl className="m-0 grid grid-cols-2 rounded-app border border-line">
+            <TasteStat
+              label="Rated"
+              value={countLabel(taste?.ratedCount)}
+              className="border-r border-b border-line"
+            />
+            <TasteStat
+              label="Your average"
+              value={
+                taste?.ratedCount && Number.isFinite(taste.globalAvg)
+                  ? taste.globalAvg.toFixed(1)
+                  : "—"
+              }
+              className="border-b border-line"
+            />
+            <TasteStat
+              label="Watchlist"
+              value={countLabel(taste?.watchlistCount)}
+              className="border-r border-line"
+            />
+            <TasteStat
+              label="Usual runtime"
+              value={
+                taste?.runtimeMean && Number.isFinite(taste.runtimeMean)
+                  ? (formatRuntime(Math.round(taste.runtimeMean)) ?? "—")
+                  : "—"
+              }
+            />
+          </dl>
+          {taste?.topGenres?.length ? (
+            <section className="flex flex-col gap-3">
+              <h3 className="kicker">Genres you rate highest</h3>
+              {taste.topGenres.slice(0, 5).map((genre) => (
+                <div key={genre.id} className="flex flex-col gap-1.5">
+                  <div className="flex justify-between gap-3 text-[13px]">
+                    <span className="font-medium">
+                      {genreMap.get(Number(genre.id)) ?? genre.name}
+                    </span>
+                    <span className="text-muted tabular">
+                      avg {genre.avg} · {genre.count} rated
+                    </span>
+                  </div>
+                  <span aria-hidden="true" className="block h-1 bg-track">
+                    <span
+                      className="block h-1 bg-accent"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, (Number(genre.avg) || 0) * 10))}%`,
+                      }}
+                    />
                   </span>
                 </div>
-                <span aria-hidden="true" className="block h-1 bg-track">
-                  <span
-                    className="block h-1 bg-accent"
-                    style={{
-                      width: `${Math.max(0, Math.min(100, (Number(genre.avg) || 0) * 10))}%`,
-                    }}
-                  />
-                </span>
-              </div>
-            ))}
-          </section>
-        ) : null}
-        {insights.length ? (
-          <section className="flex flex-col gap-2">
-            <h3 className="kicker">What the ranker noticed</h3>
-            {insights.map((text) => (
-              <p
-                key={text}
-                className="m-0 rounded-control border border-line bg-canvas px-3 py-2.5 text-[13px] leading-copy"
-              >
-                {text}
-              </p>
-            ))}
-          </section>
-        ) : null}
-      </aside>
+              ))}
+            </section>
+          ) : null}
+          {insights.length ? (
+            <section className="flex flex-col gap-2">
+              <h3 className="kicker">What the ranker noticed</h3>
+              {insights.map((text) => (
+                <p
+                  key={text}
+                  className="m-0 rounded-control border border-line bg-canvas px-3 py-2.5 text-[13px] leading-copy"
+                >
+                  {text}
+                </p>
+              ))}
+            </section>
+          ) : null}
+        </aside>
+      )}
     </section>
   );
 }
@@ -369,16 +384,26 @@ function metaLine(movie: RankedMovie): string {
     .join(" · ");
 }
 
+/**
+ * The match as a whole percent, or null before the taste model is ready:
+ * every match is then 0, which would read as a verdict on each title.
+ */
+function matchPercent(movie: RankedMovie, ready: boolean): number | null {
+  return ready ? Math.round(movie.match) : null;
+}
+
 function TopPick({
   movie,
   active,
+  ready,
   onOpen,
 }: {
   movie: RankedMovie;
   active: boolean;
+  ready: boolean;
   onOpen: (movie: MovieSummary) => void;
 }): JSX.Element {
-  const match = Math.round(movie.match);
+  const match = matchPercent(movie, ready);
   return (
     <button
       type="button"
@@ -396,10 +421,10 @@ function TopPick({
       <span className="flex min-w-0 flex-col gap-2">
         <span className="kicker text-accent-text">No. 01 · Top pick</span>
         <span className="flex flex-col gap-1">
-          <h2 className="m-0 text-xl leading-tight font-semibold tracking-tightish">
+          <span className="text-xl leading-tight font-semibold tracking-tightish">
             {movie.title}
             <AgeCaption rating={movie.certification} />
-          </h2>
+          </span>
           <span className="text-[13px] text-muted tabular">
             {metaLine(movie)}
           </span>
@@ -409,12 +434,12 @@ function TopPick({
       <span className="flex w-28 flex-col gap-2 border-l border-line pl-5">
         <span className="kicker">Match</span>
         <span className="text-[28px] leading-none font-semibold text-accent-text tabular">
-          {match}%
+          {match == null ? "—" : `${match}%`}
         </span>
         <span aria-hidden="true" className="block h-0.5 bg-track">
           <span
             className="block h-0.5 bg-accent"
-            style={{ width: `${match}%` }}
+            style={{ width: `${match ?? 0}%` }}
           />
         </span>
       </span>
@@ -426,16 +451,18 @@ function RankedRow({
   movie,
   rank,
   active,
+  ready,
   entering,
   onOpen,
 }: {
   movie: RankedMovie;
   rank: number;
   active: boolean;
+  ready: boolean;
   entering: boolean;
   onOpen: (movie: MovieSummary) => void;
 }): JSX.Element {
-  const match = Math.round(movie.match);
+  const match = matchPercent(movie, ready);
   return (
     <button
       className={rankedRow(
@@ -459,10 +486,10 @@ function RankedRow({
       <Thumb movie={movie} className={rankedThumb()} />
       <span className="flex min-w-0 flex-col gap-1.5">
         <span className="flex flex-wrap items-baseline gap-x-2">
-          <h2 className="m-0 text-sm font-semibold">
+          <span className="text-sm font-semibold">
             {movie.title}
             <AgeCaption rating={movie.certification} />
-          </h2>
+          </span>
           <span className="text-[13px] text-muted tabular">
             {metaLine(movie)}
           </span>
@@ -471,12 +498,12 @@ function RankedRow({
       </span>
       <span className="flex flex-col items-end gap-2">
         <span className="text-base font-semibold text-accent-text tabular">
-          {match}%
+          {match == null ? "—" : `${match}%`}
         </span>
         <span aria-hidden="true" className="block h-0.5 w-24 bg-track">
           <span
             className="block h-0.5 bg-accent"
-            style={{ width: `${match}%` }}
+            style={{ width: `${match ?? 0}%` }}
           />
         </span>
       </span>

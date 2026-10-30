@@ -23,6 +23,7 @@ import {
   writeCatalogMeta,
 } from "./meta.js";
 import { now } from "./now.js";
+import type { SetupTimings } from "../types.js";
 import {
   facets,
   listForYouCandidates,
@@ -70,6 +71,12 @@ type LibraryWriteRow = {
   rated_at: string | null;
   note: string | null;
   updated_at: string;
+};
+
+const NO_TIMINGS: SetupTimings = {
+  downloadBytesPerSecond: null,
+  downloadBytes: null,
+  indexSeconds: null,
 };
 
 export class CatalogDatabase {
@@ -185,26 +192,6 @@ export class CatalogDatabase {
 
   listTitles(query: TitleQuery): TitleListResponse {
     return listTitles(this.db, query);
-  }
-
-  searchPeople(
-    query: string,
-    role: "director" | "cast",
-    limit = 8,
-  ): Array<{ nconst: string; name: string }> {
-    const trimmed = query.trim();
-    if (!trimmed) return [];
-    return this.db
-      .prepare(
-        `SELECT p.nconst, p.name
-FROM people p
-JOIN title_people tp ON tp.nconst = p.nconst
-WHERE tp.role = ? AND p.name LIKE ? || '%'
-GROUP BY p.nconst
-ORDER BY p.name
-LIMIT ?`,
-      )
-      .all(role, trimmed, limit) as Array<{ nconst: string; name: string }>;
   }
 
   title(id: string): TitleDto | null {
@@ -707,6 +694,30 @@ LIMIT ?`,
 
   setTitleDumpFingerprint(value: string): void {
     setMetaValue(this.db, "titlesDumpFingerprint", value);
+  }
+
+  /** What earlier title builds measured, for weighting the next one. */
+  setupTimings(): SetupTimings {
+    const raw = getMetaValue(this.db, "setupTimings");
+    if (!raw) return NO_TIMINGS;
+    try {
+      const parsed = JSON.parse(raw) as Partial<SetupTimings>;
+      const positive = (value: unknown): number | null =>
+        typeof value === "number" && Number.isFinite(value) && value > 0
+          ? value
+          : null;
+      return {
+        downloadBytesPerSecond: positive(parsed.downloadBytesPerSecond),
+        downloadBytes: positive(parsed.downloadBytes),
+        indexSeconds: positive(parsed.indexSeconds),
+      };
+    } catch {
+      return NO_TIMINGS;
+    }
+  }
+
+  setSetupTimings(timings: SetupTimings): void {
+    setMetaValue(this.db, "setupTimings", JSON.stringify(timings));
   }
 
   creditsDumpFingerprint(): string | null {

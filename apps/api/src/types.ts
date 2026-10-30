@@ -40,6 +40,17 @@ export interface HealthResponse {
   tmdbHydration: TmdbHydrationProgress;
 }
 
+/**
+ * What the last title builds measured, kept with the catalogue so the next
+ * build can weight its steps. Each field is null until a build measured it.
+ */
+export interface SetupTimings {
+  downloadBytesPerSecond: number | null;
+  /** Both title dumps together, compressed. */
+  downloadBytes: number | null;
+  indexSeconds: number | null;
+}
+
 export interface CatalogSetupFile {
   file: string;
   receivedBytes: number;

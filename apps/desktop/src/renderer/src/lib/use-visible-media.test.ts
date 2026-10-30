@@ -5,6 +5,7 @@ import {
   clearPendingRetries,
   mediaIdsToFill,
   invalidateCompletedMedia,
+  mergeMediaRows,
   mergeTitleMedia,
 } from "./use-visible-media";
 
@@ -75,4 +76,11 @@ test("periodic hydration refreshes visible titles previously resolved as missing
     mediaIdsToFill({ ids: ["tt1", "tt2"], resolved, retryAt, now: 1_000 }),
     ["tt1"],
   );
+});
+
+test("media rows keep the newest titles within the limit", () => {
+  const row = (id: string) => ({ id });
+  let media = mergeMediaRows(new Map(), [row("a"), row("b"), row("c")], 3);
+  media = mergeMediaRows(media, [row("a"), row("d")], 3);
+  assert.deepEqual([...media.keys()], ["c", "a", "d"]);
 });

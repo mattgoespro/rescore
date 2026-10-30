@@ -323,10 +323,10 @@ function statusFromHealth(health: HealthPayload): CatalogStatus {
   const message =
     health.catalogMessage?.trim() ||
     (health.building
-      ? "Building catalog from IMDb datasets…"
+      ? "Building catalogue from IMDb datasets…"
       : health.ready
-        ? `Using existing catalog (${titleCount.toLocaleString()} titles).`
-        : "Starting the local catalog…");
+        ? `Using existing catalogue (${titleCount.toLocaleString()} titles).`
+        : "Starting the local catalogue…");
   let phase: CatalogPhase = "starting";
   if (health.catalogPhase === "error" || error) phase = "error";
   else if (health.catalogPhase === "building" || health.building)

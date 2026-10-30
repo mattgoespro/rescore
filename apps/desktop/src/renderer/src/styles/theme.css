@@ -31,6 +31,8 @@ html[data-theme="dark"] {
   --imd-accent-ink: #1a0c06;
   --imd-accent-text: #ceaa34;
   --imd-danger: #e0716a;
+  --imd-ok: #5fbf7f;
+  --imd-warn: #e3a63b;
   --imd-danger-fg: #e0716a;
   --imd-track: #4a4a4a;
   --imd-thumb: #5a5a5a;
@@ -64,6 +66,8 @@ html[data-theme="light"] {
   --imd-control: #808080;
   --imd-accent-text: #80671d;
   --imd-danger: #b3352f;
+  --imd-ok: #2f8a4c;
+  --imd-warn: #b0700f;
   --imd-danger-fg: #b3352f;
   --imd-track: #c8c8c8;
   --imd-thumb: #a0a0a0;

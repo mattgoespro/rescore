@@ -1362,7 +1362,7 @@ test("for-you candidates exclude watched and skipped", () => {
   catalog.close();
 });
 
-test("excluded genres and people narrow the page", () => {
+test("excluded genres narrow the page", () => {
   const catalog = openCatalog();
   catalog.upsertTitles([
     {
@@ -1370,14 +1370,12 @@ test("excluded genres and people narrow the page", () => {
       title: "Horror One",
       kind: "movie",
       genres: ["Horror"],
-      directors: ["Jane Doe"],
     },
     {
       id: "tt0000002",
       title: "Comedy Two",
       kind: "movie",
       genres: ["Comedy"],
-      cast: ["Jane Doe"],
     },
   ]);
   const base = {
@@ -1390,18 +1388,6 @@ test("excluded genres and people narrow the page", () => {
   assert.deepEqual(
     catalog
       .listTitles({ ...base, withoutGenres: ["Horror"] })
-      .data.map((row) => row.id),
-    ["tt0000002"],
-  );
-  assert.deepEqual(
-    catalog
-      .listTitles({ ...base, directors: ["Jane Doe"] })
-      .data.map((row) => row.id),
-    ["tt0000001"],
-  );
-  assert.deepEqual(
-    catalog
-      .listTitles({ ...base, cast: ["Jane Doe"] })
       .data.map((row) => row.id),
     ["tt0000002"],
   );
@@ -1740,5 +1726,25 @@ test("library write clear returns every removed row", () => {
   const removed = catalog.clearLibrary().map((entry) => entry.title.id);
   assert.deepEqual(removed.sort(), ["tt0000001", "tt0000002"]);
   assert.equal(catalog.listLibrary().length, 0);
+  catalog.close();
+});
+
+test("setup timings round-trip and ignore unusable values", () => {
+  const catalog = openCatalog();
+  assert.deepEqual(catalog.setupTimings(), {
+    downloadBytesPerSecond: null,
+    downloadBytes: null,
+    indexSeconds: null,
+  });
+  catalog.setSetupTimings({
+    downloadBytesPerSecond: 5_000_000,
+    downloadBytes: 240_000_000,
+    indexSeconds: 0,
+  });
+  assert.deepEqual(catalog.setupTimings(), {
+    downloadBytesPerSecond: 5_000_000,
+    downloadBytes: 240_000_000,
+    indexSeconds: null,
+  });
   catalog.close();
 });

@@ -7,7 +7,7 @@ import { catalogStatusSnapshot } from "./catalog-status-snapshot";
 function readyStatus(): CatalogStatus {
   return {
     phase: "ready",
-    message: "Using existing catalog (482,500 titles).",
+    message: "Using existing catalogue (482,500 titles).",
     titleCount: 482_500,
     builtAt: "2026-10-04T00:00:00.000Z",
     error: "previous",
@@ -50,7 +50,7 @@ test("status snapshot keeps counts, flags, and poster hydration", () => {
 test("status snapshot rebuild stays building and still blocks the shell", () => {
   const next = catalogStatusSnapshot(readyStatus(), {
     phase: "building",
-    message: "Rebuilding catalog from IMDb datasets…",
+    message: "Rebuilding catalogue from IMDb datasets…",
     error: null,
     download: null,
     catalogUsable: false,
@@ -64,7 +64,7 @@ test("status snapshot rebuild stays building and still blocks the shell", () => 
 test("status snapshot replaces a count that the caller names", () => {
   const next = catalogStatusSnapshot(readyStatus(), {
     phase: "ready",
-    message: "Using existing catalog (12 titles).",
+    message: "Using existing catalogue (12 titles).",
     titleCount: 12,
   });
   assert.equal(next.titleCount, 12);

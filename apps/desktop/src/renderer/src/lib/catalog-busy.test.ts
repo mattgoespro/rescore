@@ -77,10 +77,10 @@ test("a forced rebuild reports visible in-progress feedback", () => {
   assert.deepEqual(
     catalogRebuildFeedback({
       phase: "building",
-      message: "Rebuilding catalog from IMDb datasets…",
+      message: "Rebuilding catalogue from IMDb datasets…",
     }),
     {
-      label: "Rebuilding catalog from IMDb datasets…",
+      label: "Rebuilding catalogue from IMDb datasets…",
       button: "Rebuilding…",
     },
   );
@@ -89,12 +89,12 @@ test("a forced rebuild reports visible in-progress feedback", () => {
       phase: "building",
       message: "   ",
     })?.label,
-    "Rebuilding catalog…",
+    "Rebuilding catalogue…",
   );
   assert.equal(
     catalogRebuildFeedback({
       phase: "ready",
-      message: "Using existing catalog (482,500 titles).",
+      message: "Using existing catalogue (482,500 titles).",
     }),
     null,
   );
@@ -103,13 +103,13 @@ test("a forced rebuild reports visible in-progress feedback", () => {
 test("rebuild feedback is present while the splash blocks the app", () => {
   const status = {
     phase: "building",
-    message: "Rebuilding catalog from IMDb datasets…",
+    message: "Rebuilding catalogue from IMDb datasets…",
     catalogUsable: false,
   };
   assert.equal(isCatalogUiBlocked(status), true);
   assert.equal(
     catalogRebuildFeedback(status)?.label,
-    "Rebuilding catalog from IMDb datasets…",
+    "Rebuilding catalogue from IMDb datasets…",
   );
 });
 
@@ -117,12 +117,12 @@ test("a blocked rebuild does not have an inline strip", () => {
   const status = {
     phase: "building",
     catalogUsable: false,
-    message: "Rebuilding catalog from IMDb datasets…",
+    message: "Rebuilding catalogue from IMDb datasets…",
   };
   assert.equal(isCatalogUiBlocked(status), true);
   assert.equal(
     catalogRebuildFeedback(status)?.label,
-    "Rebuilding catalog from IMDb datasets…",
+    "Rebuilding catalogue from IMDb datasets…",
   );
 });
 

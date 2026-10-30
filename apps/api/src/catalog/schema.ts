@@ -166,6 +166,9 @@ export const migrations = [
    CREATE INDEX IF NOT EXISTS titles_kind_votes_cover_idx
      ON titles(kind, imdb_votes DESC, year, imdb_rating, genre_mask);
    CREATE INDEX IF NOT EXISTS titles_votes_desc_idx ON titles(imdb_votes DESC, id);`,
+  // People search and the director and cast filters were the only readers of
+  // the name index; credits import writes it on every new person.
+  `DROP INDEX IF EXISTS people_name_idx;`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN

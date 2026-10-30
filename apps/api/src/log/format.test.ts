@@ -77,5 +77,4 @@ test("searchKeyList returns sorted names only for GET title search", () => {
     "page,query,sort",
   );
   assert.equal(searchKeyList("/v1/titles/tt1", { query: "heat" }), "");
-  assert.equal(searchKeyList("/v1/people", { q: "nolan" }), "");
 });

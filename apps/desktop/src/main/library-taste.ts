@@ -35,6 +35,9 @@ export type LibraryCatalogue = Pick<
   | "discover"
   | "forYouPage"
 >;
+/** CSV rows imported at once. */
+const IMPORT_CONCURRENCY = 6;
+
 export interface LibraryUpsert {
   movie: MovieSummary;
   status: WatchStatus;
@@ -80,16 +83,16 @@ export function createLibraryTasteWorkflow<
     check(captured);
     return result;
   }
-  async function readOrEmpty<T>(load: () => Promise<T[]>): Promise<T[]> {
-    try {
-      return await load();
-    } catch (error) {
-      if (error instanceof CatalogError && error.status === 0) {
-        console.warn(error.message);
-        return [];
-      }
-      throw error;
-    }
+  /** The library and genres taste reads, shared until the next library write. */
+  function tasteInputs(client: C, captured: Connection) {
+    return taste.read(async () => {
+      const [library, genres] = await Promise.all([
+        client.listLibrary(),
+        client.genres(),
+      ]);
+      check(captured);
+      return { library, genres };
+    });
   }
   const list = () => run((client) => client.listLibrary());
   const upsert = (payload: LibraryUpsert) =>
@@ -123,14 +126,7 @@ export function createLibraryTasteWorkflow<
       let library: LibraryEntry[] = [],
         genres: { id: number; name: string }[] = [];
       if (filters.sortBy === "match") {
-        ({ library, genres } = await taste.read(async () => {
-          const [library, genres] = await Promise.all([
-            client.listLibrary(),
-            client.genres(),
-          ]);
-          check(captured);
-          return { library, genres };
-        }));
+        ({ library, genres } = await tasteInputs(client, captured));
         check(captured);
       }
       const profile = buildProfile(library, genres);
@@ -182,21 +178,24 @@ export function createLibraryTasteWorkflow<
       };
     });
   const profile = () =>
-    run(async (client) => {
-      const [library, genres] = await Promise.all([
-        readOrEmpty(() => client.listLibrary()),
-        readOrEmpty(() => client.genres()),
-      ]);
-      return publicProfile(buildProfile(library, genres));
+    run(async (client, captured) => {
+      try {
+        const { library, genres } = await tasteInputs(client, captured);
+        return publicProfile(buildProfile(library, genres));
+      } catch (error) {
+        // An unreachable catalogue reads as an empty profile, not an error.
+        if (error instanceof CatalogError && error.status === 0) {
+          console.warn(error.message);
+          return publicProfile(buildProfile([], []));
+        }
+        throw error;
+      }
     });
   const enrich = (
     movies: MovieSummary[],
   ): Promise<Record<string, MovieEnrichment>> =>
-    run(async (client) => {
-      const [library, genres] = await Promise.all([
-        client.listLibrary(),
-        client.genres(),
-      ]);
+    run(async (client, captured) => {
+      const { library, genres } = await tasteInputs(client, captured);
       const profile = buildProfile(library, genres);
       const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
       return Object.fromEntries(
@@ -228,18 +227,20 @@ export function createLibraryTasteWorkflow<
         errors: 0,
         done: false,
       };
-      for (const [index, row] of rows.entries()) {
-        check(captured);
-        progress.current = index + 1;
-        progress.title = row.title;
-        report({ ...progress });
+      // A few rows at a time: each is a lookup and a save, and one after
+      // another a large export waits on thousands of round trips.
+      let next = 0;
+      const importRow = async (row: ImdbCsvRow): Promise<void> => {
         try {
           const movie = await client.findByImdb(row.imdbId);
           check(captured);
           if (!movie) progress.skipped++;
           else {
-            await withLibraryWrite(taste, () =>
-              client.saveLibrary(movie, "watched", row.rating, row.dateRated),
+            await client.saveLibrary(
+              movie,
+              "watched",
+              row.rating,
+              row.dateRated,
             );
             progress.imported++;
           }
@@ -247,7 +248,24 @@ export function createLibraryTasteWorkflow<
           check(captured);
           progress.errors++;
         }
-      }
+        progress.current++;
+        progress.title = row.title;
+        report({ ...progress });
+      };
+      const worker = async (): Promise<void> => {
+        while (next < rows.length) {
+          check(captured);
+          await importRow(rows[next++]!);
+        }
+      };
+      await withLibraryWrite(taste, () =>
+        Promise.all(
+          Array.from(
+            { length: Math.min(IMPORT_CONCURRENCY, rows.length) },
+            worker,
+          ),
+        ),
+      );
       progress.done = true;
       progress.title = "Import complete";
       report({ ...progress });

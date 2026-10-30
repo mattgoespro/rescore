@@ -14,8 +14,8 @@ const NAV: ReadonlyArray<{ id: AppView; label: string; shortcut: string }> = [
 ];
 
 const STATUS_COLOR = {
-  loaded: "bg-[#5fbf7f]",
-  starting: "bg-[#e3a63b]",
+  loaded: "bg-ok",
+  starting: "bg-warn",
   failed: "bg-danger",
 } as const;
 
@@ -64,7 +64,7 @@ export default function TopBar({
             className={cn(
               "h-7 rounded-control border-0 px-3 text-[13px] transition-colors duration-140",
               view === item.id
-                ? "bg-selected font-semibold text-accent-text"
+                ? "bg-lifted font-semibold text-accent-text"
                 : "bg-transparent font-medium text-muted hover:bg-wash-6 hover:text-ink",
             )}
             onClick={() => onNavigate(item.id)}

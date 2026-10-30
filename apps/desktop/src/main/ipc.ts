@@ -9,7 +9,7 @@ import {
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { readFileSync, writeFileSync } from "fs";
+import { readFile, writeFile } from "fs/promises";
 import { isAppearanceOnlyPatch } from "../shared/appearance";
 import {
   type DiscoverFilters,
@@ -219,7 +219,7 @@ async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
     ? await dialog.showSaveDialog(window, options)
     : await dialog.showSaveDialog(options);
   if (result.canceled || !result.filePath) return { ok: false };
-  writeFileSync(
+  await writeFile(
     result.filePath,
     JSON.stringify(
       {
@@ -254,7 +254,7 @@ async function importImdbCsv(): Promise<ImportProgress> {
     done: true,
   };
   if (picked.canceled || !picked.filePaths[0]) return empty;
-  const rows = parseImdbRatingsCsv(readFileSync(picked.filePaths[0], "utf8"));
+  const rows = parseImdbRatingsCsv(await readFile(picked.filePaths[0], "utf8"));
   return workflow.importRatings(rows, (progress) =>
     sendToWindow(getWindow(), "library:importProgress", progress),
   );

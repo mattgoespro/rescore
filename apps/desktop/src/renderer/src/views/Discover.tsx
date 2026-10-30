@@ -50,6 +50,26 @@ import { segmentedCell, segmentedGroup } from "../lib/ui";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
+const LAYOUT_KEY = "rescore.discover.layout";
+
+type ResultLayout = "list" | "grid";
+
+/** The last layout chosen, so Discover opens the way it was left. */
+function readResultLayout(): ResultLayout {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
+function saveResultLayout(layout: ResultLayout): void {
+  try {
+    localStorage.setItem(LAYOUT_KEY, layout);
+  } catch {
+    /* A layout that is not remembered is only a convenience lost. */
+  }
+}
 
 export default function Discover({
   library,
@@ -80,9 +100,16 @@ export default function Discover({
   );
   const snapshot = useSyncExternalStore(results.subscribe, results.getSnapshot);
   const { items, totalResults, loading } = snapshot;
-  const visibleItems = visibleDiscoverItems(snapshot.items, library, filters);
+  const visibleItems = useMemo(
+    () => visibleDiscoverItems(snapshot.items, library, filters),
+    [snapshot.items, library, filters],
+  );
   const [entering, setEntering] = useState(false);
-  const [layout, setLayout] = useState<"list" | "grid">("grid");
+  const [layout, setLayoutState] = useState<ResultLayout>(readResultLayout);
+  const setLayout = (next: ResultLayout): void => {
+    setLayoutState(next);
+    saveResultLayout(next);
+  };
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const openedId = useRef<string | null>(null);
@@ -323,7 +350,7 @@ export default function Discover({
             className={cn(refreshing && "opacity-45")}
           >
             {!loading && !visibleItems.length ? (
-              <div className="col-span-full flex flex-col items-center gap-2 px-4 py-12 text-center">
+              <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                 <h2 className="m-0 text-base font-semibold text-ink">
                   No titles match these filters
                 </h2>
@@ -385,7 +412,7 @@ export default function Discover({
           {loading ? (
             <CatalogLoader
               label={
-                refreshing ? "Updating results…" : "Searching the catalog…"
+                refreshing ? "Updating results…" : "Searching the catalogue…"
               }
             />
           ) : null}

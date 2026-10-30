@@ -612,24 +612,6 @@ function buildWhere(
       `NOT EXISTS (SELECT 1 FROM title_genres gx WHERE gx.title_id = t.id AND gx.genre IN (${placeholders.join(",")}))`,
     );
   }
-  if (query.directors?.length) {
-    for (const [index, name] of query.directors.entries()) {
-      const key = `director${index}`;
-      params[key] = name;
-      where.push(
-        `EXISTS (SELECT 1 FROM title_people tp JOIN people p ON p.nconst = tp.nconst WHERE tp.title_id = t.id AND tp.role = 'director' AND p.name = @${key})`,
-      );
-    }
-  }
-  if (query.cast?.length) {
-    for (const [index, name] of query.cast.entries()) {
-      const key = `cast${index}`;
-      params[key] = name;
-      where.push(
-        `EXISTS (SELECT 1 FROM title_people tp JOIN people p ON p.nconst = tp.nconst WHERE tp.title_id = t.id AND tp.role = 'cast' AND p.name = @${key})`,
-      );
-    }
-  }
   if (query.withoutLanguages?.length) {
     const placeholders = query.withoutLanguages.map((_, index) => {
       const key = `withoutLanguage${index}`;
