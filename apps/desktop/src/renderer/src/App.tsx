@@ -31,7 +31,11 @@ import Inspector from "./components/inspector";
 import { useNotify } from "./components/notifications";
 import TopBar from "./components/top-bar";
 import { applyAppearance } from "./lib/appearance";
-import { catalogLoaderDetail, isCatalogUiBlocked } from "./lib/catalog-busy";
+import {
+  catalogLoaderDetail,
+  isCatalogUiBlocked,
+  sameCatalogView,
+} from "./lib/catalog-busy";
 import {
   MEDIA_RETRY_MS,
   clearPendingRetries,
@@ -147,7 +151,11 @@ export default function App(): JSX.Element {
         setFilters((current) => applySearchHistory(current, latest));
       }
     });
-    return window.api.onCatalogStatus(setCatalogStatus);
+    return window.api.onCatalogStatus((next) =>
+      setCatalogStatus((current) =>
+        current && sameCatalogView(current, next) ? current : next,
+      ),
+    );
   }, []);
 
   useEffect(() => {

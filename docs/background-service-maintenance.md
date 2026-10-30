@@ -49,7 +49,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\resources\service\main
 - Runtime: `%ProgramFiles%\Rescore Catalogue\<runtime ID>`, independent of the desktop installation. Only administrators and SYSTEM can change executable files. Setup migrates older runtimes from `%ProgramFiles%\Rescore\Catalogue` after committing their replacement. Installer update cleanup preserves that old embedded folder until migration finishes.
 - Profile: `%ProgramData%\Rescore`. Protected registration and configuration files identify the endpoint, catalogue, runtime version, and transfer phase. The API credential stays outside the renderer. Authenticated users can read this profile.
 - Writable service directories: the selected `data-<ID>` directory and `logs`. The service account receives modify permission only there.
-- Desktop preferences and search history remain in Electron's existing user-data directory. Data copies retain library state, hydration checkpoints, IMDb dumps, and media cache.
+- Desktop preferences and search history remain in Electron's existing user-data directory, written through a temporary file so an interrupted save keeps the previous copy. Data copies retain library state, hydration checkpoints, IMDb dumps, and media cache.
+- Media cache: posters under `data-<ID>\posters` are capped at 1 GB. Every 500 new downloads, the service checks the total and deletes the oldest images down to 80% of the cap.
 
 The service hosts the same Node API as the desktop. Electron never starts a replacement API while service ownership is recorded. A separate SQLite ownership transaction prevents simultaneous API/CLI owners of one catalogue path. Process exit, including forced termination, releases that lock.
 

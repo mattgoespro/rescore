@@ -73,6 +73,15 @@ type LibraryWriteRow = {
   updated_at: string;
 };
 
+interface TmdbCoverage {
+  total: number;
+  posters: number;
+  synopses: number;
+  certifications: number;
+}
+
+const COVERAGE_TTL_MS = 10_000;
+
 const NO_TIMINGS: SetupTimings = {
   downloadBytesPerSecond: null,
   downloadBytes: null,
@@ -198,12 +207,22 @@ export class CatalogDatabase {
     return titleById(this.db, id);
   }
 
-  tmdbCoverage(): {
-    total: number;
-    posters: number;
-    synopses: number;
-    certifications: number;
-  } {
+  /**
+   * How many titles have each kind of TMDb metadata. It reads every title, so
+   * a reading is reused for a few seconds: hydration reports after each batch
+   * and Settings polls, and neither needs it fresher.
+   */
+  tmdbCoverage(): TmdbCoverage {
+    const cached = this.coverageCache;
+    if (cached && Date.now() < cached.expires) return { ...cached.value };
+    const value = this.readTmdbCoverage();
+    this.coverageCache = { value, expires: Date.now() + COVERAGE_TTL_MS };
+    return { ...value };
+  }
+
+  private coverageCache: { value: TmdbCoverage; expires: number } | null = null;
+
+  private readTmdbCoverage(): TmdbCoverage {
     const row = this.db
       .prepare(
         `SELECT
@@ -439,16 +458,24 @@ export class CatalogDatabase {
     pending: number;
     complete: boolean;
   } {
-    const row = this.db
-      .prepare(
-        `SELECT
-           count(*) AS total,
-           coalesce(sum(CASE WHEN ${TMDB_HYDRATION_PENDING_SQL} THEN 1 ELSE 0 END), 0) AS pending
-         FROM titles`,
-      )
-      .get() as { total: number; pending: number };
-    const total = Number(row.total);
-    const pending = Number(row.pending);
+    // Two counts, not one CASE over every row: the pending count matches the
+    // partial index's predicate exactly, so it reads only that index.
+    const total = Number(
+      (
+        this.db.prepare("SELECT count(*) AS count FROM titles").get() as {
+          count: number;
+        }
+      ).count,
+    );
+    const pending = Number(
+      (
+        this.db
+          .prepare(
+            `SELECT count(*) AS count FROM titles WHERE ${TMDB_HYDRATION_PENDING_SQL}`,
+          )
+          .get() as { count: number }
+      ).count,
+    );
     return {
       total,
       processed: total - pending,

@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { RequestHandler } from "express";
 import { POSTER_CACHE_DIR } from "../config.js";
+import { posterCacheKeeper } from "../services/poster-cache.js";
 
 const ALLOWED_HOSTS = new Set([
   "image.tmdb.org",
@@ -17,6 +18,8 @@ interface CachedImage {
   size: number;
 }
 const downloads = new Map<string, Promise<CachedImage | null>>();
+// Posters accumulate as titles are browsed; the oldest give way past a cap.
+const keeper = posterCacheKeeper(POSTER_CACHE_DIR);
 
 export const mediaHandler: RequestHandler = async (req, res, next) => {
   try {
@@ -121,6 +124,7 @@ async function downloadImage(
     await rename(temporary, cached.file);
     const metadata = { type, size };
     await writeFile(`${cached.file}.complete`, JSON.stringify(metadata));
+    keeper.downloaded();
     return metadata;
   } catch (error) {
     await unlink(temporary).catch(() => undefined);

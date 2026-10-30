@@ -70,3 +70,18 @@ test("status snapshot replaces a count that the caller names", () => {
   assert.equal(next.titleCount, 12);
   assert.equal(next.creditsReady, true);
 });
+
+test("an unchanged status keeps its identity", () => {
+  const current = readyStatus();
+  const same = catalogStatusSnapshot(current, {
+    phase: current.phase,
+    message: current.message,
+    titleCount: current.titleCount,
+  });
+  assert.equal(same, current);
+  const changed = catalogStatusSnapshot(current, {
+    phase: current.phase,
+    message: "Something new",
+  });
+  assert.notEqual(changed, current);
+});

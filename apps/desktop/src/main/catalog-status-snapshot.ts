@@ -3,7 +3,19 @@ import type { CatalogStatus } from "../shared/catalog-status";
 export type CatalogStatusChange = Pick<CatalogStatus, "phase" | "message"> &
   Partial<Omit<CatalogStatus, "phase" | "message">>;
 
+/**
+ * The status after a change. An unchanged status keeps its identity, so a
+ * health poll that learns nothing new publishes nothing to the window.
+ */
 export function catalogStatusSnapshot(
+  current: CatalogStatus,
+  change: CatalogStatusChange,
+): CatalogStatus {
+  const next = applyChange(current, change);
+  return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+}
+
+function applyChange(
   current: CatalogStatus,
   change: CatalogStatusChange,
 ): CatalogStatus {

@@ -159,7 +159,12 @@ export default function Discover({
     void results.refresh();
   }, [rankingMode, results]);
   useEffect(() => () => results.dispose(), [results]);
+  // Report this view's own errors, and clear only an error it reported:
+  // mounting must not wipe a banner raised elsewhere.
+  const reportedError = useRef("");
   useEffect(() => {
+    if (!snapshot.error && !reportedError.current) return;
+    reportedError.current = snapshot.error;
     onError(snapshot.error);
   }, [snapshot.error, onError]);
   useEffect(() => {

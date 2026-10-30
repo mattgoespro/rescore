@@ -54,9 +54,12 @@ export function createLibraryTasteWorkflow<
 }) {
   type Connection = { identity: string; client: C };
   let active: Connection | null = null;
+  // The profile and entry index are built once per library state, not on
+  // every Discover page or match lookup.
   const taste = createTasteCache<{
     library: LibraryEntry[];
-    genres: { id: number; name: string }[];
+    profile: ReturnType<typeof buildProfile>;
+    entries: Map<string, LibraryEntry>;
   }>();
   function connection(): Connection {
     const next = options.connection();
@@ -91,7 +94,11 @@ export function createLibraryTasteWorkflow<
         client.genres(),
       ]);
       check(captured);
-      return { library, genres };
+      return {
+        library,
+        profile: buildProfile(library, genres),
+        entries: new Map(library.map((entry) => [titleKey(entry), entry])),
+      };
     });
   }
   const list = () => run((client) => client.listLibrary());
@@ -123,14 +130,12 @@ export function createLibraryTasteWorkflow<
     );
   const discover = (filters: DiscoverFilters) =>
     run(async (client, captured) => {
-      let library: LibraryEntry[] = [],
-        genres: { id: number; name: string }[] = [];
+      let profile = buildProfile([], []);
+      let entries = new Map<string, LibraryEntry>();
       if (filters.sortBy === "match") {
-        ({ library, genres } = await tasteInputs(client, captured));
+        ({ profile, entries } = await tasteInputs(client, captured));
         check(captured);
       }
-      const profile = buildProfile(library, genres);
-      const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
       return loadDiscoverSlice({
         filters,
         mode: filters.cursor == null ? "replace" : "append",
@@ -180,8 +185,8 @@ export function createLibraryTasteWorkflow<
   const profile = () =>
     run(async (client, captured) => {
       try {
-        const { library, genres } = await tasteInputs(client, captured);
-        return publicProfile(buildProfile(library, genres));
+        const { profile } = await tasteInputs(client, captured);
+        return publicProfile(profile);
       } catch (error) {
         // An unreachable catalogue reads as an empty profile, not an error.
         if (error instanceof CatalogError && error.status === 0) {
@@ -195,9 +200,7 @@ export function createLibraryTasteWorkflow<
     movies: MovieSummary[],
   ): Promise<Record<string, MovieEnrichment>> =>
     run(async (client, captured) => {
-      const { library, genres } = await tasteInputs(client, captured);
-      const profile = buildProfile(library, genres);
-      const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
+      const { profile, entries } = await tasteInputs(client, captured);
       return Object.fromEntries(
         movies.map((movie) => {
           const ranked = scoreMovie(

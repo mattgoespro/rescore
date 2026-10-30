@@ -18,7 +18,7 @@ Catalogue search, ingest, schema, and HTTP live in the API. Taste ranking runs i
 
 The renderer reaches the catalogue through `window.api`. The main process is the only desktop side that calls the catalogue HTTP API. Types used by main, preload, and renderer live in `apps/desktop/src/shared`.
 
-Library rows live in the catalogue database. Settings and search history live in the Electron store (`rescore.json`). Library methods still on `AppStore` are leftover.
+Library rows live in the catalogue database. Settings and search history live in the Electron store (`rescore.json`). `rescore.json` may still hold library rows from before the move; `AppStore` writes them back unchanged and nothing reads them.
 
 A packaged build uses the one Windows catalogue service. A localhost development session may spawn the API from `apps/desktop/src/main/catalog-runtime.ts`.
 

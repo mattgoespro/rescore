@@ -70,9 +70,19 @@ const OverlayScroll = forwardRef<
     const el = viewRef.current;
     if (!el) return;
     sync();
-    const observer = new ResizeObserver(sync);
+    // A virtual list restyles its rows many times while scrolling; measuring
+    // once a frame keeps the thumb right without forcing layout each time.
+    let frame = 0;
+    const schedule = (): void => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        sync();
+      });
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(el);
-    const mutations = new MutationObserver(sync);
+    const mutations = new MutationObserver(schedule);
     mutations.observe(el, {
       childList: true,
       subtree: true,
@@ -80,6 +90,7 @@ const OverlayScroll = forwardRef<
       attributeFilter: ["style"],
     });
     return () => {
+      if (frame) window.cancelAnimationFrame(frame);
       observer.disconnect();
       mutations.disconnect();
     };

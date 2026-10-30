@@ -123,3 +123,41 @@ export function catalogIndicator(
           : "Your local IMDb catalogue is loaded.",
   };
 }
+
+/**
+ * Whether two statuses draw the same screen. Hydration reports several times
+ * a second while it runs, mostly to name finished titles, which the views
+ * hear on their own; the shell redraws only for what it shows.
+ */
+export function sameCatalogView(
+  a: {
+    phase: string;
+    catalogUsable?: boolean;
+    tmdbHydration?: {
+      percent: number;
+      complete: boolean;
+      processed: number;
+      total: number;
+    } | null;
+  },
+  b: typeof a,
+): boolean {
+  return catalogViewKey(a) === catalogViewKey(b);
+}
+
+function catalogViewKey(status: Parameters<typeof sameCatalogView>[0]): string {
+  const { tmdbHydration: hydration, ...rest } = status;
+  // The loader counts lookups while the shell is blocked; otherwise only the
+  // percent shows, in the status tooltip.
+  const blocked = isCatalogUiBlocked(status);
+  return JSON.stringify({
+    ...rest,
+    hydration: hydration && {
+      percent: hydration.percent,
+      complete: hydration.complete,
+      ...(blocked
+        ? { processed: hydration.processed, total: hydration.total }
+        : {}),
+    },
+  });
+}

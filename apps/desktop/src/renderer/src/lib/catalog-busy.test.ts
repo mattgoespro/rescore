@@ -6,6 +6,7 @@ import {
   catalogRebuildFeedback,
   isCatalogUiBlocked,
   tmdbHealthPercent,
+  sameCatalogView,
 } from "./catalog-busy";
 
 test("a few filled titles do not display as zero percent", () => {
@@ -201,4 +202,35 @@ test("the indicator shows setup progress while the title steps run", () => {
   });
   assert.equal(setup.state, "starting");
   assert.equal(setup.label, "Setting up · 56%");
+});
+
+test("hydration ticks that change nothing on screen do not redraw the shell", () => {
+  const base = {
+    phase: "ready",
+    catalogUsable: true,
+    tmdbHydration: { percent: 41, complete: false, processed: 200, total: 480 },
+  };
+  assert.equal(
+    sameCatalogView(base, {
+      ...base,
+      tmdbHydration: { ...base.tmdbHydration, processed: 201 },
+    }),
+    true,
+  );
+  assert.equal(
+    sameCatalogView(base, {
+      ...base,
+      tmdbHydration: { ...base.tmdbHydration, percent: 42 },
+    }),
+    false,
+  );
+  // While blocked, the loader shows the lookup count, so it redraws.
+  const blocked = { ...base, catalogUsable: false };
+  assert.equal(
+    sameCatalogView(blocked, {
+      ...blocked,
+      tmdbHydration: { ...blocked.tmdbHydration, processed: 201 },
+    }),
+    false,
+  );
 });
