@@ -81,6 +81,8 @@ export default defineConfig([
     rules: {
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
+      // No ref reads or writes during render; effects and events only.
+      "react-hooks/refs": "error",
       "no-restricted-syntax": ["error", ...textGuards, ...rendererGuards],
     },
   },

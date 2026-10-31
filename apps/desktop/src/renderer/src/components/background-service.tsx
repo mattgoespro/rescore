@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type JSX } from "react";
 import { errorMessage } from "../lib/error-message";
 import type { BackgroundServiceStatus } from "../../../shared/background-service";
 import { pollWhileVisible } from "../lib/poll-while-visible";
@@ -12,8 +12,19 @@ const STATE_LABELS: Record<BackgroundServiceStatus["state"], string> = {
   error: "Needs attention",
 };
 
-export default function BackgroundService(): JSX.Element {
+export default function BackgroundService({
+  onStatus,
+}: {
+  /** Each status read, so the page around the panel need not ask again. */
+  onStatus?: (status: BackgroundServiceStatus) => void;
+} = {}): JSX.Element {
   const [status, setStatus] = useState<BackgroundServiceStatus | null>(null);
+  const reportStatus = useEffectEvent((next: BackgroundServiceStatus) =>
+    onStatus?.(next),
+  );
+  useEffect(() => {
+    if (status) reportStatus(status);
+  }, [status]);
   // An action's failure stays until the next action; a failed status check
   // clears once a later check succeeds.
   const [error, setError] = useState("");

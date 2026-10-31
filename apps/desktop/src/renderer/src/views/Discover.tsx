@@ -114,13 +114,9 @@ export default function Discover({
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const openedId = useRef<string | null>(null);
-  const filtersRef = useRef(filters);
-  const genresRef = useRef(genres);
   const historySession = useRef({ saved: false });
   const replayKey = useRef<string | null>(null);
   const [historyReplay, setHistoryReplay] = useState(0);
-  filtersRef.current = filters;
-  genresRef.current = genres;
 
   const filterKey = useMemo(
     () =>
@@ -140,8 +136,10 @@ export default function Discover({
     void listSearchHistory().then(setHistory);
   }, []);
 
+  // The search starts from the filters of the render that scheduled it.
+  const configureSearch = useEffectEvent(() => results.configure(filters));
   useEffect(() => {
-    results.configure(filtersRef.current);
+    configureSearch();
     const handle = window.setTimeout(() => {
       void results.replace();
     }, SEARCH_DEBOUNCE_MS);
@@ -197,16 +195,11 @@ export default function Discover({
 
   function recordSearchHistory(): void {
     if (historySession.current.saved) return;
-    if (
-      history.some((entry) => matchesSearchHistory(filtersRef.current, entry))
-    ) {
+    if (history.some((entry) => matchesSearchHistory(filters, entry))) {
       historySession.current.saved = true;
       return;
     }
-    const snapshot = snapshotSearchHistory(
-      filtersRef.current,
-      genresRef.current,
-    );
+    const snapshot = snapshotSearchHistory(filters, genres);
     if (
       !shouldRecordSearchHistory({
         saved: historySession.current.saved,

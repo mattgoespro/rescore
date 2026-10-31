@@ -13,6 +13,7 @@ Six review passes over `main` kept finding the same kinds of defect. This page l
 | No hex, `rgb()`, `hsl()` or `oklch()` in renderer | `eslint.config.mjs`                          | Colours that ignore the light and dark themes                         |
 | "catalogue" in prose, no U+FFFD                   | `eslint.config.mjs`                          | Spelling drift and broken characters in text people read              |
 | React hook rules and effect dependencies          | `eslint-plugin-react-hooks`                  | Stale closures, effects that run too often or not at all              |
+| No ref reads or writes during render              | `react-hooks/refs`                           | Values a discarded render already changed; use `useEffectEvent`       |
 | Hot query plans                                   | `apps/api/src/catalog/query-plans.test.ts`   | Full table reads and sort-everything plans on the titles table        |
 | Every `var(--…)` the renderer reads is defined    | `styles/css-variables.test.ts`               | Shadows and backgrounds that silently drop (`--color-*`)              |
 | Arbitrary values that match a theme token         | `tailwindcss/no-unnecessary-arbitrary-value` | `text-[13px]` beside `text-ui`, `rounded-[3px]` beside `rounded-item` |

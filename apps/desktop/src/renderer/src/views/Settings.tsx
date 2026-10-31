@@ -62,13 +62,8 @@ export default function SettingsView({
 }): JSX.Element {
   const notify = useNotify();
   const [catalogApiUrl, setCatalogApiUrl] = useState(settings.catalogApiUrl);
+  // Read from the service panel's own status checks; each starts PowerShell.
   const [serviceRequired, setServiceRequired] = useState(true);
-  useEffect(() => {
-    void window.api.backgroundService
-      .getStatus()
-      .then((status) => setServiceRequired(status.supported))
-      .catch(() => undefined);
-  }, []);
   const [mode, setMode] = useState<RankingMode>(settings.rankingMode);
   const [themeMode, setThemeMode] = useState<ThemeMode>(settings.themeMode);
   const [accentColor, setAccentColor] = useState(settings.accentColor);
@@ -369,7 +364,9 @@ export default function SettingsView({
             browse.
           </p>
           <TmdbHealth apiUrl={settings.catalogApiUrl} />
-          <BackgroundService />
+          <BackgroundService
+            onStatus={(status) => setServiceRequired(status.supported)}
+          />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <div className="rounded-app border border-line bg-rail p-5">
