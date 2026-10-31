@@ -13,7 +13,9 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspace=rescore",
     "build:win": "npm run build:win --workspace=rescore",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
+    "format:check": "prettier --check {apps,scripts}/**/*.{js,jsx,ts,tsx,json,css}",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test",
     "validate:ratings": "tsx scripts/validate-ratings.ts",
     "build:catalog": "npm run build:catalog --workspace=@rescore/api",
     "enrich:posters": "npm run enrich:posters --workspace=@rescore/api",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "concurrently": "^9.2.1",
     "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-tailwindcss": "^4.4.0",
     "playwright": "^1.55.0",
     "prettier": "^3.9.6",

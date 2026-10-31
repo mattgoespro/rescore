@@ -193,7 +193,7 @@ export function createCatalogRuntime(
           error?: string;
         } | null;
         throw new Error(
-          body?.error ?? `Catalog rebuild failed (${response.status})`,
+          body?.error ?? `Catalogue rebuild failed (${response.status})`,
         );
       }
     },

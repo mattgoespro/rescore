@@ -5,6 +5,7 @@ import {
 import { useVisibleMedia, mergeTitleMedia } from "../lib/use-visible-media";
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -167,8 +168,9 @@ export default function Discover({
     reportedError.current = snapshot.error;
     onError(snapshot.error);
   }, [snapshot.error, onError]);
-  useEffect(() => {
-    if (!snapshot.completion?.reset) return;
+  // A finished search opens its first title and records itself once; the
+  // items and callbacks it reads are the latest, not reasons to run again.
+  const onSearchComplete = useEffectEvent(() => {
     scrollerRef.current?.scrollTo({ top: 0 });
     const first = snapshot.items[0];
     if (first) {
@@ -177,6 +179,9 @@ export default function Discover({
     }
     setEntering(true);
     recordSearchHistory();
+  });
+  useEffect(() => {
+    if (snapshot.completion?.reset) onSearchComplete();
   }, [snapshot.completion]);
   function canLoadMore(): boolean {
     return !loading && !snapshot.loadingMore && snapshot.canLoadMore;

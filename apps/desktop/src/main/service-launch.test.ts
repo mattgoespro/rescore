@@ -4,7 +4,10 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runServiceMaintenance, serviceMaintenanceAction } from "./service-launch";
+import {
+  runServiceMaintenance,
+  serviceMaintenanceAction,
+} from "./service-launch";
 import { readFileSync } from "node:fs";
 
 test("lifecycle elevation targets a windowless broker instead of PowerShell", () => {
@@ -84,22 +87,40 @@ test(
     try {
       const source = join(directory, "fixture.cs");
       const launcher = join(directory, "O'Brien GUI helper.exe");
-      writeFileSync(source, `using System.IO;
+      writeFileSync(
+        source,
+        `using System.IO;
         class Fixture { static int Main(string[] args) {
           if (args.Length != 6 || args[0] != "--action" || args[1] != "EnsureRunning" || args[4] != "--result") return 9;
           if (args[3] == "missing") return 0;
           File.WriteAllText(args[5], args[3] == "exit-failure" ? "0" : args[3]);
           return args[3] == "exit-failure" ? 4 : 0;
-        } }`);
+        } }`,
+      );
       const compile = spawnSync(
-        join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET/Framework64/v4.0.30319/csc.exe"),
+        join(
+          process.env.SystemRoot ?? "C:\\Windows",
+          "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
+        ),
         ["/nologo", "/target:winexe", `/out:${launcher}`, source],
         { windowsHide: true, encoding: "utf8" },
       );
       assert.equal(compile.status, 0, compile.stdout + compile.stderr);
-      for (const reported of ["", "1", "garbage", "missing", "exit-failure", "0"]) {
+      for (const reported of [
+        "",
+        "1",
+        "garbage",
+        "missing",
+        "exit-failure",
+        "0",
+      ]) {
         rmSync(result, { force: true });
-        const operation = runServiceMaintenance(launcher, "EnsureRunning", reported, result);
+        const operation = runServiceMaintenance(
+          launcher,
+          "EnsureRunning",
+          reported,
+          result,
+        );
         if (reported === "0") await operation;
         else await assert.rejects(operation);
       }

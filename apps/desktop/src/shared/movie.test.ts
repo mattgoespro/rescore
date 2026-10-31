@@ -31,7 +31,10 @@ test("movie from a catalogue title", () => {
   assert.equal(movie.certification, undefined);
   assert.deepEqual(movie.genreIds, [genreId("Action")]);
 
-  assert.equal(movieFromTitle({ ...base, kind: "tvMiniSeries" }).titleKind, "miniseries");
+  assert.equal(
+    movieFromTitle({ ...base, kind: "tvMiniSeries" }).titleKind,
+    "miniseries",
+  );
   assert.equal(movieFromTitle({ ...base, kind: "tvSeries" }).titleKind, "tv");
   assert.equal(movieFromTitle({ ...base, kind: "tvSeries" }).mediaType, "tv");
 });

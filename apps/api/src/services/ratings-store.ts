@@ -28,7 +28,7 @@ export class RatingsStore {
 
   async persistFromFile(file: string): Promise<void> {
     if (!this.catalog) {
-      throw new Error("No catalog to persist ratings");
+      throw new Error("No catalogue to persist ratings");
     }
     await this.catalog.upsertRatingsFromFile(file);
     this.markSynced(new Date().toISOString());

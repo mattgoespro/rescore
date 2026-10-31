@@ -471,6 +471,7 @@ function RankedRow({
   const match = matchPercent(movie, ready);
   return (
     <button
+      type="button"
       className={rankedRow(
         active,
         cn(

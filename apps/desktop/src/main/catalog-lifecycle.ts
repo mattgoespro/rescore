@@ -617,7 +617,7 @@ export function createCatalogLifecycle(
           mode: "poll" as const,
           status: catalogStatusSnapshot(context.status, {
             phase: "starting",
-            message: "Catalog API stopped; restarting…",
+            message: "Catalogue API stopped; restarting…",
             error: null,
             download: null,
           }),

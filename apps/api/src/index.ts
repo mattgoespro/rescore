@@ -45,7 +45,7 @@ const onListen = (): void => {
     channel: "api",
     phase: "startup",
     level: "info",
-    message: `IMDb catalog API listening on http://127.0.0.1:${PORT}`,
+    message: `Rescore catalogue API listening on http://127.0.0.1:${PORT}`,
   });
 };
 const server = serviceConfig
@@ -57,14 +57,14 @@ server.on("error", (error: NodeJS.ErrnoException) => {
       channel: "api",
       phase: "startup",
       level: "error",
-      message: `Catalog API port ${PORT} is already in use.`,
+      message: `Catalogue API port ${PORT} is already in use.`,
     });
   } else {
     emit({
       channel: "api",
       phase: "startup",
       level: "error",
-      message: `Catalog API failed to listen. ${failureText(error)}`,
+      message: `Catalogue API failed to listen. ${failureText(error)}`,
     });
   }
   process.exit(1);
@@ -129,7 +129,7 @@ async function shutdown(signal: string): Promise<void> {
     channel: "api",
     phase: "shutdown",
     level: "info",
-    message: `Catalog API stopping (${signal})`,
+    message: `Catalogue API stopping (${signal})`,
   });
   clearInterval(refreshTimer);
   requestShutdown();

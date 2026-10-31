@@ -43,6 +43,7 @@ import {
   mediaIdsToFill,
 } from "./lib/use-visible-media";
 import { cn } from "./lib/cn";
+import { pollWhileVisible } from "./lib/poll-while-visible";
 import { listSearchHistory } from "./lib/search-history-store";
 import { btn } from "./lib/ui";
 import { libraryMovie } from "./lib/library-movie";
@@ -274,7 +275,6 @@ export default function App(): JSX.Element {
         filling = false;
       }
     };
-    void fill();
     let creditsReady: boolean | undefined;
     const unsubscribe = window.api.onCatalogStatus((status) => {
       // Cast and directors load after browsing opens; an open title picks
@@ -293,11 +293,12 @@ export default function App(): JSX.Element {
       void loadDetails();
       void fill();
     });
-    const timer = window.setInterval(() => void fill(), MEDIA_RETRY_MS);
+    // Fills now, then retries while the window is shown.
+    const stopPolling = pollWhileVisible(() => void fill(), MEDIA_RETRY_MS);
     return () => {
       cancelled = true;
       unsubscribe();
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [selected, cacheDetails]);
 
@@ -519,6 +520,7 @@ export default function App(): JSX.Element {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
+                  type="button"
                   className={btn("primary")}
                   onClick={() => {
                     setError("");
@@ -528,7 +530,11 @@ export default function App(): JSX.Element {
                 >
                   Try again
                 </button>
-                <button className={btn()} onClick={() => navigate("settings")}>
+                <button
+                  type="button"
+                  className={btn()}
+                  onClick={() => navigate("settings")}
+                >
                   Open Settings
                 </button>
               </div>

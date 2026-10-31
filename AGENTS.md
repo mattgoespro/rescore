@@ -24,9 +24,16 @@ A packaged build uses the one Windows catalogue service. A localhost development
 
 API modules are ESM and import with `.js` specifiers. Desktop modules do not. Tests are `node:test`, colocated as `*.test.ts`, and run with the workspace `test` script.
 
+## Checks
+
+Run `npm run check` before calling a change done. It runs lint with zero warnings, the format check, typechecks and tests. Lint and `apps/api/src/catalog/query-plans.test.ts` guard against defects earlier reviews fixed; fix the code rather than silencing a guard.
+
+Read `docs/code-conventions.md` before changing caches, async flows, polling, SQL on `titles`, React effects or UI copy. It lists the defects reviews kept finding and the helpers to reuse.
+
 ## Reach
 
 - Service start, browsing during TMDb hydration, and recovery: `docs/background-service.md`
 - Administrative service commands, storage, and maintainer verification: `docs/background-service-maintenance.md`
 - How to run the app and build the catalogue: `README.md` and `apps/api/README.md`
+- Recurring defects, their rules and the helpers to reuse: `docs/code-conventions.md`
 - A finished change record under `docs/superpowers/`: open it when the task names that change

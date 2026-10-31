@@ -84,9 +84,14 @@ async function stageApiRuntimeToDisk(projectDir) {
     { stdio: "inherit", windowsHide: true },
   );
   execFileSync(
-    join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET/Framework64/v4.0.30319/csc.exe"),
+    join(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
+    ),
     [
-      "/nologo", "/target:winexe", "/platform:x64",
+      "/nologo",
+      "/target:winexe",
+      "/platform:x64",
       `/out:${join(serviceBuild, "Rescore Maintenance.exe")}`,
       join(projectDir, "resources/service/maintenance-launcher.cs"),
     ],
@@ -100,11 +105,10 @@ async function stageApiRuntimeToDisk(projectDir) {
   const extractedDir = join(cacheDir, `node-v${BUNDLED_NODE_VERSION}-win-x64`);
 
   console.log("Compiling catalog API…");
-  execFileSync(
-    process.execPath,
-    [join(apiRoot, "scripts/build.mjs")],
-    { cwd: apiRoot, stdio: "inherit" },
-  );
+  execFileSync(process.execPath, [join(apiRoot, "scripts/build.mjs")], {
+    cwd: apiRoot,
+    stdio: "inherit",
+  });
 
   const compiledEntry = join(apiRoot, "dist/index.js");
   if (!existsSync(compiledEntry)) {
@@ -282,7 +286,10 @@ module.exports = {
   beforePack: stageApiRuntime,
   afterPack: copyApiRuntime,
   extraResources: [
-    { from: "build/service/Rescore Maintenance.exe", to: "service/Rescore Maintenance.exe" },
+    {
+      from: "build/service/Rescore Maintenance.exe",
+      to: "service/Rescore Maintenance.exe",
+    },
     {
       from: "resources/service",
       to: "service",

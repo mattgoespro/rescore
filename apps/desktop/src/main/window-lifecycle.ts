@@ -11,7 +11,8 @@ export function sendToWindow(
   channel: string,
   value: unknown,
 ): void {
-  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed())
+    return;
   try {
     window.webContents.send(channel, value);
   } catch (error) {

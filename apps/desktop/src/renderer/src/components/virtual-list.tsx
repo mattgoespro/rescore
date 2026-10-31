@@ -63,7 +63,7 @@ export default function VirtualList<T>({
   useEffect(() => {
     virtualizer.measure();
     setFocusedRow(null);
-  }, [columns, estimateSize, grid]);
+  }, [virtualizer, columns, estimateSize, grid]);
 
   return (
     <div

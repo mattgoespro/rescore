@@ -147,7 +147,7 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
     if (isCatalogBuilding()) {
       return res
         .status(409)
-        .json({ error: "A catalog rebuild is already in progress." });
+        .json({ error: "A catalogue rebuild is already in progress." });
     }
     void ensureCatalog(db, { force: true })
       .then(async () => {
@@ -156,7 +156,7 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
             channel: "ratings",
             phase: "reconcile",
             level: "warn",
-            message: `Ratings sync after catalog rebuild failed. ${error instanceof Error ? error.message : String(error)}`,
+            message: `Ratings sync after catalogue rebuild failed. ${error instanceof Error ? error.message : String(error)}`,
           });
         });
       })
@@ -165,7 +165,7 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
           channel: "catalog",
           phase: "reconcile",
           level: "error",
-          message: `Catalog rebuild failed. ${error instanceof Error ? error.message : String(error)}`,
+          message: `Catalogue rebuild failed. ${error instanceof Error ? error.message : String(error)}`,
         });
       });
     return res.status(202).json({ ok: true, ...catalogStatus() });

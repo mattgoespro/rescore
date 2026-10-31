@@ -90,7 +90,7 @@ export default function SetupScreen({
       >
         <div className="flex flex-col gap-3">
           {view.firstLaunch ? (
-            <p className="m-0 text-[11px] font-semibold tracking-[0.08em] text-faint uppercase">
+            <p className="m-0 text-[11px] font-semibold tracking-kicker text-faint uppercase">
               First launch
             </p>
           ) : null}

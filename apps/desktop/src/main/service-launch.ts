@@ -44,10 +44,14 @@ export function runServiceMaintenance(
         try {
           // Approval cancellation, a missing result, and nonzero results fail closed.
           if (error || readFileSync(resultPath, "utf8").trim() !== "0") {
-            throw new Error("Windows service operation failed or administrator approval was cancelled.");
+            throw new Error(
+              "Windows service operation failed or administrator approval was cancelled.",
+            );
           }
           resolveResult();
-        } catch (failure) { reject(failure); }
+        } catch (failure) {
+          reject(failure);
+        }
       },
     );
   });

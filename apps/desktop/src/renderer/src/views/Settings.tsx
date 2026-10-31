@@ -331,6 +331,7 @@ export default function SettingsView({
             {catalogSummary(catalogStatus)}
           </p>
           <button
+            type="button"
             className={cn(btn("small"), "mt-3 mb-4")}
             disabled={rebuild != null}
             aria-busy={rebuild != null}
@@ -363,6 +364,7 @@ export default function SettingsView({
             </p>
             <div className="my-3 flex flex-wrap gap-2.5">
               <button
+                type="button"
                 className={btn("primary", "small")}
                 disabled={busy}
                 aria-busy={busy}
@@ -371,6 +373,7 @@ export default function SettingsView({
                 {busy ? "Importing…" : "Import ratings.csv"}
               </button>
               <button
+                type="button"
                 className={btn("small")}
                 onClick={async () => {
                   try {
@@ -386,6 +389,7 @@ export default function SettingsView({
                 Export library JSON
               </button>
               <button
+                type="button"
                 className={btn("danger", "small")}
                 onClick={async () => {
                   if (confirm("Clear local ratings, watchlist, and skips?")) {

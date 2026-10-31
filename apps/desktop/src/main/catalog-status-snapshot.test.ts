@@ -31,11 +31,11 @@ test("status snapshot keeps counts, flags, and poster hydration", () => {
   const current = readyStatus();
   const next = catalogStatusSnapshot(current, {
     phase: "starting",
-    message: "Catalog API stopped; restarting…",
+    message: "Catalogue API stopped; restarting…",
     error: null,
   });
   assert.equal(next.phase, "starting");
-  assert.equal(next.message, "Catalog API stopped; restarting…");
+  assert.equal(next.message, "Catalogue API stopped; restarting…");
   assert.equal(next.error, null);
   assert.equal(next.titleCount, 482_500);
   assert.equal(next.builtAt, current.builtAt);

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { pollWhileVisible } from "./poll-while-visible";
 
 export const MEDIA_FILL_LIMIT = 40;
 export const MEDIA_RETRY_MS = 30_000;
@@ -211,14 +212,14 @@ export function useVisibleMedia() {
       );
       void fill();
     });
-    const timer = window.setInterval(() => void fill(), MEDIA_RETRY_MS);
+    const stopPolling = pollWhileVisible(() => void fill(), MEDIA_RETRY_MS);
     return () => {
       disposed = true;
       if (frame) window.cancelAnimationFrame(frame);
       observer.disconnect();
       mutations.disconnect();
       unsubscribe();
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, []);
   return { containerRef, media };
