@@ -15,7 +15,7 @@ import {
 } from "../config.js";
 import { languageCodes } from "../catalog/languages.js";
 import { emit } from "../log/write.js";
-import type { CatalogDatabase } from "./catalog-db.js";
+import type { CatalogDatabase, HydrationStats } from "./catalog-db.js";
 
 const RATE_LIMIT_BACKOFF_CAP_MS = 30_000;
 const RATE_LIMIT_JITTER = 0.25;
@@ -382,7 +382,7 @@ export async function enrichPosters(
     concurrency?: number;
     handleSignals?: boolean;
     pageSize?: number;
-    onProgress?: (processed: number, pending: number) => void;
+    onProgress?: (stats: HydrationStats) => void;
   } = {},
 ): Promise<PosterEnrichmentResult> {
   const apiKeys =
@@ -395,8 +395,6 @@ export async function enrichPosters(
   const pageSize = options.pageSize ?? TMDB_POSTER_PAGE_SIZE;
   const hydration = catalog.hydrationStats();
   const pendingTotal = hydration.pending;
-  const completedAtStart = hydration.processed;
-  let durableProcessed = completedAtStart;
   const stats: PosterEnrichmentResult = {
     processed: 0,
     found: 0,
@@ -436,8 +434,8 @@ export async function enrichPosters(
       const rows = catalog.mediaFor(pending.map((title) => title.id));
       stats.found += rows.filter((row) => !!row.posterUrl).length;
       stats.missing += rows.filter((row) => row.posterUrl === "").length;
-      durableProcessed = catalog.hydrationStats().processed;
-      options.onProgress?.(durableProcessed, hydration.total);
+      // The publisher reuses these counts rather than taking them again.
+      options.onProgress?.(catalog.hydrationStats());
       if (stats.errors)
         throw new Error(
           `${stats.errors} TMDb lookups failed. They will be retried.`,
@@ -827,7 +825,7 @@ export function startPosterEnrichment(
   catalog: CatalogDatabase,
   options: {
     ids?: string[];
-    onProgress?: (processed: number, pending: number) => void;
+    onProgress?: (stats: HydrationStats) => void;
   } = {},
 ): Promise<PosterEnrichmentResult | null> {
   shutdownSignal.throwIfAborted();

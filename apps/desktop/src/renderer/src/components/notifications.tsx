@@ -3,7 +3,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type JSX,
@@ -47,10 +46,8 @@ export function NotificationsProvider({
   const dismiss = useCallback((id: number) => {
     setNotices((current) => dropNotice(current, id));
   }, []);
-  const value = useMemo(() => notify, [notify]);
-
   return (
-    <NotifyContext.Provider value={value}>
+    <NotifyContext.Provider value={notify}>
       {children}
       <section
         aria-label="Notifications"

@@ -10,7 +10,12 @@ import { queryCache, FACETS_TTL_MS } from "./query-cache.js";
 import { getMetaValue } from "./meta.js";
 import { hydrateTitles } from "./hydrate.js";
 import { excludedLibraryStatuses } from "./library-visibility.js";
-import { IMDB_ID, type TitleQuery, type TitleRow } from "./types.js";
+import {
+  IMDB_ID,
+  type ForYouHints,
+  type TitleQuery,
+  type TitleRow,
+} from "./types.js";
 
 const orderColumn = {
   title: "t.title COLLATE NOCASE",
@@ -473,28 +478,149 @@ export function listLibrary(
   }));
 }
 
+/** Votes a candidate needs before its IMDb rating means much. */
+const FOR_YOU_VOTE_FLOOR = 5000;
+/** A director's lesser-known work counts from here. */
+const FOR_YOU_DIRECTOR_VOTE_FLOOR = 1000;
+
+/**
+ * Candidates for taste ranking, from up to three pools: the most-voted
+ * titles, the best-rated titles in the user's top genres and decades, and
+ * titles by their top directors. The desktop scores the union, so a taste
+ * outside the mainstream still has titles to surface.
+ */
 export function listForYouCandidates(
   db: Database.Database,
   limit: number,
+  hints: ForYouHints = {},
 ): TitleDto[] {
-  const params: Record<string, string | number> = { limit };
+  const rows = new Map<string, TitleRow>();
+  const add = (found: TitleRow[]): void => {
+    for (const row of found) if (!rows.has(row.id)) rows.set(row.id, row);
+  };
+  add(forYouPool(db, "", {}, "t.imdb_votes DESC", limit));
+
+  const taste: string[] = [];
+  const params: Record<string, string | number> = {};
+  const mask = hints.genres?.length ? genreBits(db, hints.genres) : null;
+  if (mask) {
+    taste.push("(t.genre_mask & @genreMask) != 0");
+    params.genreMask = mask;
+  }
+  if (hints.decades?.length) {
+    taste.push(
+      `(${hints.decades
+        .map((decade, index) => {
+          params[`decade${index}`] = decade;
+          return `(t.year >= @decade${index} AND t.year < @decade${index} + 10)`;
+        })
+        .join(" OR ")})`,
+    );
+  }
+  if (taste.length) {
+    // Each kind is its own range of the covering index, so the scan reads
+    // only titles past the vote floor and never the table.
+    const kinds = facets(db).kinds.map((kind, index) => {
+      params[`kind${index}`] = kind.value;
+      return `@kind${index}`;
+    });
+    if (kinds.length) {
+      taste.unshift(`t.kind IN (${kinds.join(",")})`);
+      add(
+        forYouPool(
+          db,
+          `INDEXED BY titles_kind_votes_cover_idx`,
+          params,
+          "t.imdb_rating DESC",
+          limit,
+          taste,
+        ),
+      );
+    }
+  }
+
+  const directors = hints.directors?.length
+    ? likedDirectors(db, hints.directors)
+    : [];
+  if (directors.length) {
+    const directorParams: Record<string, string | number> = {
+      directorFloor: FOR_YOU_DIRECTOR_VOTE_FLOOR,
+    };
+    const placeholders = directors.map((nconst, index) => {
+      directorParams[`director${index}`] = nconst;
+      return `@director${index}`;
+    });
+    add(
+      forYouPool(
+        db,
+        "",
+        directorParams,
+        "t.imdb_votes DESC",
+        Math.ceil(limit / 2),
+        [
+          `t.id IN (SELECT title_id FROM title_people WHERE role = 'director' AND nconst IN (${placeholders.join(",")}))`,
+          "t.imdb_votes >= @directorFloor",
+        ],
+        false,
+      ),
+    );
+  }
+  return hydrateTitles(db, [...rows.values()]);
+}
+
+function forYouPool(
+  db: Database.Database,
+  indexed: string,
+  params: Record<string, string | number>,
+  order: string,
+  limit: number,
+  where: string[] = [],
+  voteFloor = true,
+): TitleRow[] {
+  const all = { ...params, limit, voteFloor: FOR_YOU_VOTE_FLOOR };
   const exclusion = libraryExclusionClause(
     excludedLibraryStatuses({ kind: "forYou" }),
-    params,
+    all,
     db,
   );
-  const where = ["t.imdb_votes >= 5000", exclusion]
-    .filter(Boolean)
-    .join(" AND ");
-  const rows = db
+  const conditions = [
+    ...(voteFloor ? ["t.imdb_votes >= @voteFloor"] : []),
+    ...where,
+    ...(exclusion ? [exclusion] : []),
+  ];
+  // The page is chosen from the index alone, then only its rows are read: a
+  // broad genre matches tens of thousands of titles, and reading each row
+  // before the sort cost ten times as long.
+  return db
     .prepare(
-      `SELECT t.* FROM titles t
-       WHERE ${where}
-       ORDER BY t.imdb_votes DESC, t.id ASC
-       LIMIT @limit`,
+      `SELECT t.* FROM (
+         SELECT t.id FROM titles t ${indexed}
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY ${order}, t.id ASC
+         LIMIT @limit
+       ) pick CROSS JOIN titles t ON t.id = pick.id
+       ORDER BY ${order}, t.id ASC`,
     )
-    .all(params) as TitleRow[];
-  return hydrateTitles(db, rows);
+    .all(all) as TitleRow[];
+}
+
+/**
+ * The people behind directors' names. Names are not unique, so they resolve
+ * through the credits of titles already rated, where the profile found them.
+ * CROSS JOIN keeps the small library as the outer loop.
+ */
+function likedDirectors(db: Database.Database, names: string[]): string[] {
+  const placeholders = names.map(() => "?").join(",");
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT tp.nconst FROM library_entries l
+         CROSS JOIN title_people tp ON tp.title_id = l.title_id AND tp.role = 'director'
+         CROSS JOIN people p ON p.nconst = tp.nconst
+         WHERE l.status = 'watched' AND p.name IN (${placeholders})`,
+      )
+      .all(...names) as Array<{ nconst: string }>
+  ).map((row) => row.nconst);
 }
 
 /**

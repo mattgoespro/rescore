@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CatalogDatabase } from "./database.js";
+import { CountCache } from "./query-cache.js";
 import type { TitleQuery } from "./types.js";
 
 const query: TitleQuery = {
@@ -70,4 +71,16 @@ test("aborted nonbulk title ingest exposes retained changes in facets", () => {
   } finally {
     db.close();
   }
+});
+
+test("count cache keeps only the most recently used totals", () => {
+  const counts = new CountCache(2);
+  counts.set("a", 1);
+  counts.set("b", 2);
+  assert.equal(counts.get("a"), 1);
+  counts.set("c", 3);
+  assert.equal(counts.size, 2);
+  assert.equal(counts.get("b"), undefined);
+  assert.equal(counts.get("a"), 1);
+  assert.equal(counts.get("c"), 3);
 });

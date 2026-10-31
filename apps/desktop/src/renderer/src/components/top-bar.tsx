@@ -82,10 +82,12 @@ export default function TopBar({
       </div>
       <div className="flex shrink-0 items-center gap-1 app-no-drag">
         <div className="group relative">
+          {/* Settings holds the catalogue controls the status points to. */}
           <button
             type="button"
             aria-describedby={tipId}
-            className="flex h-8 items-center gap-2 rounded-control bg-wash-6 px-2.5 text-xs font-medium text-muted"
+            className="flex h-8 items-center gap-2 rounded-control bg-wash-6 px-2.5 text-xs font-medium text-muted transition-colors duration-140 hover:bg-wash-8 hover:text-ink"
+            onClick={() => onNavigate("settings")}
           >
             <span
               aria-hidden="true"
@@ -109,6 +111,7 @@ export default function TopBar({
         <button
           type="button"
           aria-label="Settings"
+          title="Settings"
           aria-current={view === "settings" ? "page" : undefined}
           className={cn(
             iconBtn("bare"),

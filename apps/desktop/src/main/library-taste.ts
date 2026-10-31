@@ -5,6 +5,7 @@ import { createTasteCache, withLibraryWrite } from "./taste-cache";
 import {
   buildProfile,
   describeProfile,
+  forYouHints,
   publicProfile,
   scoreMovie,
   tasteRanked,
@@ -152,8 +153,11 @@ export function createLibraryTasteWorkflow<
       });
     });
   const forYou = () =>
-    run(async (client) => {
-      const payload = await client.forYouPage(80);
+    run(async (client, captured) => {
+      // What the ratings favour widens the candidates; the shared taste
+      // inputs are usually warm, and ranking still uses this response.
+      const { profile: liked } = await tasteInputs(client, captured);
+      const payload = await client.forYouPage(80, forYouHints(liked));
       const library = payload.library.map(libraryEntryFromDto);
       const genres = payload.facets.genres.map((genre) => ({
         id: genreId(genre.value),

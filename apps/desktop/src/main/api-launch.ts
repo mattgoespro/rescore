@@ -1,13 +1,13 @@
 import { join } from "node:path";
 
 export const NON_LOCAL_URL =
-  "The catalog API URL is not local, so Rescore cannot start it. Confirm the URL in Settings.";
+  "The catalogue API URL is not local, so Rescore cannot start it. Confirm the URL in Settings.";
 export const PACKAGED_API_MISSING =
-  "Cannot find the catalog API runtime. Reinstall Rescore.";
+  "Cannot find the catalogue API runtime. Reinstall Rescore.";
 export const DEV_API_MISSING =
-  "Cannot find the catalog API. Start it with npm run dev:api, then relaunch Rescore.";
+  "Cannot find the catalogue API. Start it with npm run dev:api, then relaunch Rescore.";
 export const DEV_RUNTIME_MISSING =
-  "Cannot start the catalog API (Node or tsx is missing). Run npm install and npm run dev:api.";
+  "Cannot start the catalogue API (Node or tsx is missing). Run npm install and npm run dev:api.";
 
 export interface ApiLaunchContext {
   dev: boolean;

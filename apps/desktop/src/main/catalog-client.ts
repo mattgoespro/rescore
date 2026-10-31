@@ -12,12 +12,15 @@ import type {
 } from "../shared/types";
 import type {
   FacetsResponse,
+  ForYouHints,
   ForYouResponse,
   LibraryEntryDto,
   TitleDto,
   TitleListResponse,
 } from "../shared/catalog-dto";
 import { genreId, movieFromTitle } from "../shared/movie";
+
+type QueryValue = string | number | ReadonlyArray<string | number> | undefined;
 
 export type RequestKind = "search" | "health" | "long";
 
@@ -75,7 +78,7 @@ export class CatalogClient {
 
   private async request<T>(
     path: string,
-    query?: Record<string, string | number | undefined>,
+    query?: Record<string, QueryValue>,
     kind: RequestKind = "search",
   ): Promise<T> {
     const url = new URL(
@@ -83,8 +86,10 @@ export class CatalogClient {
       this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
     );
     for (const [key, value] of Object.entries(query ?? {})) {
-      if (value != null && value !== "")
-        url.searchParams.set(key, String(value));
+      // A list repeats its parameter, so a value may hold commas.
+      for (const item of Array.isArray(value) ? value : [value])
+        if (item != null && item !== "")
+          url.searchParams.append(key, String(item));
     }
     const { retries, timeoutMs } = REQUESTS[kind];
     let lastError: CatalogError | null = null;
@@ -153,8 +158,16 @@ export class CatalogClient {
     return this.genreCache;
   }
 
-  async forYouPage(limit = 80): Promise<ForYouResponse> {
-    return this.request<ForYouResponse>("/v1/for-you", { limit });
+  async forYouPage(
+    limit = 80,
+    hints: ForYouHints = {},
+  ): Promise<ForYouResponse> {
+    return this.request<ForYouResponse>("/v1/for-you", {
+      limit,
+      genre: hints.genres,
+      director: hints.directors,
+      decade: hints.decades,
+    });
   }
 
   private async genreNames(ids: number[]): Promise<string[]> {
@@ -284,23 +297,6 @@ export class CatalogClient {
       }>;
     };
     return body.data;
-  }
-
-  async enrichPosters(ids: string[]): Promise<void> {
-    if (!ids.length) return;
-    const url = new URL(
-      "/v1/catalog/enrich-posters",
-      this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
-    );
-    await catalogFetch(url, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ids }),
-      signal: AbortSignal.timeout(4000),
-    }).catch(() => undefined);
   }
 
   private async discoverQuery(

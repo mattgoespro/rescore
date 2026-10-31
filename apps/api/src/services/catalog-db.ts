@@ -4,5 +4,6 @@ export {
   type CatalogPersonRow,
   type CatalogTitleInput,
   type CatalogTitleRow,
+  type HydrationStats,
   type TitleQuery,
 } from "../catalog/index.js";

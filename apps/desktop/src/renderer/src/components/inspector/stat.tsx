@@ -8,11 +8,11 @@ export default function Stat({
   value: string;
 }): JSX.Element {
   return (
-    <div>
-      <small className="mb-1 block text-[10px] tracking-[0.12em] text-faint uppercase">
-        {label}
-      </small>
-      <b className="text-[22px] tracking-tighter tabular">{value}</b>
+    <div className="flex flex-col gap-1">
+      <span className="kicker">{label}</span>
+      <span className="text-[22px] font-bold tracking-tighter tabular">
+        {value}
+      </span>
     </div>
   );
 }

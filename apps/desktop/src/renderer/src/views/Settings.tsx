@@ -24,6 +24,7 @@ import {
   type TmdbHealthReading,
 } from "../lib/tmdb-health";
 import { cn } from "../lib/cn";
+import { pollWhileVisible } from "../lib/poll-while-visible";
 import {
   validateRankingSettings,
   type SettingsErrors,
@@ -515,11 +516,10 @@ function TmdbHealth({ apiUrl }: { apiUrl: string }): JSX.Element {
           if (!cancelled) setUnavailable(true);
         });
     };
-    load();
-    const timer = window.setInterval(load, 5000);
+    const stopPolling = pollWhileVisible(load, 5000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [apiUrl]);
 

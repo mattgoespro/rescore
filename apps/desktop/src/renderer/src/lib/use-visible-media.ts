@@ -5,12 +5,35 @@ export const MEDIA_RETRY_MS = 30_000;
 /** Media rows kept for titles scrolled past; the oldest give way first. */
 export const MEDIA_CACHE_LIMIT = 800;
 
-/** Adds rows to a media map, dropping the oldest beyond the limit. */
+function sameRow(a: object, b: object): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every(
+      (key) =>
+        (a as Record<string, unknown>)[key] ===
+        (b as Record<string, unknown>)[key],
+    )
+  );
+}
+
+/**
+ * Adds rows to a media map, dropping the oldest beyond the limit. Rows that
+ * change nothing, such as titles still waiting on TMDb, keep the same map so
+ * the list does not redraw.
+ */
 export function mergeMediaRows<T extends { id: string }>(
   current: ReadonlyMap<string, T>,
   rows: readonly T[],
   limit = MEDIA_CACHE_LIMIT,
-): Map<string, T> {
+): ReadonlyMap<string, T> {
+  if (
+    rows.every((row) => {
+      const known = current.get(row.id);
+      return known !== undefined && sameRow(known, row);
+    })
+  )
+    return current;
   const next = new Map(current);
   for (const row of rows) {
     next.delete(row.id);
@@ -114,20 +137,28 @@ export function useVisibleMedia() {
     const observed = new Set<Element>();
     async function fill(): Promise<void> {
       if (disposed || busy) return;
-      const ids = mediaIdsToFill({
-        ids: visible,
-        resolved,
-        retryAt,
-        now: Date.now(),
-      });
+      const now = Date.now();
+      // Spent backoffs for titles scrolled away would otherwise pile up.
+      for (const [id, at] of retryAt) if (at <= now) retryAt.delete(id);
+      const ids = mediaIdsToFill({ ids: visible, resolved, retryAt, now });
       if (!ids.length) return;
       busy = true;
       for (const id of ids) retryAt.set(id, Date.now() + MEDIA_RETRY_MS);
       try {
         const rows = await window.api.fillMedia(ids);
         if (disposed) return;
-        for (const row of rows) if (mediaFillSettled(row)) resolved.add(row.id);
-        setMedia((current) => mergeMediaRows(current, rows));
+        for (const row of rows) {
+          if (!mediaFillSettled(row)) continue;
+          resolved.add(row.id);
+          retryAt.delete(row.id);
+        }
+        setMedia((current) => {
+          const next = mergeMediaRows(current, rows);
+          // A row the cache dropped is no longer resolved: scrolling back to
+          // that title asks again instead of showing its search-time poster.
+          for (const id of resolved) if (!next.has(id)) resolved.delete(id);
+          return next;
+        });
       } catch {
         /* Keep available data; retry visible failures after backoff. */
       } finally {

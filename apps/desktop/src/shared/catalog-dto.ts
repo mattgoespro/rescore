@@ -43,6 +43,14 @@ export interface LibraryEntryDto {
   updatedAt: string;
 }
 
+/** What the user's ratings favour, sent so candidates reach past the most-voted titles. */
+export interface ForYouHints {
+  genres?: string[];
+  directors?: string[];
+  /** First years of decades, such as 1990. */
+  decades?: number[];
+}
+
 export interface ForYouResponse {
   library: LibraryEntryDto[];
   facets: FacetsResponse;

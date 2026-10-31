@@ -27,6 +27,16 @@ const SHELVES = [
 
 type Shelf = (typeof SHELVES)[number]["id"];
 
+const RATE_TO_START =
+  "Search for a title you know well and rate it to start the pattern.";
+// What fills each shelf, said where it is empty.
+const EMPTY_SHELF: Record<Shelf, string> = {
+  watched: RATE_TO_START,
+  watchlist: "Save a title to your watchlist from its preview to keep it here.",
+  skipped: "Titles you mark Not for me leave your results and gather here.",
+  all: RATE_TO_START,
+};
+
 /** Everything the summary cards and shelf counts show, in one pass. */
 function libraryStats(library: LibraryEntry[], genreMap: Map<number, string>) {
   const shelves: Record<Shelf, number> = {
@@ -168,7 +178,8 @@ export default function Library({
                     <strong className="font-semibold text-ink">
                       {average.toFixed(1)}
                     </strong>{" "}
-                    across {rated.toLocaleString()} ratings
+                    across {rated.toLocaleString()}{" "}
+                    {rated === 1 ? "rating" : "ratings"}
                   </>
                 ) : (
                   "No ratings yet"
@@ -272,7 +283,7 @@ export default function Library({
             <LoadingOverlay
               busy={false}
               completeText="Nothing in this shelf yet"
-              detail="Search for a title you know well and rate it to start the pattern."
+              detail={EMPTY_SHELF[tab]}
             />
           </div>
         ) : (
@@ -348,6 +359,7 @@ export default function Library({
                       </div>
                     </div>
                     <button
+                      type="button"
                       className={`${btn("ghost", "compact")} relative z-2`}
                       disabled={busy}
                       aria-label={`Remove ${entry.title} from library`}

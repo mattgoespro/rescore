@@ -12,7 +12,9 @@ import { syncDataset } from "../services/dataset.js";
 import type { RatingsStore } from "../services/ratings-store.js";
 import { mediaHandler } from "./media.js";
 import { forYouHandler } from "./for-you.js";
+import { queryList } from "./query-list.js";
 import {
+  admitTitleHydration,
   fillTitles,
   isPosterEnrichmentRunning,
 } from "../services/tmdb-posters.js";
@@ -23,24 +25,6 @@ const titleId = z
   .transform((id) => id.toLowerCase());
 const optionalInteger = (min: number, max: number) =>
   z.coerce.number().int().min(min).max(max).optional();
-/**
- * A repeated or comma-separated query value as a trimmed list, or undefined
- * when it holds nothing.
- */
-function queryList<T extends z.ZodTypeAny>(
-  item: T,
-  max: number,
-  normalize: (value: string) => string = (value) => value,
-) {
-  return z.preprocess((value) => {
-    if (value == null || value === "") return undefined;
-    const list = Array.isArray(value) ? value : String(value).split(",");
-    const items = list
-      .map((entry) => normalize(String(entry).trim()))
-      .filter(Boolean);
-    return items.length ? items : undefined;
-  }, z.array(item).max(max).optional());
-}
 
 const optionalBoolean = z
   .enum(["true", "false"])
@@ -207,8 +191,10 @@ export function v1Router(db: CatalogDatabase, ratings: RatingsStore): Router {
       })
       .strict()
       .parse(req.body && typeof req.body === "object" ? req.body : {});
-    const ids = (body.ids ?? []).filter((id) => db.titleNeedsMedia(id));
-    void fillTitles(db, ids);
+    // Background work for every id: `fillTitles` answers at most 40 and
+    // jumps the interactive queue. Titles already hydrated resolve at once.
+    for (const row of db.mediaFor(body.ids ?? []))
+      void admitTitleHydration(db, row.id, row.kind, false);
     return res
       .status(202)
       .json({ ok: true, running: isPosterEnrichmentRunning() });

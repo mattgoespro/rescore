@@ -133,7 +133,8 @@ export default function ForYou({
               Ranked for you
             </h1>
             <p className="mt-1 mb-0 max-w-[60ch] text-sm leading-copy text-muted">
-              Seeded from titles you rated highly, then re-ranked by genre,
+              Popular titles you have not seen, plus well-rated ones from the
+              genres, decades and directors you rate highest, ranked by genre,
               directors, cast, era, runtime habits and what you have watched
               lately.
             </p>

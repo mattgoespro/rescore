@@ -12,6 +12,8 @@ export type {
   CatalogReadiness,
   CatalogTitleInput,
   CatalogTitleRow,
+  ForYouHints,
+  HydrationStats,
   LibraryRow,
   TitleQuery,
 } from "./types.js";

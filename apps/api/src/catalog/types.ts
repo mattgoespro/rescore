@@ -14,6 +14,15 @@ export interface CatalogTitleInput {
   cast?: string[];
 }
 
+/** What the user's ratings favour, to widen For You past the most-voted titles. */
+export interface ForYouHints {
+  genres?: string[];
+  /** Director names, as the library's credits spell them. */
+  directors?: string[];
+  /** First years of decades, such as 1990. */
+  decades?: number[];
+}
+
 export interface TitleQuery {
   page: number;
   pageSize: number;
@@ -42,6 +51,14 @@ export interface CatalogMeta {
   builtAt: string | null;
   revision: string | null;
   source: string | null;
+}
+
+/** TMDb hydration across the whole catalogue. */
+export interface HydrationStats {
+  total: number;
+  processed: number;
+  pending: number;
+  complete: boolean;
 }
 
 export interface CatalogReadiness {

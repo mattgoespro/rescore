@@ -7,6 +7,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  keepMenuPosition,
+  scrolledInside,
+  type MenuPosition,
+} from "../../lib/menu-position";
 import Menu from "./menu";
 import Trigger from "./trigger";
 import type { SelectOption } from "./types";
@@ -30,7 +35,7 @@ export default function Select({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({
+  const [menuPos, setMenuPos] = useState<MenuPosition>({
     top: 0,
     left: 0,
     width: 0,
@@ -46,12 +51,13 @@ export default function Select({
     const spaceAbove = rect.top - 12;
     const maxHeight = Math.min(280, Math.max(spaceBelow, spaceAbove));
     const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
-    setMenuPos({
+    const next = {
       top: openUp ? rect.top - maxHeight - 4 : rect.bottom + 4,
       left: rect.left,
       width: rect.width,
       maxHeight,
-    });
+    };
+    setMenuPos((current) => keepMenuPosition(current, next));
   }
 
   useEffect(() => {
@@ -73,7 +79,9 @@ export default function Select({
         buttonRef.current?.focus();
       }
     };
-    const onReposition = (): void => placeMenu();
+    const onReposition = (event: Event): void => {
+      if (!scrolledInside(event, menuRef.current)) placeMenu();
+    };
     document.addEventListener("mousedown", onDoc);
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", onReposition);

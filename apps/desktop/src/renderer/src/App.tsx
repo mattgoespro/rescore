@@ -71,7 +71,8 @@ export default function App(): JSX.Element {
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [error, setError] = useState("");
   // Confirmations are announced to screen readers only; destructive actions
-  // raise a notification (bottom right) that can undo them.
+  // raise a notification (bottom right) that can undo them, and the
+  // notification region announces those itself.
   const [notice, setNotice] = useState("");
   const notify = useNotify();
   const [libraryBusy, setLibraryBusy] = useState(false);
@@ -99,10 +100,13 @@ export default function App(): JSX.Element {
 
   // A library action can unmount the control that had focus (Remove, say);
   // focus then returns to the page rather than the document body.
+  const wasLibraryBusy = useRef(false);
   useEffect(() => {
-    if (document.activeElement !== document.body) return;
-    if (notice) document.getElementById("main-content")?.focus();
-  }, [notice, libraryBusy]);
+    const finished = wasLibraryBusy.current && !libraryBusy;
+    wasLibraryBusy.current = libraryBusy;
+    if (finished && document.activeElement === document.body)
+      document.getElementById("main-content")?.focus();
+  }, [libraryBusy]);
   const [booting, setBooting] = useState(true);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(
     null,
@@ -122,6 +126,22 @@ export default function App(): JSX.Element {
     [genres],
   );
 
+  // Rating titles in quick succession starts overlapping reloads; only the
+  // newest may land, and none holds up the next library action.
+  const profileRequest = useRef(0);
+  const refreshProfile = useCallback(async () => {
+    const request = ++profileRequest.current;
+    const next = await window.api.profile().catch(() => null);
+    if (next && request === profileRequest.current) setProfile(next);
+  }, []);
+  const changeLibrary = useCallback(
+    (next: LibraryEntry[]) => {
+      setLibrary(next);
+      void refreshProfile();
+    },
+    [setLibrary, refreshProfile],
+  );
+
   const refresh = useCallback(async () => {
     const [nextSettings, nextLibrary] = await Promise.all([
       window.api.getSettings(),
@@ -129,14 +149,9 @@ export default function App(): JSX.Element {
     ]);
     setSettings(nextSettings);
     setMediaProxyOrigin(nextSettings.catalogApiUrl);
-    setLibrary(nextLibrary);
-    const [nextGenres, nextProfile] = await Promise.all([
-      window.api.genres().catch(() => [] as Genre[]),
-      window.api.profile().catch(() => null),
-    ]);
-    setGenres(nextGenres);
-    setProfile(nextProfile);
-  }, []);
+    changeLibrary(nextLibrary);
+    setGenres(await window.api.genres().catch(() => [] as Genre[]));
+  }, [changeLibrary]);
 
   useEffect(() => {
     void window.api.getSettings().then((next) => {
@@ -318,7 +333,6 @@ export default function App(): JSX.Element {
           ? `Rated ${movie.title} ${rating} out of 10.`
           : `${movie.title} saved as ${status}.`,
       );
-      setProfile(await window.api.profile().catch(() => profile));
     } catch {
       setError(
         "Could not save this title. Check the catalogue service and try again.",
@@ -349,7 +363,6 @@ export default function App(): JSX.Element {
         message: `${entry.title} removed from your library.`,
         undo: () => undoRemove(entry),
       });
-      setProfile(await window.api.profile().catch(() => profile));
     } catch {
       setError(
         "Could not remove this title. Check the catalogue service and try again.",
@@ -379,7 +392,6 @@ export default function App(): JSX.Element {
         tone: "success",
         message: `${entry.title} restored to your library.`,
       });
-      setProfile(await window.api.profile().catch(() => profile));
     } catch {
       notify({
         tone: "error",

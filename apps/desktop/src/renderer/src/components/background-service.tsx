@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from "react";
 import type { BackgroundServiceStatus } from "../../../shared/background-service";
+import { pollWhileVisible } from "../lib/poll-while-visible";
 import { btn } from "../lib/ui";
 
 const STATE_LABELS: Record<BackgroundServiceStatus["state"], string> = {
@@ -12,7 +13,10 @@ const STATE_LABELS: Record<BackgroundServiceStatus["state"], string> = {
 
 export default function BackgroundService(): JSX.Element {
   const [status, setStatus] = useState<BackgroundServiceStatus | null>(null);
+  // An action's failure stays until the next action; a failed status check
+  // clears once a later check succeeds.
   const [error, setError] = useState("");
+  const [pollError, setPollError] = useState("");
   const [action, setAction] = useState<string | null>(null);
   const request = useRef<Promise<void> | null>(null);
   const acting = useRef(false);
@@ -26,11 +30,13 @@ export default function BackgroundService(): JSX.Element {
       const pending = window.api.backgroundService
         .getStatus()
         .then((next) => {
-          if (!disposed) setStatus(next);
+          if (disposed) return;
+          setStatus(next);
+          setPollError("");
         })
         .catch((cause: unknown) => {
           if (!disposed) {
-            setError(
+            setPollError(
               cause instanceof Error
                 ? cause.message
                 : "Could not check service status.",
@@ -42,12 +48,12 @@ export default function BackgroundService(): JSX.Element {
         });
       request.current = pending;
     }
-    poll();
-    const timer = window.setInterval(poll, 5_000);
+    // Each check starts PowerShell, so a hidden window does not check.
+    const stopPolling = pollWhileVisible(poll, 5_000);
     return () => {
       disposed = true;
       mounted.current = false;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, []);
 
@@ -89,8 +95,8 @@ export default function BackgroundService(): JSX.Element {
         Background catalogue service
       </h3>
       <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">
-        Required on Windows. Starts when you open Rescore and keeps the catalog
-        updated after you close it.
+        Required on Windows. Starts when you open Rescore and keeps the
+        catalogue updated after you close it.
       </p>
       <p
         role="status"
@@ -107,7 +113,9 @@ export default function BackgroundService(): JSX.Element {
         role="alert"
         className="text-xs leading-copy text-danger not-empty:mt-2"
       >
-        {error || (status?.state === "error" ? status.message : "")}
+        {error ||
+          pollError ||
+          (status?.state === "error" ? status.message : "")}
       </p>
       <div className="mt-3 flex flex-wrap gap-2.5">
         {status?.supported && status.state !== "running" && (
@@ -116,7 +124,7 @@ export default function BackgroundService(): JSX.Element {
             className={btn("primary", "small")}
             disabled={busy}
             onClick={() =>
-              void run("Preparing service�", () =>
+              void run("Preparing service…", () =>
                 window.api.backgroundService.retry(),
               )
             }

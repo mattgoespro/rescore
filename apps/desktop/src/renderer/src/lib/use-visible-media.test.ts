@@ -84,3 +84,17 @@ test("media rows keep the newest titles within the limit", () => {
   media = mergeMediaRows(media, [row("a"), row("d")], 3);
   assert.deepEqual([...media.keys()], ["c", "a", "d"]);
 });
+
+test("media merge keeps the same map when no row changes", () => {
+  const row = (id: string, posterUrl: string | null) => ({
+    id,
+    synopsis: null,
+    posterUrl,
+    certification: null,
+    hydrationComplete: false,
+  });
+  const media = mergeMediaRows(new Map(), [row("a", null)]);
+  assert.equal(mergeMediaRows(media, [row("a", null)]), media);
+  assert.equal(mergeMediaRows(media, []), media);
+  assert.notEqual(mergeMediaRows(media, [row("a", "/p.jpg")]), media);
+});

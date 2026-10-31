@@ -7,6 +7,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  keepMenuPosition,
+  scrolledInside,
+  type MenuPosition,
+} from "../../lib/menu-position";
 import type { SearchHistoryEntry } from "../../../../shared/types";
 import { iconBtn, overlayPanelClass } from "../../lib/ui";
 import { cn } from "../../lib/cn";
@@ -30,7 +35,7 @@ export default function HistoryMenu({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({
+  const [menuPos, setMenuPos] = useState<MenuPosition>({
     top: 0,
     left: 0,
     width: MENU_WIDTH,
@@ -49,7 +54,7 @@ export default function HistoryMenu({
     );
     const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
     const width = Math.min(MENU_WIDTH, window.innerWidth - 24);
-    setMenuPos({
+    const next = {
       top: openUp ? rect.top - maxHeight - 4 : rect.bottom + 4,
       left: Math.max(
         12,
@@ -57,7 +62,8 @@ export default function HistoryMenu({
       ),
       width,
       maxHeight,
-    });
+    };
+    setMenuPos((current) => keepMenuPosition(current, next));
   }
 
   useEffect(() => {
@@ -83,7 +89,9 @@ export default function HistoryMenu({
         buttonRef.current?.focus();
       }
     };
-    const onReposition = (): void => placeMenu();
+    const onReposition = (event: Event): void => {
+      if (!scrolledInside(event, menuRef.current)) placeMenu();
+    };
     document.addEventListener("mousedown", onDoc);
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", onReposition);

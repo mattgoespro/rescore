@@ -234,7 +234,22 @@ async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
   return { ok: true, path: result.filePath };
 }
 
-async function importImdbCsv(): Promise<ImportProgress> {
+/** Progress updates per second at most; the last one always goes out. */
+const IMPORT_PROGRESS_INTERVAL_MS = 100;
+let importing: Promise<ImportProgress> | null = null;
+
+/**
+ * Settings forgets its busy state when the user leaves the page, so a second
+ * Import joins the one already running instead of starting another.
+ */
+function importImdbCsv(): Promise<ImportProgress> {
+  importing ??= pickAndImportCsv().finally(() => {
+    importing = null;
+  });
+  return importing;
+}
+
+async function pickAndImportCsv(): Promise<ImportProgress> {
   const options = {
     title: "Import IMDb ratings.csv",
     filters: [{ name: "CSV", extensions: ["csv"] }],
@@ -255,7 +270,13 @@ async function importImdbCsv(): Promise<ImportProgress> {
   };
   if (picked.canceled || !picked.filePaths[0]) return empty;
   const rows = parseImdbRatingsCsv(await readFile(picked.filePaths[0], "utf8"));
-  return workflow.importRatings(rows, (progress) =>
-    sendToWindow(getWindow(), "library:importProgress", progress),
-  );
+  // A large export is thousands of rows; one message each redraws Settings
+  // thousands of times.
+  let sentAt = 0;
+  return workflow.importRatings(rows, (progress) => {
+    const now = Date.now();
+    if (!progress.done && now - sentAt < IMPORT_PROGRESS_INTERVAL_MS) return;
+    sentAt = now;
+    sendToWindow(getWindow(), "library:importProgress", progress);
+  });
 }

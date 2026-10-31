@@ -9,6 +9,7 @@ import type {
   TasteProfile,
 } from "../shared/types";
 import { titleKey } from "../shared/types";
+import type { ForYouHints } from "../shared/catalog-dto";
 
 interface InternalProfile {
   ratedCount: number;
@@ -168,6 +169,22 @@ export function tasteRanked<T>(
   rank: (movies: T[]) => T[],
 ): T[] {
   return tasteReady(ratedCount) ? rank(movies) : movies;
+}
+
+/**
+ * The genres, directors and decades the ratings favour, for the catalogue to
+ * add titles matching them to the most-voted candidates. Only what rates
+ * above the user's average counts, and nothing before the model is ready.
+ */
+export function forYouHints(profile: InternalProfile): ForYouHints {
+  if (!tasteReady(profile.ratedCount)) return {};
+  const liked = (affinities: Affinity[]): Affinity[] =>
+    affinities.filter((affinity) => affinity.weight > 0);
+  return {
+    genres: liked(topAffinities(profile.genres, 3)).map((a) => a.name),
+    directors: liked(topAffinities(profile.directors, 5)).map((a) => a.name),
+    decades: liked(topAffinities(profile.decades, 3)).map((a) => Number(a.id)),
+  };
 }
 
 export function publicProfile(profile: InternalProfile): TasteProfile {

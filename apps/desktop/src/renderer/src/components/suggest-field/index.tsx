@@ -40,12 +40,18 @@ export default function SuggestField<
       setHits([]);
       return;
     }
+    // A search still running when the text changes, or after a pick clears
+    // it, must not reopen the list with its older hits.
+    let current = true;
     const handle = window.setTimeout(() => {
       search(query)
-        .then(setHits)
-        .catch(() => setHits([]));
+        .then((next) => current && setHits(next))
+        .catch(() => current && setHits([]));
     }, 220);
-    return () => window.clearTimeout(handle);
+    return () => {
+      current = false;
+      window.clearTimeout(handle);
+    };
   }, [query, search, minQueryLength]);
 
   useEffect(() => {

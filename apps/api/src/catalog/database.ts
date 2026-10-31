@@ -60,6 +60,8 @@ import {
   type CatalogReadiness,
   type CatalogTitleInput,
   type CatalogTitleRow,
+  type ForYouHints,
+  type HydrationStats,
   type TitleQuery,
 } from "./types.js";
 import { mediaWorkQueue } from "./work-queue.js";
@@ -102,6 +104,10 @@ export class CatalogDatabase {
       this.db.pragma("foreign_keys = ON");
       this.db.pragma("journal_mode = WAL");
       this.db.pragma("busy_timeout = 15000");
+      // SQLite's default 2 MB cache holds little of a catalogue near 800 MB;
+      // For You's index ranges were read again on every request. 64 MB is a
+      // ceiling the cache grows into, not an allocation.
+      this.db.pragma("cache_size = -65536");
       applyMigrations(this.db);
     } catch (error) {
       opened?.close();
@@ -302,8 +308,8 @@ export class CatalogDatabase {
     return listLibrary(this.db, status);
   }
 
-  listForYouCandidates(limit: number): TitleDto[] {
-    return listForYouCandidates(this.db, limit);
+  listForYouCandidates(limit: number, hints?: ForYouHints): TitleDto[] {
+    return listForYouCandidates(this.db, limit, hints);
   }
 
   saveLibrary(
@@ -452,12 +458,7 @@ export class CatalogDatabase {
     };
   }
 
-  hydrationStats(): {
-    total: number;
-    processed: number;
-    pending: number;
-    complete: boolean;
-  } {
+  hydrationStats(): HydrationStats {
     // Two counts, not one CASE over every row: the pending count matches the
     // partial index's predicate exactly, so it reads only that index.
     const total = Number(

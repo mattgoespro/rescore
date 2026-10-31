@@ -561,7 +561,7 @@ export function createCatalogLifecycle(
                         : {
                             status: catalogStatusSnapshot(context.status, {
                               phase: "starting",
-                              message: "Waiting for the catalog API…",
+                              message: "Waiting for the catalogue API…",
                               error: null,
                             }),
                           },

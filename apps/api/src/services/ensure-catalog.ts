@@ -10,7 +10,7 @@ import {
   startCreditsBuild,
   type CatalogBuildResult,
 } from "./catalog-builder.js";
-import type { CatalogDatabase } from "./catalog-db.js";
+import type { CatalogDatabase, HydrationStats } from "./catalog-db.js";
 import type {
   CatalogDownloadProgress,
   CatalogSetupProgress,
@@ -112,8 +112,8 @@ function coverageMessage(coverage: {
 function publishCatalogHydration(
   catalog: CatalogDatabase,
   error?: string | null,
+  stats: HydrationStats = catalog.hydrationStats(),
 ): void {
-  const stats = catalog.hydrationStats();
   const coverage = catalog.tmdbCoverage();
   const complete = stats.complete && stats.total > 0;
   const message =
@@ -430,8 +430,8 @@ function hydrateInBackground(
       try {
         while (!shutdownSignal.aborted) {
           retryAt = null;
-          const publish = (): void => {
-            publishCatalogHydration(catalog, posterEnrichmentError());
+          const publish = (stats?: HydrationStats): void => {
+            publishCatalogHydration(catalog, posterEnrichmentError(), stats);
           };
           publish();
           await startPosterEnrichment(catalog, { ids, onProgress: publish });
