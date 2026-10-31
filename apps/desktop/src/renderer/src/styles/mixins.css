@@ -1,13 +1,13 @@
 @utility poster-ph {
-  background: var(--color-poster);
+  background: var(--imd-poster);
 }
 
 @utility hero-ph {
-  background: var(--color-backdrop);
+  background: var(--imd-backdrop);
 }
 
 @utility hero-ph-fallback {
-  background: var(--color-backdrop);
+  background: var(--imd-backdrop);
 }
 
 @utility hero-fade {
@@ -15,7 +15,7 @@
 }
 
 @utility inset-accent {
-  box-shadow: inset 2px 0 0 var(--color-accent);
+  box-shadow: inset 2px 0 0 var(--imd-accent);
 }
 
 @utility field-control {

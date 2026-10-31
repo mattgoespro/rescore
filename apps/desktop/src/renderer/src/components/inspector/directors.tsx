@@ -12,7 +12,7 @@ export default function Directors({
       <h3 className="kicker">
         {directors.length === 1 ? "Director" : "Directors"}
       </h3>
-      <p className="m-0 text-[13px] leading-copy text-ink">
+      <p className="m-0 text-ui leading-copy text-ink">
         {directors.map((d) => d.name).join(", ")}
       </p>
     </section>

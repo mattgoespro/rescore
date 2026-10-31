@@ -1,4 +1,5 @@
-import { useEffect, useState, type JSX } from "react";
+import { errorMessage } from "../lib/error-message";
+import { useEffect, useRef, useState, type JSX } from "react";
 import {
   DEFAULT_ACCENT_COLOR,
   normalizeAccentColor,
@@ -31,6 +32,7 @@ import {
 } from "../lib/settings-validation";
 import {
   btn,
+  pageTitleClass,
   progressBarClass,
   progressFillClass,
   segmentedCell,
@@ -75,7 +77,6 @@ export default function SettingsView({
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [appearanceBusy, setAppearanceBusy] = useState(false);
-  const [feedback, setFeedback] = useState("");
   const [saveError, setSaveError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<SettingsErrors>({});
   const rebuild = catalogRebuildFeedback(catalogStatus);
@@ -89,11 +90,13 @@ export default function SettingsView({
     [settings.catalogApiUrl],
   );
   useEffect(() => setMode(settings.rankingMode), [settings.rankingMode]);
+  // Each field follows only its own saved value: a theme save landing while
+  // the accent is being typed must not reset the draft.
+  useEffect(() => setThemeMode(settings.themeMode), [settings.themeMode]);
   useEffect(() => {
-    setThemeMode(settings.themeMode);
     setAccentColor(settings.accentColor);
     setAccentDraft(settings.accentColor);
-  }, [settings.themeMode, settings.accentColor]);
+  }, [settings.accentColor]);
 
   useEffect(() => {
     onDirtyChange(dirty || saving || appearanceBusy);
@@ -114,22 +117,36 @@ export default function SettingsView({
     return window.api.onImportProgress(setProgress);
   }, []);
 
+  // The colour picker reports every step of a drag. Saves run one at a time
+  // and the newest choice wins, so the stored accent is the one on screen.
+  const appearanceQueue = useRef<{
+    running: boolean;
+    next: Pick<Settings, "themeMode" | "accentColor"> | null;
+  }>({ running: false, next: null });
+
   async function commitAppearance(
     nextMode: ThemeMode,
     nextAccent: string,
   ): Promise<void> {
-    if (appearanceBusy) return;
     const accent = normalizeAccentColor(nextAccent);
-    setAppearanceBusy(true);
-    setFeedback("");
     setThemeMode(nextMode);
     setAccentColor(accent);
     setAccentDraft(accent);
     applyAppearance({ themeMode: nextMode, accentColor: accent });
+    const queue = appearanceQueue.current;
+    queue.next = { themeMode: nextMode, accentColor: accent };
+    if (queue.running) return;
+    queue.running = true;
+    setAppearanceBusy(true);
     try {
-      await onSave({ themeMode: nextMode, accentColor: accent });
-      setFeedback("Appearance saved.");
+      while (queue.next) {
+        const patch = queue.next;
+        queue.next = null;
+        await onSave(patch);
+      }
+      notify({ tone: "success", message: "Appearance saved." });
     } catch {
+      queue.next = null;
       applyAppearance(settings);
       setThemeMode(settings.themeMode);
       setAccentColor(settings.accentColor);
@@ -138,6 +155,7 @@ export default function SettingsView({
         "Could not save appearance. Try changing the theme or accent again.",
       );
     } finally {
+      queue.running = false;
       setAppearanceBusy(false);
     }
   }
@@ -145,7 +163,6 @@ export default function SettingsView({
   async function save(): Promise<void> {
     if (saving) return;
     onError("");
-    setFeedback("");
     setSaveError("");
     const errors = validateRankingSettings({ catalogApiUrl }, serviceRequired);
     setFieldErrors(errors);
@@ -160,10 +177,10 @@ export default function SettingsView({
         ...(!serviceRequired ? { catalogApiUrl: catalogApiUrl.trim() } : {}),
         rankingMode: mode,
       });
-      setFeedback("Settings saved.");
+      notify({ tone: "success", message: "Settings saved." });
     } catch {
       setSaveError(
-        "Could not save settings. Check that the catalogue is running, then try Save Settings again.",
+        "Could not save settings. Check that the catalogue is running, then try Save settings again.",
       );
     } finally {
       setSaving(false);
@@ -183,7 +200,7 @@ export default function SettingsView({
       await window.api.rebuildCatalog();
     } catch {
       onError(
-        "Could not rebuild the catalogue. Check the service in Settings, then try again.",
+        "Could not rebuild the catalogue. Check the background catalogue service below, then try again.",
       );
     }
   }
@@ -196,7 +213,7 @@ export default function SettingsView({
       setProgress(result);
       onLibraryChange(await window.api.listLibrary());
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Import failed");
+      onError(errorMessage(error, "Import failed"));
     } finally {
       setBusy(false);
     }
@@ -205,29 +222,21 @@ export default function SettingsView({
   return (
     <section>
       <div className="mb-6">
-        <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title text-balance">
-          Settings
-        </h1>
+        <h1 className={cn(pageTitleClass, "text-balance")}>Settings</h1>
         <p className="mt-1 mb-0 max-w-[60ch] text-sm leading-copy text-pretty text-muted">
           Catalogue, imported ratings, and how titles are ranked.
         </p>
       </div>
-      <p
-        className="my-2 text-[13px] text-muted"
-        role="status"
-        aria-live="polite"
-      >
-        {feedback}
-      </p>
       <div className="grid max-w-300 grid-cols-1 items-start gap-4 inspect:grid-cols-2">
-        <div className="min-w-0 rounded-app border border-line bg-rail p-5 inspect:col-span-2">
+        <div
+          className="min-w-0 rounded-app border border-line bg-rail p-5 inspect:col-span-2"
+          aria-busy={appearanceBusy}
+          data-appearance
+        >
           <h2 className="kicker">Appearance</h2>
           <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
-            <fieldset
-              disabled={appearanceBusy}
-              className="m-0 min-w-0 border-0 p-0"
-            >
-              <legend className="mb-2 text-[13px] text-muted">Theme</legend>
+            <fieldset className="m-0 min-w-0 border-0 p-0">
+              <legend className="mb-2 text-ui text-muted">Theme</legend>
               <div
                 className={segmentedGroup("text")}
                 role="radiogroup"
@@ -278,11 +287,8 @@ export default function SettingsView({
                 ))}
               </div>
             </fieldset>
-            <fieldset
-              disabled={appearanceBusy}
-              className="m-0 min-w-0 border-0 p-0"
-            >
-              <legend className="mb-2 text-[13px] text-muted">Accent</legend>
+            <fieldset className="m-0 min-w-0 border-0 p-0">
+              <legend className="mb-2 text-ui text-muted">Accent</legend>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -292,7 +298,7 @@ export default function SettingsView({
                   onChange={(event) =>
                     void commitAppearance(themeMode, event.target.value)
                   }
-                  className="size-9 shrink-0 cursor-pointer rounded-control border border-transparent bg-wash-6 p-1 [&::-webkit-color-swatch]:rounded-[2px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
+                  className="size-9 shrink-0 cursor-pointer rounded-control border border-transparent bg-wash-6 p-1 [&::-webkit-color-swatch]:rounded-pip [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
                 />
                 <input
                   type="text"
@@ -321,13 +327,13 @@ export default function SettingsView({
               </div>
             </fieldset>
           </div>
-          <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
+          <p className="text-ui leading-copy text-pretty text-muted not-empty:mt-2">
             Theme and accent apply immediately on this PC.
           </p>
         </div>
         <div className="min-w-0 rounded-app border border-line bg-rail p-5">
           <h2 className="kicker">Catalogue</h2>
-          <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
+          <p className="text-ui leading-copy text-pretty text-muted not-empty:mt-2">
             {catalogSummary(catalogStatus)}
           </p>
           <button
@@ -348,7 +354,7 @@ export default function SettingsView({
               />
             </div>
           ) : null}
-          <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
+          <p className="text-ui leading-copy text-pretty text-muted not-empty:mt-2">
             Posters, synopses, and age ratings fill in from TMDb while you
             browse.
           </p>
@@ -358,7 +364,7 @@ export default function SettingsView({
         <div className="flex min-w-0 flex-col gap-4">
           <div className="rounded-app border border-line bg-rail p-5">
             <h2 className="kicker">Ratings import</h2>
-            <p className="text-[13px] leading-copy text-pretty text-muted not-empty:mt-2">
+            <p className="text-ui leading-copy text-pretty text-muted not-empty:mt-2">
               Export your ratings from IMDb, then choose the CSV. Imported
               titles are marked watched.
             </p>
@@ -378,7 +384,8 @@ export default function SettingsView({
                 onClick={async () => {
                   try {
                     const result = await window.api.exportLibrary();
-                    if (result.ok) setFeedback("Library exported.");
+                    if (result.ok)
+                      notify({ tone: "success", message: "Library exported." });
                   } catch {
                     onError(
                       "Could not export the library. Choose an accessible folder and try again.",
@@ -446,9 +453,11 @@ export default function SettingsView({
               void save();
             }}
           >
-            <h2 className="kicker">Ranking</h2>
+            <h2 className="kicker">
+              {serviceRequired ? "Ranking" : "Catalogue API and ranking"}
+            </h2>
             {!serviceRequired && (
-              <label className="mb-1 flex min-w-0 flex-col gap-2 text-[13px] text-muted">
+              <label className="mb-1 flex min-w-0 flex-col gap-2 text-ui text-muted">
                 Catalogue API URL
                 <input
                   type="url"
@@ -472,7 +481,7 @@ export default function SettingsView({
                 {fieldErrors.catalogApiUrl}
               </p>
             )}
-            <label className="mb-1 flex min-w-0 flex-col gap-2 text-[13px] text-muted">
+            <label className="mb-1 flex min-w-0 flex-col gap-2 text-ui text-muted">
               Ranking mode
               <Select
                 value={mode}
@@ -491,7 +500,7 @@ export default function SettingsView({
               disabled={saving}
               aria-busy={saving}
             >
-              {saving ? "Saving…" : "Save Settings"}
+              {saving ? "Saving…" : "Save settings"}
             </button>
           </form>
         </div>

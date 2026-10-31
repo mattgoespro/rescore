@@ -25,10 +25,10 @@ export default function QueryField({
         aria-keyshortcuts="Control+K"
         value={value}
         placeholder="Search titles or IMDb IDs…"
-        className="h-8 w-full min-w-0 rounded-control border border-transparent bg-wash-6 pr-16 pl-9 text-[13px] text-ink outline-none placeholder:text-muted focus:border-accent [&::-webkit-search-cancel-button]:hidden"
+        className="h-8 w-full min-w-0 rounded-control border border-transparent bg-wash-6 pr-16 pl-9 text-ui text-ink outline-none placeholder:text-muted focus:border-accent [&::-webkit-search-cancel-button]:hidden"
         onChange={(event) => onChange(event.target.value)}
       />
-      <kbd className="pointer-events-none absolute right-1.5 rounded-[3px] border border-line px-1.5 py-px font-sans text-xs text-muted">
+      <kbd className="pointer-events-none absolute right-1.5 rounded-item border border-line px-1.5 py-px font-sans text-xs text-muted">
         Ctrl K
       </kbd>
     </label>

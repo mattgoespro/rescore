@@ -1,3 +1,4 @@
+import { errorMessage } from "./error-message";
 import type {
   DiscoverFilters,
   LibraryEntry,
@@ -98,7 +99,7 @@ export function createDiscoverResults(
     } catch (error) {
       if (!disposed && id === generation)
         publish({
-          error: error instanceof Error ? error.message : "Search failed",
+          error: errorMessage(error, "Search failed"),
         });
     } finally {
       if (!disposed && id === generation)

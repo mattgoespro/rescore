@@ -1,5 +1,4 @@
 import type Database from "better-sqlite3";
-import { BAYESIAN_PRIOR_VOTES } from "./bayesian.js";
 import { now } from "./now.js";
 
 export const TMDB_HYDRATION_PENDING_SQL =
@@ -66,7 +65,7 @@ export const migrations = [
    CREATE INDEX IF NOT EXISTS titles_runtime_idx ON titles(kind, runtime_minutes);`,
   `CREATE INDEX IF NOT EXISTS titles_poster_pending_idx ON titles(imdb_votes DESC, id) WHERE poster_url IS NULL;`,
   `ALTER TABLE titles ADD COLUMN bayesian_score REAL;
-   UPDATE titles SET bayesian_score = (CAST(COALESCE(imdb_votes, 0) AS REAL) / (COALESCE(imdb_votes, 0) + ${BAYESIAN_PRIOR_VOTES})) * COALESCE(imdb_rating, 0);
+   UPDATE titles SET bayesian_score = (CAST(COALESCE(imdb_votes, 0) AS REAL) / (COALESCE(imdb_votes, 0) + 25000)) * COALESCE(imdb_rating, 0);
    CREATE INDEX IF NOT EXISTS titles_bayesian_idx ON titles(kind, bayesian_score DESC);
    CREATE TABLE IF NOT EXISTS ratings_staging (
     id TEXT PRIMARY KEY,
@@ -169,6 +168,17 @@ export const migrations = [
   // People search and the director and cast filters were the only readers of
   // the name index; credits import writes it on every new person.
   `DROP INDEX IF EXISTS people_name_idx;`,
+  // Lead columns of titles_kind_votes_cover_idx and titles_kind_year_idx, which
+  // serve every query these did; each cost a write on every ratings update.
+  // The poster queue moved to titles_tmdb_pending_idx, leaving the poster index
+  // with no reader while every poster write still updated it.
+  `DROP INDEX IF EXISTS titles_votes_idx;
+   DROP INDEX IF EXISTS titles_sort_idx;
+   DROP INDEX IF EXISTS titles_poster_pending_idx;`,
+  // The vote-weighted score had no reader: Discover sorts by the IMDb rating
+  // shown on each card, and every ratings refresh rewrote the column and index.
+  `DROP INDEX IF EXISTS titles_bayesian_idx;
+   ALTER TABLE titles DROP COLUMN bayesian_score;`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN

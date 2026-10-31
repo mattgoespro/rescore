@@ -47,7 +47,7 @@ import { IconGrid, IconList } from "../components/icons";
 import { enterDelayMs } from "../motion";
 import { cn } from "../lib/cn";
 import { discoverCountLabel } from "../lib/discover-count";
-import { segmentedCell, segmentedGroup } from "../lib/ui";
+import { pageTitleClass, segmentedCell, segmentedGroup } from "../lib/ui";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
@@ -247,9 +247,7 @@ export default function Discover({
           {/* The status sits beside the heading in a fixed slot, so its text
               coming and going never moves the header or the filter bar. */}
           <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
-              Discover
-            </h1>
+            <h1 className={pageTitleClass}>Discover</h1>
             <p
               className="m-0 w-32 shrink-0 truncate text-sm text-muted tabular"
               role="status"
@@ -377,14 +375,14 @@ export default function Discover({
                 hasMore={canLoadMore()}
                 loader={
                   <div
-                    className="my-4 mb-2 flex items-center justify-center gap-2.5 text-[13px] text-muted"
+                    className="my-4 mb-2 flex items-center justify-center gap-2.5 text-ui text-muted"
                     role="status"
                   >
                     Loading more titles…
                   </div>
                 }
                 endMessage={
-                  <p className="my-6 text-center text-[13px] text-faint">
+                  <p className="my-6 text-center text-ui text-faint">
                     You have reached the end of these results.
                   </p>
                 }

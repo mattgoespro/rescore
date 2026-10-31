@@ -6,14 +6,16 @@ Six review passes over `main` kept finding the same kinds of defect. This page l
 
 `check` runs lint with zero warnings, the Prettier check, both typechecks and both test suites.
 
-| Guard                                             | Where                                      | Stops                                                          |
-| ------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------- |
-| No `setInterval` in the renderer                  | `eslint.config.mjs`                        | Polling while the window is hidden                             |
-| `<button>` needs `type`; no headings in buttons   | `eslint.config.mjs`                        | Accidental submits, a broken heading outline                   |
-| No hex, `rgb()`, `hsl()` or `oklch()` in renderer | `eslint.config.mjs`                        | Colours that ignore the light and dark themes                  |
-| "catalogue" in prose, no U+FFFD                   | `eslint.config.mjs`                        | Spelling drift and broken characters in text people read       |
-| React hook rules and effect dependencies          | `eslint-plugin-react-hooks`                | Stale closures, effects that run too often or not at all       |
-| Hot query plans                                   | `apps/api/src/catalog/query-plans.test.ts` | Full table reads and sort-everything plans on the titles table |
+| Guard                                             | Where                                        | Stops                                                                 |
+| ------------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
+| No `setInterval` in the renderer                  | `eslint.config.mjs`                          | Polling while the window is hidden                                    |
+| `<button>` needs `type`; no headings in buttons   | `eslint.config.mjs`                          | Accidental submits, a broken heading outline                          |
+| No hex, `rgb()`, `hsl()` or `oklch()` in renderer | `eslint.config.mjs`                          | Colours that ignore the light and dark themes                         |
+| "catalogue" in prose, no U+FFFD                   | `eslint.config.mjs`                          | Spelling drift and broken characters in text people read              |
+| React hook rules and effect dependencies          | `eslint-plugin-react-hooks`                  | Stale closures, effects that run too often or not at all              |
+| Hot query plans                                   | `apps/api/src/catalog/query-plans.test.ts`   | Full table reads and sort-everything plans on the titles table        |
+| Every `var(--…)` the renderer reads is defined    | `styles/css-variables.test.ts`               | Shadows and backgrounds that silently drop (`--color-*`)              |
+| Arbitrary values that match a theme token         | `tailwindcss/no-unnecessary-arbitrary-value` | `text-[13px]` beside `text-ui`, `rounded-[3px]` beside `rounded-item` |
 
 Do not silence a guard. If one is wrong for a case, narrow the rule in `eslint.config.mjs` with a comment saying why.
 
@@ -30,6 +32,8 @@ A result can arrive after its inputs changed. In effects, set a `current` or `ca
 Long operations are single-flight. A second call joins the running one (`importing ??=` in `ipc.ts`, `inflight` in `ensure-catalog.ts`). Never start a duplicate.
 
 Follow-up work, such as reloading the taste profile, must not hold a busy state that blocks the user's next action.
+
+State derived from other state has one setter that updates both. `changeLibrary` in `App.tsx` is the only way to replace the library, and it reloads the taste profile; a second, plain setter is how the profile went stale after every rating.
 
 ## Redundant work and redraws
 
@@ -60,7 +64,9 @@ The catalogue has about half a million titles, so a full table read or sorting e
 
 ## UI and copy
 
-- Reuse the primitives in `lib/ui.ts` (`btn`, `iconBtn`, `segmentedCell`, `rankedRow`), along with `Popover` and `Select`. Section labels use `kicker`. Don't add one-off sizes, tracking or radii next to an existing style.
+- Reuse the primitives in `lib/ui.ts` (`btn`, `iconBtn`, `segmentedCell`, `rankedRow`, `pageTitleClass`), along with `Popover` and `Select`. Section labels use `kicker`. Don't add one-off sizes, tracking or radii next to an existing style.
+- Sizes and radii come from `tailwind.config.mts`: `text-ui` (13px controls and lists), `text-display` (28px titles and headline figures), `rounded-app`, `rounded-control`, `rounded-item` (3px, inside a control) and `rounded-pip` (2px marks). Pixel spacing uses the scale (`p-0.75`, `pb-4.5`).
+- Colours in CSS and arbitrary values read `--imd-*` tokens. Tailwind does not emit `--color-*` variables for the palette in the config.
 - Check both themes. A new token in `styles/theme.css` gets a light value unless it reads the same on both.
 - Anything that looks interactive does something.
 - Text says what the code does. When behaviour changes, change the sentence that describes it in the same commit.

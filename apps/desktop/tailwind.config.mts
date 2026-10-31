@@ -10,8 +10,6 @@ const palette = {
   faint: "var(--imd-faint)",
   line: "var(--imd-line)",
   accent: "var(--imd-accent)",
-  accent2: "var(--imd-accent-2)",
-  accentSoft: "var(--imd-accent-soft)",
   accentInk: "var(--imd-accent-ink)",
   danger: "var(--imd-danger)",
   dangerFg: "var(--imd-danger-fg)",
@@ -65,8 +63,6 @@ export default {
         line: palette.line,
         accent: {
           DEFAULT: palette.accent,
-          2: palette.accent2,
-          soft: palette.accentSoft,
           ink: palette.accentInk,
           text: "var(--imd-accent-text)",
         },
@@ -90,7 +86,6 @@ export default {
         wash: {
           DEFAULT: "var(--imd-wash-05)",
           3: "var(--imd-wash-03)",
-          5: "var(--imd-wash-05)",
           6: "var(--imd-wash-06)",
           8: "var(--imd-wash-08)",
           9: "var(--imd-wash-09)",
@@ -102,13 +97,19 @@ export default {
       fontWeight: {
         650: "650",
       },
+      fontSize: {
+        // Controls, options and dense lists; body copy is text-sm.
+        ui: "13px",
+        // Page titles and headline figures.
+        display: "28px",
+      },
       borderRadius: {
         app: "6px",
         control: "4px",
-      },
-      boxShadow: {
-        panel: "none",
-        accent: "none",
+        // Thumbnails, options and badges inside a control.
+        item: "3px",
+        // Marks smaller than a line of text: dots, swatches, slider thumbs.
+        pip: "2px",
       },
       letterSpacing: {
         title: "-0.02em",

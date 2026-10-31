@@ -13,7 +13,7 @@ export default function AgeCaption({
   return (
     <span
       className={cn(
-        "inline-block shrink-0 rounded-[3px] px-1.5 py-px align-middle text-[11px] leading-snug font-semibold tracking-[0.04em] text-shadow-none",
+        "inline-block shrink-0 rounded-item px-1.5 py-px align-middle text-[11px] leading-snug font-semibold tracking-[0.04em] text-shadow-none",
         adultRating(rating)
           ? "bg-danger/15 text-danger"
           : "bg-wash-8 text-muted",

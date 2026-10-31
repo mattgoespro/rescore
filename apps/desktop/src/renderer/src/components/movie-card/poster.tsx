@@ -29,10 +29,10 @@ export default function Poster({
           ? cn(
               "relative aspect-2/3 h-auto w-full shrink-0 overflow-hidden rounded-control border bg-poster transition-colors duration-140",
               active
-                ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]"
+                ? "border-accent shadow-[0_0_0_1px_var(--imd-accent)]"
                 : "border-line group-hover:border-control",
             )
-          : "relative h-13.5 w-9 shrink-0 overflow-hidden rounded-[3px] bg-poster"
+          : "relative h-13.5 w-9 shrink-0 overflow-hidden rounded-item bg-poster"
       }
     >
       {showImage ? (
@@ -49,8 +49,9 @@ export default function Poster({
       ) : (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-1 text-center text-faint"
-          role="img"
-          aria-label={caption}
+          // Decorative like the loaded image: inside a card button its label
+          // would come before the title in the button's name.
+          aria-hidden="true"
         >
           <svg
             className={grid ? "size-7" : "size-4"}

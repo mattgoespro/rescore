@@ -26,8 +26,6 @@ html[data-theme="dark"] {
   --imd-line: rgb(255 255 255 / 0.1);
   --imd-control: #737373;
   --imd-accent: #ceaa34;
-  --imd-accent-2: var(--imd-accent);
-  --imd-accent-soft: var(--imd-selected);
   --imd-accent-ink: #1a0c06;
   --imd-accent-text: #ceaa34;
   --imd-danger: #e0716a;
@@ -46,8 +44,6 @@ html[data-theme="dark"] {
   --imd-wash-09: rgb(255 255 255 / 0.09);
   --imd-body-glow: transparent;
   --imd-scrollbar: #3a3a3a;
-  --imd-shadow-panel: none;
-  --imd-title-shadow: none;
 }
 
 /* Light paper: the same system on off-white sheets. */
@@ -80,8 +76,6 @@ html[data-theme="light"] {
   --imd-wash-09: rgb(0 0 0 / 0.09);
   --imd-body-glow: transparent;
   --imd-scrollbar: #c4c4c4;
-  --imd-shadow-panel: none;
-  --imd-title-shadow: none;
 }
 
 @layer base {
@@ -102,7 +96,7 @@ html[data-theme="light"] {
 
   body {
     overflow: hidden;
-    background: var(--color-canvas);
+    background: var(--imd-canvas);
     font-size: 14px;
   }
 }

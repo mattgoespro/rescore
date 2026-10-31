@@ -95,7 +95,7 @@ function Toast({
 
   return (
     <div
-      className="pointer-events-auto flex animate-fade items-center gap-3 rounded-control border border-line bg-raised py-2 pr-1.5 pl-3 text-[13px] text-ink"
+      className="pointer-events-auto flex animate-fade items-center gap-3 rounded-control border border-line bg-raised py-2 pr-1.5 pl-3 text-ui text-ink"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}

@@ -19,7 +19,7 @@ export default function RatingLine({
     <div
       className={cn(
         "flex items-center gap-1 tabular",
-        compact ? "text-xs leading-caption" : "text-[13px] leading-copy",
+        compact ? "text-xs leading-caption" : "text-ui leading-copy",
       )}
     >
       <IconStar

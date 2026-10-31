@@ -66,11 +66,7 @@ function fixture() {
       nextCursor: null,
       canLoadMore: false,
     }),
-    forYouPage: async () => ({
-      library: [],
-      facets: { genres: [], kinds: [], years: { min: null, max: null } },
-      candidates: [],
-    }),
+    forYouPage: async () => ({ candidates: [] }),
   };
   let identity = "a";
   const workflow = createLibraryTasteWorkflow({
@@ -160,46 +156,56 @@ test("partial import failures count errors and invalidate previously cached tast
   assert.equal(result.imported, 1);
 });
 
-test("For You ranks from its response context rather than a warmed Discover cache", async () => {
+test("For You ranks with the shared taste inputs that chose its hints", async () => {
   const f = fixture();
-  await f.workflow.discover({ ...defaultFilters(), sortBy: "match" });
-  const reads = f.reads;
-  const title = {
-    id: "tt1",
-    title: "Fixture",
-    originalTitle: null,
-    kind: "movie",
-    year: 2000,
-    runtimeMinutes: 100,
-    synopsis: null,
-    posterUrl: null,
-    certification: null,
-    imdbRating: 8,
-    imdbVotes: 1000,
-    genres: ["Drama"],
-    directors: [],
-    cast: [],
-    languages: [],
-  };
-  f.client.forYouPage = async () => ({
-    library: [1, 2, 3].map((id) => ({
-      title: { ...title, id: `tt${id}` },
-      status: "watched",
-      personalRating: 8,
+  const drama = { ...movie, genres: [{ id: 18, name: "Drama" }] };
+  let reads = 0;
+  f.client.listLibrary = async () => {
+    reads++;
+    return [1, 2, 3].map((id) => ({
+      ...drama,
+      imdbId: `tt${id}`,
+      status: "watched" as const,
+      rating: 8,
       ratedAt: "2001-01-01T00:00:00.000Z",
-      note: null,
       updatedAt: "2026-01-01",
-    })),
-    facets: {
-      genres: [{ value: "Drama", count: 3 }],
-      kinds: [],
-      years: { min: 2000, max: 2000 },
-    },
-    candidates: [{ ...title, id: "tt4" }],
-  });
+      directorIds: [],
+      directorNames: [],
+      castIds: [],
+      castNames: [],
+    }));
+  };
+  f.client.genres = async () => [{ id: 18, name: "Drama" }];
+  const sent: unknown[] = [];
+  f.client.forYouPage = async (_limit, hints) => {
+    sent.push(hints);
+    return {
+      candidates: [
+        {
+          id: "tt4",
+          title: "Fixture",
+          originalTitle: null,
+          kind: "movie",
+          year: 2000,
+          runtimeMinutes: 100,
+          synopsis: null,
+          posterUrl: null,
+          certification: null,
+          imdbRating: 8,
+          imdbVotes: 1000,
+          genres: ["Drama"],
+          directors: [],
+          cast: [],
+          languages: [],
+        },
+      ],
+    };
+  };
   const result = await f.workflow.forYou();
+  await f.workflow.forYou();
   assert.equal(result.profile.ready, true);
   assert.equal(result.profile.ratedCount, 3);
-  assert.equal(f.reads, reads);
   assert.equal(result.movies[0].imdbId, "tt4");
+  assert.equal(sent.length, 2);
+  assert.equal(reads, 1, "the second load reuses the taste inputs");
 });

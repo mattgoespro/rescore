@@ -11,9 +11,7 @@ export default function Heading({
 }): JSX.Element {
   return (
     <div className="mb-1.5 flex items-start justify-between gap-3">
-      <h2 className="m-0 min-w-0 text-2xl font-650 tracking-title text-shadow-(--imd-title-shadow)">
-        {title}
-      </h2>
+      <h2 className="m-0 min-w-0 text-2xl font-650 tracking-title">{title}</h2>
       <AgeCaption rating={rating} className="mt-1.5" />
     </div>
   );

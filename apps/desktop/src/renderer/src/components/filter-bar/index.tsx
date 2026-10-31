@@ -104,7 +104,7 @@ export default function FilterBar({
             aria-label={`${field.name}: ${label === field.name ? "" : `${label} `}${summary}`}
             title={`${label} ${summary}`}
             className={cn(
-              "inline-flex h-8 max-w-80 items-center gap-1.5 rounded-full px-3 text-[13px] whitespace-nowrap transition-colors duration-140",
+              "inline-flex h-8 max-w-80 items-center gap-1.5 rounded-full px-3 text-ui whitespace-nowrap transition-colors duration-140",
               isChanged
                 ? "bg-accent/15 text-accent-text hover:bg-accent/20"
                 : "bg-wash-6 text-ink hover:bg-wash-9",
@@ -132,7 +132,7 @@ export default function FilterBar({
       {changed > 0 ? (
         <button
           type="button"
-          className="h-8 px-2 text-[13px] text-accent-text underline underline-offset-3 hover:text-ink"
+          className="h-8 px-2 text-ui text-accent-text underline underline-offset-3 hover:text-ink"
           onClick={() => {
             setOpen(null);
             setFilters(resetFilters(filters));

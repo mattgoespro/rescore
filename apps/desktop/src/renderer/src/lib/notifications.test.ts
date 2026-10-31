@@ -24,6 +24,22 @@ test("new notices stack at the end and the oldest gives way", () => {
   );
 });
 
+test("a repeated notice replaces the one showing instead of stacking", () => {
+  const saved = (id: number): Notice => ({
+    id,
+    tone: "success",
+    message: "Appearance saved.",
+  });
+  let notices = pushNotice([notice(1)], saved(2));
+  notices = pushNotice(notices, saved(3));
+  assert.deepEqual(
+    notices.map((n) => n.id),
+    [1, 3],
+  );
+  const undoable = { ...saved(4), undo: () => undefined };
+  assert.equal(pushNotice(notices, undoable).length, 3);
+});
+
 test("dismissing removes only that notice", () => {
   const notices = [notice(1), notice(2), notice(3)];
   assert.deepEqual(

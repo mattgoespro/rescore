@@ -29,7 +29,7 @@ export default function Suggestions<
           role="option"
           aria-selected={index === active}
           className={cn(
-            "block h-8 w-full rounded-[3px] border-0 bg-transparent px-2.5 text-left text-[13px] text-ink",
+            "block h-8 w-full rounded-item border-0 bg-transparent px-2.5 text-left text-ui text-ink",
             index === active ? "bg-selected" : "hover:bg-wash-6",
           )}
           onMouseDown={(event) => event.preventDefault()}

@@ -92,7 +92,7 @@ export default function SuggestField<
   const open = hits.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 text-[13px] text-muted">
+    <div className="flex min-w-0 flex-col gap-2 text-ui text-muted">
       <label htmlFor={inputId}>{label}</label>
       <div className="relative">
         <input

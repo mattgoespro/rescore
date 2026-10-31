@@ -258,17 +258,24 @@ await page.addInitScript(() => {
   };
 });
 
+/** Turns off "Hide watched", which lives in the library filter chip's popover. */
+async function showWatched() {
+  await page.getByRole("button", { name: /Hiding watched/ }).click();
+  await page
+    .getByRole("checkbox", { name: "Hide watched", exact: true })
+    .uncheck();
+  await page.keyboard.press("Escape");
+}
+
 try {
   // Prevent fixture image traffic from reaching a real catalogue or remote host.
   await page.route("**/fixture.jpg", (route) =>
     route.fulfill({ status: 404, body: "" }),
   );
   await page.goto(server.resolvedUrls.local[0]);
-  await page
-    .getByRole("checkbox", { name: "Hide watched", exact: true })
-    .uncheck();
-  await page.getByRole("heading", { name: "Sample Title 0 R" }).waitFor();
+  await showWatched();
   const results = page.getByRole("list", { name: "Search results" });
+  await results.getByRole("button", { name: /^Sample Title 0 / }).waitFor();
   // Discover opens on the poster grid; the list-row checks below use List view.
   await page.getByRole("button", { name: "List view", exact: true }).click();
   assert.ok((await results.getByRole("listitem").count()) < 40);
@@ -354,7 +361,9 @@ try {
 
   const inspector = page.getByRole("complementary", { name: "Title details" });
   const retainedScroll = await scroll.evaluate((element) => element.scrollTop);
-  await inspector.getByRole("button", { name: "Remove", exact: true }).click();
+  await inspector
+    .getByRole("button", { name: "Remove from library", exact: true })
+    .click();
   await page.getByRole("button", { name: "Undo", exact: true }).waitFor();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await inspector.getByRole("radio", { name: "8 out of 10" }).waitFor();
@@ -366,8 +375,8 @@ try {
   );
   assert.equal(
     await inspector
-      .getByRole("button", { name: "Watched", exact: true })
-      .getAttribute("aria-pressed"),
+      .getByRole("radio", { name: "Watched", exact: true })
+      .getAttribute("aria-checked"),
     "true",
   );
   check("Inspector removal Undo restores rating and watched status");
@@ -379,15 +388,17 @@ try {
   check("Library revisions retain loaded Search pages and scroll position");
 
   await page.evaluate(() => (window.__uiTest.failRemove = true));
-  await inspector.getByRole("button", { name: "Remove", exact: true }).click();
+  await inspector
+    .getByRole("button", { name: "Remove from library", exact: true })
+    .click();
   await page
     .getByRole("alert")
     .filter({ hasText: "Could not remove" })
     .waitFor();
   assert.equal(
     await inspector
-      .getByRole("button", { name: "Watched", exact: true })
-      .getAttribute("aria-pressed"),
+      .getByRole("radio", { name: "Watched", exact: true })
+      .getAttribute("aria-checked"),
     "true",
   );
   await page.evaluate(() => (window.__uiTest.failRemove = false));
@@ -446,7 +457,7 @@ try {
   );
   check("Unsupported settings are absent");
   const catalogUrl = page.getByRole("textbox", {
-    name: "Catalog API URL",
+    name: "Catalogue API URL",
     exact: true,
   });
   await catalogUrl.fill("http://127.0.0.1:4848");
@@ -464,10 +475,12 @@ try {
   await page.getByRole("radio", { name: "Dark", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction(
-    () => document.documentElement.dataset.theme === "light",
+    async () => (await window.api.getSettings()).themeMode === "light",
   );
   await page.waitForFunction(
-    () => !document.querySelector("fieldset")?.disabled,
+    () =>
+      document.querySelector("[data-appearance]")?.getAttribute("aria-busy") !==
+      "true",
   );
   assert.equal(await catalogUrl.inputValue(), "http://127.0.0.1:4848");
   assert.match(await rankingMode.textContent(), /Surprise me/);
@@ -498,7 +511,9 @@ try {
     async () => (await window.api.getSettings()).accentColor === "#2659A2",
   );
   await page.waitForFunction(
-    () => !document.querySelector("fieldset")?.disabled,
+    () =>
+      document.querySelector("[data-appearance]")?.getAttribute("aria-busy") !==
+      "true",
   );
   assert.equal(await catalogUrl.inputValue(), "http://127.0.0.1:4848");
   await accent.fill("#CEAA34");
@@ -507,7 +522,9 @@ try {
     async () => (await window.api.getSettings()).accentColor === "#CEAA34",
   );
   await page.waitForFunction(
-    () => !document.querySelector("fieldset")?.disabled,
+    () =>
+      document.querySelector("[data-appearance]")?.getAttribute("aria-busy") !==
+      "true",
   );
   await page.waitForFunction(
     () =>
@@ -531,7 +548,7 @@ try {
   await catalogUrl.fill("localhost");
   const before = await page.evaluate(() => window.__uiTest.settingsWrites);
   await page
-    .getByRole("button", { name: "Save Settings", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   assert.equal(await catalogUrl.getAttribute("aria-invalid"), "true");
   assert.equal(
@@ -547,7 +564,7 @@ try {
   await catalogUrl.fill("http://127.0.0.1:4848");
   await page.evaluate(() => (window.__uiTest.failSave = true));
   await page
-    .getByRole("button", { name: "Save Settings", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   await page.getByRole("button", { name: "Saving…", exact: true }).waitFor();
   await page
@@ -557,11 +574,11 @@ try {
   assert.equal(await catalogUrl.inputValue(), "http://127.0.0.1:4848");
   await page.evaluate(() => (window.__uiTest.failSave = false));
   await page
-    .getByRole("button", { name: "Save Settings", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   await page
-    .getByRole("status")
-    .filter({ hasText: "Settings saved." })
+    .getByRole("region", { name: "Notifications" })
+    .getByText("Settings saved.")
     .waitFor();
   check("Saving feedback, failure recovery, and successful persistence");
 
@@ -594,7 +611,15 @@ try {
       })
       .click();
     await page.waitForFunction(
-      () => !document.querySelector("fieldset")?.disabled,
+      async (expected) =>
+        (await window.api.getSettings()).themeMode === expected,
+      theme,
+    );
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("[data-appearance]")
+          ?.getAttribute("aria-busy") !== "true",
     );
     await page.getByRole("button", { name: "Discover", exact: true }).click();
     await results.getByRole("listitem").first().waitFor();
@@ -610,20 +635,19 @@ try {
       "#CEAA34",
     );
     const contrasts = await page.evaluate(() => {
-      const parse = (s) => s.match(/[\d.]+/g).map(Number);
-      const canvas = parse(
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--imd-canvas")
-          .trim()
-          .startsWith("#")
-          ? (() => {
-              const hex = getComputedStyle(document.documentElement)
-                .getPropertyValue("--imd-canvas")
-                .trim();
-              return `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(",")})`;
-            })()
-          : "rgb(14,14,16)",
-      );
+      // Computed colours arrive as rgb(), oklab() or color-mix(); a canvas
+      // converts any of them to sRGB bytes plus alpha.
+      const pixel = document.createElement("canvas").getContext("2d", {
+        willReadFrequently: true,
+      });
+      const parse = (color) => {
+        pixel.clearRect(0, 0, 1, 1);
+        pixel.fillStyle = color;
+        pixel.fillRect(0, 0, 1, 1);
+        const [r, g, b, a] = pixel.getImageData(0, 0, 1, 1).data;
+        return [r, g, b, a / 255];
+      };
+      const canvas = parse(getComputedStyle(document.body).backgroundColor);
       const luminance = (c) =>
         c
           .slice(0, 3)
@@ -655,11 +679,8 @@ try {
             '[aria-label="Primary"] [aria-current="page"]',
           ),
         ),
-        measure(
-          document.querySelector(
-            '[aria-label="Title details"] .text-accent-text',
-          ),
-        ),
+        // Accent text on the page: changed filter chips use it.
+        measure(document.querySelector("main .text-accent-text")),
       ];
     });
     assert.ok(
@@ -671,7 +692,8 @@ try {
     await page.setViewportSize({ width: 1100, height: 720 });
     const narrow = await inspector.evaluate((el) => {
       const bounds = el.getBoundingClientRect();
-      const poster = el.firstElementChild.getBoundingClientRect();
+      // The poster frame; a close button may come first in the panel.
+      const poster = el.querySelector(".hero-ph").getBoundingClientRect();
       const actions = [...el.querySelectorAll("button")].filter((button) =>
         ["Watched", "Watchlist", "Not for me"].includes(button.textContent),
       );
@@ -696,8 +718,9 @@ try {
   );
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const motion = await page
+  const motion = await inspector
     .locator(".animate-fade")
+    .first()
     .evaluate((el) => getComputedStyle(el).animationName);
   assert.equal(motion, "none");
   check("Reduced motion disables animated content");
@@ -775,10 +798,11 @@ try {
   });
   await page.getByRole("heading", { name: "Discover", exact: true }).waitFor();
   await assertCentered(overlay);
+  await showWatched();
   await page
-    .getByRole("checkbox", { name: "Hide watched", exact: true })
-    .uncheck();
-  await page.getByRole("heading", { name: "Sample Title 0 R" }).waitFor();
+    .getByRole("list", { name: "Search results" })
+    .getByRole("button", { name: /^Sample Title 0 / })
+    .waitFor();
   await page.waitForFunction(
     () => !document.querySelector("[data-loading-overlay]"),
   );
@@ -925,7 +949,7 @@ try {
   await page.getByText("No titles to measure yet.").waitFor();
   assert.equal(await bars.count(), 3);
   const buttonStyle = await page
-    .getByRole("button", { name: "Rebuild catalog", exact: true })
+    .getByRole("button", { name: "Rebuild catalogue", exact: true })
     .evaluate((el) => {
       const s = getComputedStyle(el);
       return {

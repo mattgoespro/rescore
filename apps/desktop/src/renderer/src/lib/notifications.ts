@@ -18,9 +18,20 @@ export function noticeDuration(notice: Pick<Notice, "undo">): number {
   return notice.undo ? 8000 : 5000;
 }
 
-/** Adds a notice at the end (the bottom of the stack), dropping the oldest. */
+/**
+ * Adds a notice at the end (the bottom of the stack), dropping the oldest. A
+ * repeat of a notice already showing replaces it rather than stacking.
+ */
 export function pushNotice(notices: Notice[], notice: Notice): Notice[] {
-  return [...notices, notice].slice(-NOTICE_LIMIT);
+  const others = notice.undo
+    ? notices
+    : notices.filter(
+        (shown) =>
+          shown.undo ||
+          shown.tone !== notice.tone ||
+          shown.message !== notice.message,
+      );
+  return [...others, notice].slice(-NOTICE_LIMIT);
 }
 
 export function dropNotice(notices: Notice[], id: number): Notice[] {

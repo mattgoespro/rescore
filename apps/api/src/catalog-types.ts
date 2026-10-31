@@ -56,7 +56,5 @@ export interface ImportStatusDto {
 }
 
 export interface ForYouResponse {
-  library: LibraryEntryDto[];
-  facets: FacetsResponse;
   candidates: TitleDto[];
 }

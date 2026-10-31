@@ -1,5 +1,4 @@
 import { CatalogError, type CatalogClient } from "./catalog-client";
-import { libraryEntryFromDto } from "./catalog-mapping";
 import { loadDiscoverSlice } from "./discover-slice";
 import { createTasteCache, withLibraryWrite } from "./taste-cache";
 import {
@@ -10,7 +9,7 @@ import {
   scoreMovie,
   tasteRanked,
 } from "./ranking";
-import { genreId, movieFromTitle } from "../shared/movie";
+import { movieFromTitle } from "../shared/movie";
 import {
   sortMovies,
   titleKey,
@@ -154,17 +153,10 @@ export function createLibraryTasteWorkflow<
     });
   const forYou = () =>
     run(async (client, captured) => {
-      // What the ratings favour widens the candidates; the shared taste
-      // inputs are usually warm, and ranking still uses this response.
-      const { profile: liked } = await tasteInputs(client, captured);
-      const payload = await client.forYouPage(80, forYouHints(liked));
-      const library = payload.library.map(libraryEntryFromDto);
-      const genres = payload.facets.genres.map((genre) => ({
-        id: genreId(genre.value),
-        name: genre.value,
-      }));
-      const profile = buildProfile(library, genres);
-      const entries = new Map(library.map((entry) => [titleKey(entry), entry]));
+      // The shared taste inputs drop on every library write, so the profile
+      // that picks the hints also ranks what they bring back.
+      const { profile, entries } = await tasteInputs(client, captured);
+      const payload = await client.forYouPage(80, forYouHints(profile));
       const movies = tasteRanked<RankedMovie>(
         profile.ratedCount,
         payload.candidates.map((title) => ({

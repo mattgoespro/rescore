@@ -52,7 +52,5 @@ export interface ForYouHints {
 }
 
 export interface ForYouResponse {
-  library: LibraryEntryDto[];
-  facets: FacetsResponse;
   candidates: TitleDto[];
 }

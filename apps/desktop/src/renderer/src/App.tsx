@@ -45,7 +45,7 @@ import {
 import { cn } from "./lib/cn";
 import { pollWhileVisible } from "./lib/poll-while-visible";
 import { listSearchHistory } from "./lib/search-history-store";
-import { btn } from "./lib/ui";
+import { btn, pageTitleClass } from "./lib/ui";
 import { libraryMovie } from "./lib/library-movie";
 import Discover from "./views/Discover";
 import ForYou from "./views/ForYou";
@@ -62,10 +62,6 @@ export default function App(): JSX.Element {
   const [genres, setGenres] = useState<Genre[]>([]);
   const [library, setLibraryState] = useState<LibraryEntry[]>([]);
   const [libraryRevision, setLibraryRevision] = useState(0);
-  const setLibrary = useCallback((next: LibraryEntry[]) => {
-    setLibraryState(next);
-    setLibraryRevision((revision) => revision + 1);
-  }, []);
   const [profile, setProfile] = useState<TasteProfile | null>(null);
   const [filters, setFilters] = useState<DiscoverFilters>(defaultFilters);
   const [selected, setSelected] = useState<MovieSummary | null>(null);
@@ -135,12 +131,15 @@ export default function App(): JSX.Element {
     const next = await window.api.profile().catch(() => null);
     if (next && request === profileRequest.current) setProfile(next);
   }, []);
+  // The only way to replace the library: the taste profile is built from it,
+  // so every write reloads the profile too.
   const changeLibrary = useCallback(
     (next: LibraryEntry[]) => {
-      setLibrary(next);
+      setLibraryState(next);
+      setLibraryRevision((revision) => revision + 1);
       void refreshProfile();
     },
-    [setLibrary, refreshProfile],
+    [refreshProfile],
   );
 
   const refresh = useCallback(async () => {
@@ -328,7 +327,7 @@ export default function App(): JSX.Element {
     setError("");
     try {
       const next = await window.api.upsertLibrary({ movie, status, rating });
-      setLibrary(next);
+      changeLibrary(next);
       setNotice(
         rating != null
           ? `Rated ${movie.title} ${rating} out of 10.`
@@ -357,7 +356,7 @@ export default function App(): JSX.Element {
     setLibraryBusy(true);
     setError("");
     try {
-      setLibrary(await window.api.removeLibrary(id, mediaType));
+      changeLibrary(await window.api.removeLibrary(id, mediaType));
       setNotice(`${entry.title} removed from your library.`);
       notify({
         tone: "success",
@@ -380,7 +379,7 @@ export default function App(): JSX.Element {
     setLibraryBusy(true);
     setError("");
     try {
-      setLibrary(
+      changeLibrary(
         await window.api.upsertLibrary({
           movie: libraryMovie(entry),
           status: entry.status,
@@ -481,7 +480,7 @@ export default function App(): JSX.Element {
             <div
               role="alert"
               className={cn(
-                "rounded-control bg-danger/12 px-3 py-2.5 text-[13px] text-danger",
+                "rounded-control bg-danger/12 px-3 py-2.5 text-ui text-danger",
                 discoverLayout || forYouLayout || libraryLayout
                   ? "mx-6 mt-4 shrink-0"
                   : "mb-4",
@@ -503,16 +502,14 @@ export default function App(): JSX.Element {
               settings={settings}
               catalogStatus={catalogStatus}
               onSave={saveSettings}
-              onLibraryChange={setLibrary}
+              onLibraryChange={changeLibrary}
               onError={setError}
               onDirtyChange={onSettingsDirty}
             />
           ) : catalogFailed ? (
             <section className="mx-auto my-[8vh] flex max-w-140 flex-col gap-2 px-0 py-2">
               <span className="kicker text-danger">Catalogue failed</span>
-              <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
-                The catalogue is not ready
-              </h1>
+              <h1 className={pageTitleClass}>The catalogue is not ready</h1>
               <p className="m-0 text-sm leading-description text-muted">
                 {catalogStatus?.error ||
                   catalogStatus?.message ||

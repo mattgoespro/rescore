@@ -13,7 +13,7 @@ import { posterUrl, titleKey, titleKindLabel } from "../../../shared/types";
 import { AgeCaption } from "../components/movie-card";
 import { cn } from "../lib/cn";
 import { libraryMovie } from "../lib/library-movie";
-import { btn, rankedRow, rankedThumb } from "../lib/ui";
+import { btn, pageTitleClass, rankedRow, rankedThumb } from "../lib/ui";
 import OverlayScroll from "../components/overlay-scroll";
 import VirtualList from "../components/virtual-list";
 
@@ -159,9 +159,7 @@ export default function Library({
     >
       <div className="flex min-h-0 min-w-0 flex-col gap-6 px-6 pt-6 pb-4">
         <div className="flex shrink-0 flex-col gap-1">
-          <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
-            Library
-          </h1>
+          <h1 className={pageTitleClass}>Library</h1>
           <p className="m-0 text-sm leading-copy text-muted">
             Everything you rate, finish, save or skip trains the ranker.
           </p>
@@ -171,7 +169,7 @@ export default function Library({
           <section className="flex min-w-80 flex-[2_1_420px] flex-col gap-4 rounded-app border border-line bg-rail p-5">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="m-0 text-base font-semibold">How you rate</h2>
-              <span className="text-[13px] text-muted tabular">
+              <span className="text-ui text-muted tabular">
                 {rated ? (
                   <>
                     Average{" "}
@@ -198,7 +196,7 @@ export default function Library({
                   <span
                     key={bar.score}
                     className={cn(
-                      "block rounded-t-[2px]",
+                      "block rounded-t-pip",
                       bar.score >= 8 ? "bg-accent" : "bg-track",
                     )}
                     style={{
@@ -226,7 +224,7 @@ export default function Library({
                 {topGenres.map(([name, count]) => (
                   <li
                     key={name}
-                    className="grid grid-cols-[88px_minmax(0,1fr)_40px] items-center gap-3 text-[13px]"
+                    className="grid grid-cols-[88px_minmax(0,1fr)_40px] items-center gap-3 text-ui"
                   >
                     <span className="truncate">{name}</span>
                     <span aria-hidden="true" className="block h-1 bg-track">
@@ -242,7 +240,7 @@ export default function Library({
                 ))}
               </ol>
             ) : (
-              <p className="m-0 text-[13px] text-muted">
+              <p className="m-0 text-ui text-muted">
                 Mark titles as watched to see your genres.
               </p>
             )}
@@ -266,7 +264,7 @@ export default function Library({
               className={cn(
                 "h-11 border-0 bg-transparent p-0 text-sm transition-colors duration-140",
                 tab === shelf.id
-                  ? "font-semibold text-ink shadow-[inset_0_-2px_0_var(--color-accent)]"
+                  ? "font-semibold text-ink shadow-[inset_0_-2px_0_var(--imd-accent)]"
                   : "font-medium text-muted hover:text-ink",
               )}
               onClick={() => setTab(shelf.id)}
@@ -314,14 +312,14 @@ export default function Library({
                     />
                     {entry.rating != null ? (
                       <span
-                        className="grid size-8 place-items-center rounded-control bg-accent/15 text-[13px] font-semibold text-accent-text tabular"
+                        className="grid size-8 place-items-center rounded-control bg-accent/15 text-ui font-semibold text-accent-text tabular"
                         aria-label={`Your rating ${entry.rating} out of 10`}
                       >
                         {entry.rating}
                       </span>
                     ) : (
                       <span
-                        className="grid size-8 place-items-center rounded-control bg-wash-6 text-[13px] text-faint"
+                        className="grid size-8 place-items-center rounded-control bg-wash-6 text-ui text-faint"
                         aria-label="Not rated"
                       >
                         –
@@ -345,7 +343,7 @@ export default function Library({
                         {entry.title}
                         <AgeCaption rating={entry.certification} />
                       </h2>
-                      <div className="text-[13px] leading-copy text-muted tabular">
+                      <div className="text-ui leading-copy text-muted tabular">
                         {[
                           entry.year,
                           titleKindLabel(entry.titleKind),

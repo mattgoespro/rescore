@@ -86,14 +86,10 @@ export default function SetupScreen({
     <div className="absolute inset-0 z-3 flex overflow-auto bg-canvas p-8">
       <section
         aria-labelledby="setup-title"
-        className="m-auto flex w-140 max-w-full flex-col gap-7 text-[13px] leading-copy"
+        className="m-auto flex w-140 max-w-full flex-col gap-7 text-ui leading-copy"
       >
         <div className="flex flex-col gap-3">
-          {view.firstLaunch ? (
-            <p className="m-0 text-[11px] font-semibold tracking-kicker text-faint uppercase">
-              First launch
-            </p>
-          ) : null}
+          {view.firstLaunch ? <p className="kicker">First launch</p> : null}
           <div className="flex items-baseline justify-between gap-4">
             <h1
               id="setup-title"

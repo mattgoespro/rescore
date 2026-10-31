@@ -53,7 +53,7 @@ export default function TopBar({
       />
       <nav
         aria-label="Primary"
-        className="flex shrink-0 gap-0.5 rounded-app bg-wash-6 p-0.75 app-no-drag"
+        className="flex shrink-0 gap-0.75 rounded-app bg-wash-6 p-0.75 app-no-drag"
       >
         {NAV.map((item) => (
           <button
@@ -62,7 +62,7 @@ export default function TopBar({
             aria-current={view === item.id ? "page" : undefined}
             aria-keyshortcuts={item.shortcut}
             className={cn(
-              "h-7 rounded-control border-0 px-3 text-[13px] transition-colors duration-140",
+              "h-7 rounded-control border-0 px-3 text-ui transition-colors duration-140",
               view === item.id
                 ? "bg-lifted font-semibold text-accent-text"
                 : "bg-transparent font-medium text-muted hover:bg-wash-6 hover:text-ink",
@@ -91,7 +91,7 @@ export default function TopBar({
           >
             <span
               aria-hidden="true"
-              className={cn("size-2 rounded-[2px]", STATUS_COLOR[status.state])}
+              className={cn("size-2 rounded-pip", STATUS_COLOR[status.state])}
             />
             {status.label}
           </button>
@@ -100,9 +100,7 @@ export default function TopBar({
             role="tooltip"
             className="invisible absolute top-10 right-0 z-50 flex w-60 flex-col gap-1 rounded-control border border-line bg-raised px-3 py-2.5 text-left group-focus-within:visible group-hover:visible"
           >
-            <span className="text-[13px] font-semibold text-ink">
-              {status.tip}
-            </span>
+            <span className="text-ui font-semibold text-ink">{status.tip}</span>
             <span className="text-xs leading-copy text-muted">
               {status.detail}
             </span>

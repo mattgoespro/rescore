@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import Database from "better-sqlite3";
-import { listForYouCandidates, listLibrary, listTitles } from "./query.js";
+import {
+  facets,
+  listForYouCandidates,
+  listLibrary,
+  listTitles,
+} from "./query.js";
 import { applyMigrations, TMDB_HYDRATION_PENDING_SQL } from "./schema.js";
 import type { TitleQuery } from "./types.js";
 
@@ -121,6 +126,15 @@ test("the library list keeps the library as the outer loop", () => {
   const db = catalogue();
   const [list] = plans(db, () => listLibrary(db));
   assert.match(list!.plan, /^SCAN l\b/);
+  db.close();
+});
+
+test("the facets year range seeks each kind's ends", () => {
+  const db = catalogue();
+  const seen = plans(db, () => facets(db));
+  const range = seen.find(({ sql }) => sql.includes("min(year)"));
+  assert.match(range!.plan, /titles_kind_year_idx \(kind=\?\)/);
+  assert.deepEqual(facets(db).years, { min: 1990, max: 1992 });
   db.close();
 });
 

@@ -48,15 +48,14 @@ function trustedServiceSender(event: Electron.IpcMainInvokeEvent): boolean {
     return false;
   try {
     const url = new URL(event.senderFrame.url);
-    if (app.isPackaged)
-      return (
-        url.protocol === "file:" &&
-        fileURLToPath(url).toLowerCase() ===
-          resolve(__dirname, "../renderer/index.html").toLowerCase()
-      );
+    // Only `electron-vite dev` serves the renderer; a packaged app and
+    // `npm start` (electron-vite preview) load the built file.
+    if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL)
+      return url.origin === new URL(process.env.ELECTRON_RENDERER_URL).origin;
     return (
-      !!process.env.ELECTRON_RENDERER_URL &&
-      url.origin === new URL(process.env.ELECTRON_RENDERER_URL).origin
+      url.protocol === "file:" &&
+      fileURLToPath(url).toLowerCase() ===
+        resolve(__dirname, "../renderer/index.html").toLowerCase()
     );
   } catch {
     return false;

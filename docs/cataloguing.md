@@ -48,7 +48,7 @@ Desktop `CatalogStatus.phase` values: `"starting" | "building" | "ready" | "erro
 | IMDb dump ingest        | Parallel download of ratings + basics; keep movie/tv/miniseries, non-adult, rated, non-empty title; reconcile rather than wipe     | `apps/api/src/build/`, `apps/api/src/services/gzip-tsv.ts`                |
 | Credits import          | Background after titles; skip when dump fingerprints match; max 4 directors, max 8 cast; `people(nconst)` + JOIN for display names | `apps/api/src/build/import-credits.ts`, `apps/api/src/build/types.ts`     |
 | Ratings sync            | Daily `title.ratings.tsv.gz`; gzip streamed into diff-only SQLite UPDATE; no new titles; in-memory Map only during title ingest    | `apps/api/src/services/dataset.ts`, `ratings-store.ts`                    |
-| IMDb rating sort        | `sort=rating` → `ORDER BY t.imdb_rating, t.imdb_votes, t.id`; `bayesian_score` still persisted for ranking helpers                 | `apps/api/src/catalog/query.ts`, `bayesian.ts`                            |
+| IMDb rating sort        | `sort=rating` → `ORDER BY t.imdb_rating, t.imdb_votes, t.id`, matching the stars on each card                                      | `apps/api/src/catalog/query.ts`                                           |
 | FTS5 search             | `titles_fts` on `title`, `original_title`, `id`; prefix AND; exact `tt` id bypasses FTS                                            | `apps/api/src/catalog/query.ts`                                           |
 | SQL hydration           | Batch-load genres + people into `TitleDto`                                                                                         | `apps/api/src/catalog/hydrate.ts`                                         |
 | TMDB media overlay      | `poster_url`, `synopsis`, and certification; `NULL` is pending and `""` is a durable miss; `/v1/media` disk cache                  | `apps/api/src/services/tmdb-posters.ts`, `apps/api/src/routes/media.ts`   |
@@ -125,8 +125,6 @@ interface ImportStatusDto {
 }
 
 interface ForYouResponse {
-  library: LibraryEntryDto[];
-  facets: FacetsResponse;
   candidates: TitleDto[];
 }
 ```
@@ -182,20 +180,19 @@ Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. Dur
 
 **`titles`**
 
-| Column            | Type                            | Notes                                                                    |
-| ----------------- | ------------------------------- | ------------------------------------------------------------------------ |
-| `id`              | TEXT PK                         | lowercase `tt…`                                                          |
-| `title`           | TEXT NOT NULL                   |                                                                          |
-| `original_title`  | TEXT                            |                                                                          |
-| `kind`            | TEXT NOT NULL DEFAULT `'movie'` | `movie` \| `tv` \| `miniseries`                                          |
-| `year`            | INTEGER                         |                                                                          |
-| `runtime_minutes` | INTEGER                         |                                                                          |
-| `synopsis`        | TEXT                            | TMDB/licensed; `NULL` = pending, `''` = confirmed miss                   |
-| `poster_url`      | TEXT                            | same NULL vs `''` rule                                                   |
-| `imdb_rating`     | REAL                            |                                                                          |
-| `imdb_votes`      | INTEGER                         |                                                                          |
-| `bayesian_score`  | REAL                            | persisted for ranking helpers; Discover `sort=rating` uses `imdb_rating` |
-| `updated_at`      | TEXT NOT NULL                   |                                                                          |
+| Column            | Type                            | Notes                                                  |
+| ----------------- | ------------------------------- | ------------------------------------------------------ |
+| `id`              | TEXT PK                         | lowercase `tt…`                                        |
+| `title`           | TEXT NOT NULL                   |                                                        |
+| `original_title`  | TEXT                            |                                                        |
+| `kind`            | TEXT NOT NULL DEFAULT `'movie'` | `movie` \| `tv` \| `miniseries`                        |
+| `year`            | INTEGER                         |                                                        |
+| `runtime_minutes` | INTEGER                         |                                                        |
+| `synopsis`        | TEXT                            | TMDB/licensed; `NULL` = pending, `''` = confirmed miss |
+| `poster_url`      | TEXT                            | same NULL vs `''` rule                                 |
+| `imdb_rating`     | REAL                            |                                                        |
+| `imdb_votes`      | INTEGER                         |                                                        |
+| `updated_at`      | TEXT NOT NULL                   |                                                        |
 
 **`title_genres`:** `(title_id, genre)` PK, FK `titles(id)` ON DELETE CASCADE.
 
@@ -213,16 +210,11 @@ Pragmas on open: `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`. Dur
 
 **`titles_fts`:** FTS5 virtual table, `content='titles'`, `content_rowid='rowid'`, columns `title`, `original_title`, `id`. INSERT/DELETE triggers keep it in sync. UPDATE trigger `titles_fts_au` fires **only** `WHEN old.title IS NOT new.title OR old.original_title IS NOT new.original_title OR old.id IS NOT new.id` (migration 7). Rating/poster/synopsis/vote updates must not rewrite FTS.
 
-Indexes: `titles_sort_idx(kind, year, imdb_rating, imdb_votes)`, `titles_title_idx(title COLLATE NOCASE)`, `titles_votes_idx(kind, imdb_votes)`, `titles_kind_votes_desc_idx(kind, imdb_votes DESC)` (migration 9), `titles_runtime_idx(kind, runtime_minutes)`, `titles_bayesian_idx(kind, bayesian_score DESC)`, `title_genres_genre_idx(genre)`, `title_people_nconst_idx(nconst)`, `titles_poster_pending_idx` / `titles_enrich_pending_idx` on pending poster/synopsis.
+Indexes: `titles_title_idx(title COLLATE NOCASE)`, `titles_kind_votes_cover_idx(kind, imdb_votes DESC, year, imdb_rating, genre_mask)`, `titles_kind_rating_idx(kind, imdb_rating DESC, imdb_votes DESC, year)`, `titles_kind_year_idx(kind, year DESC, imdb_votes, imdb_rating)` (also the facets year range, two seeks per kind), `titles_votes_desc_idx(imdb_votes DESC, id)`, `titles_runtime_idx(kind, runtime_minutes)`, `title_genres_genre_idx(genre)`, `title_people_nconst_idx(nconst)`, and the partial `titles_tmdb_pending_idx` (titles TMDb hydration still owes) and `titles_tmdb_retry_idx` (blank poster or synopsis due a retry).
 
-### 4.7 Bayesian score
+### 4.7 Rating order
 
-```
-BAYESIAN_PRIOR_VOTES = 25000
-bayesianScore(rating, votes) = (count / (count + 25000)) * score
-```
-
-where `score = rating ?? 0` and `count = votes ?? 0`. Written on insert and on every ratings update. Discover `sort=rating` uses `ORDER BY t.imdb_rating, t.imdb_votes, t.id` so the list matches the stars shown on each card. `bayesian_score` remains available for taste-ranking helpers.
+Discover `sort=rating` uses `ORDER BY t.imdb_rating, t.imdb_votes, t.id` so the list matches the stars shown on each card. Migration 21 dropped the unused `bayesian_score` column and its index.
 
 ### 4.8 Constants
 
@@ -327,7 +319,7 @@ flowchart TD
 
 The desktop UI is usable once titles are durably complete (`catalogUsable`). Credits and the TMDb hydration pass continue while browsing; a forced rebuild reports unusable until its titles are reconciled.
 
-Licensed overlay is a parallel ingest path, not part of the IMDb rebuild: `POST /v1/imports/catalog` upserts supplied metadata (replaces genres/people for those ids; people keys via `personKey`), then applies ratings for those ids from SQLite/`RatingsStore`. On `ON CONFLICT(id)`, the upsert updates title/kind/year/runtime/synopsis/poster/`updated_at` only — it does **not** overwrite `imdb_rating`, `imdb_votes`, or `bayesian_score`. New rows insert those rating columns as null, then `upsertRatings` fills them. Ratings remain IMDb-synced via `/sync` and the daily job.
+Licensed overlay is a parallel ingest path, not part of the IMDb rebuild: `POST /v1/imports/catalog` upserts supplied metadata (replaces genres/people for those ids; people keys via `personKey`), then applies ratings for those ids from SQLite/`RatingsStore`. On `ON CONFLICT(id)`, the upsert updates title/kind/year/runtime/synopsis/poster/`updated_at` only — it does **not** overwrite `imdb_rating` or `imdb_votes`. New rows insert those rating columns as null, then `upsertRatings` fills them. Ratings remain IMDb-synced via `/sync` and the daily job.
 
 ---
 
@@ -482,7 +474,7 @@ Network-down (`CatalogError.status === 0`) on discover returns empty `{ page: 1,
 
 ### 6.9 For You catalogue query (not ranking)
 
-`GET /v1/for-you?limit=&genre=&director=&decade=` (limit default 80, max 120) returns `{ library, facets, candidates }`. The desktop sends what the user's ratings favour, from `forYouHints` in `apps/desktop/src/main/ranking.ts`: up to 3 genres, 5 director names and 3 decades whose taste weight is positive, and none until the taste model is ready. Each hint repeats its parameter (`director` never splits on commas). Candidates are the union, without duplicates, of up to three pools, each excluding watched and skipped titles:
+`GET /v1/for-you?limit=&genre=&director=&decade=` (limit default 80, max 120) returns `{ candidates }`; the desktop ranks them with the taste profile it already holds. The desktop sends what the user's ratings favour, from `forYouHints` in `apps/desktop/src/main/ranking.ts`: up to 3 genres, 5 director names and 3 decades whose taste weight is positive, and none until the taste model is ready. Each hint repeats its parameter (`director` never splits on commas). Candidates are the union, without duplicates, of up to three pools, each excluding watched and skipped titles:
 
 1. **Popular:** `imdb_votes >= 5000`, ordered by `imdb_votes DESC, id`, `LIMIT limit`.
 2. **Taste** (with `genre` or `decade`): `imdb_votes >= 5000`, `genre_mask` matching any genre, `year` inside any decade, ordered by `imdb_rating DESC, id`, `LIMIT limit`. It names every kind and `INDEXED BY titles_kind_votes_cover_idx`, so each kind reads one index range and never the table (about 5 ms on a 480k-title catalogue).

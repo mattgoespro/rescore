@@ -10,7 +10,6 @@ import type {
   TitleDto,
   TitleListResponse,
 } from "../catalog-types.js";
-import { bayesianScore } from "./bayesian.js";
 import { normalizeLanguageCodes } from "./languages.js";
 import { invalidateQueryCache, invalidateCountCache } from "./query-cache.js";
 import {
@@ -118,8 +117,8 @@ export class CatalogDatabase {
 
   upsertTitles(titles: CatalogTitleInput[]): number {
     const upsert = this.db
-      .prepare(`INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at)
-      VALUES (@id,@title,@originalTitle,@kind,@year,@runtimeMinutes,@synopsis,@posterUrl,@imdbRating,@imdbVotes,@bayesianScore,@updatedAt)
+      .prepare(`INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,updated_at)
+      VALUES (@id,@title,@originalTitle,@kind,@year,@runtimeMinutes,@synopsis,@posterUrl,@imdbRating,@imdbVotes,@updatedAt)
       ON CONFLICT(id) DO UPDATE SET title=excluded.title,original_title=excluded.original_title,kind=excluded.kind,year=excluded.year,runtime_minutes=excluded.runtime_minutes,synopsis=excluded.synopsis,poster_url=excluded.poster_url,updated_at=excluded.updated_at`);
     const clearGenres = this.db.prepare(
       "DELETE FROM title_genres WHERE title_id = ?",
@@ -148,7 +147,6 @@ export class CatalogDatabase {
           posterUrl: input.posterUrl ?? null,
           imdbRating: null,
           imdbVotes: null,
-          bayesianScore: bayesianScore(null, null),
           updatedAt: now(),
         });
         clearGenres.run(input.id);
@@ -250,11 +248,6 @@ export class CatalogDatabase {
       synopses: row.synopses ?? 0,
       certifications: row.certifications ?? 0,
     };
-  }
-
-  tmdbComplete(): boolean {
-    const stats = this.hydrationStats();
-    return stats.total > 0 && stats.complete;
   }
 
   titleNeedsLanguages(id: string): boolean {
@@ -433,29 +426,6 @@ export class CatalogDatabase {
         count: number;
       }
     ).count;
-  }
-
-  posterStats(): {
-    total: number;
-    pending: number;
-    found: number;
-    missing: number;
-  } {
-    return this.db
-      .prepare(
-        `SELECT
-      count(*) AS total,
-      coalesce(sum(CASE WHEN poster_url IS NULL THEN 1 ELSE 0 END), 0) AS pending,
-      coalesce(sum(CASE WHEN poster_url IS NOT NULL AND poster_url != '' THEN 1 ELSE 0 END), 0) AS found,
-      coalesce(sum(CASE WHEN poster_url = '' THEN 1 ELSE 0 END), 0) AS missing
-    FROM titles`,
-      )
-      .get() as {
-      total: number;
-      pending: number;
-      found: number;
-      missing: number;
-    };
   }
 
   hydrationStats(): HydrationStats {

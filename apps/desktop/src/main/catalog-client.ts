@@ -40,7 +40,7 @@ export class CatalogError extends Error {
 }
 
 export class CatalogClient {
-  private genreCache: Genre[] | null = null;
+  private genreCache: Promise<Genre[]> | null = null;
 
   constructor(private readonly baseUrl: string) {}
 
@@ -148,13 +148,19 @@ export class CatalogClient {
     return toDetails(response.data);
   }
 
-  async genres(): Promise<Genre[]> {
-    if (this.genreCache) return this.genreCache;
-    const response = await this.request<FacetsResponse>("/v1/facets");
-    this.genreCache = response.genres.map((genre) => ({
-      id: genreId(genre.value),
-      name: genre.value,
-    }));
+  /** Concurrent first callers share one request; a failed one is retried. */
+  genres(): Promise<Genre[]> {
+    this.genreCache ??= this.request<FacetsResponse>("/v1/facets").then(
+      (response) =>
+        response.genres.map((genre) => ({
+          id: genreId(genre.value),
+          name: genre.value,
+        })),
+      (error: unknown) => {
+        this.genreCache = null;
+        throw error;
+      },
+    );
     return this.genreCache;
   }
 

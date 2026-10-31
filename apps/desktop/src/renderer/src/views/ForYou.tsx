@@ -34,6 +34,7 @@ import { enterDelayMs } from "../motion";
 import { cn } from "../lib/cn";
 import {
   iconBtn,
+  pageTitleClass,
   rankedRow,
   rankedThumb,
   segmentedCell,
@@ -129,9 +130,7 @@ export default function ForYou({
       <div className="flex min-h-0 min-w-0 flex-col gap-6 pt-6 pb-4 pl-6">
         <div className="flex shrink-0 flex-wrap items-end gap-4 pr-6">
           <div className="min-w-64 flex-1">
-            <h1 className="m-0 text-[28px] leading-tight font-semibold tracking-title">
-              Ranked for you
-            </h1>
+            <h1 className={pageTitleClass}>Ranked for you</h1>
             <p className="mt-1 mb-0 max-w-[60ch] text-sm leading-copy text-muted">
               Popular titles you have not seen, plus well-rated ones from the
               genres, decades and directors you rate highest, ranked by genre,
@@ -173,7 +172,7 @@ export default function ForYou({
             <h2 className="m-0 text-sm font-semibold">
               Your taste model needs a few ratings
             </h2>
-            <p className="m-0 text-[13px] leading-copy text-muted">
+            <p className="m-0 text-ui leading-copy text-muted">
               Rate at least three watched titles, or import your IMDb
               ratings.csv in Settings. Until then, rankings lean on public
               scores instead of your patterns.
@@ -230,7 +229,7 @@ export default function ForYou({
         >
           <div className="flex flex-col gap-1">
             <h2 className="m-0 text-base font-semibold">Your taste model</h2>
-            <p className="m-0 text-[13px] leading-copy text-muted">
+            <p className="m-0 text-ui leading-copy text-muted">
               Trained on everything you rate, finish, save or skip.
             </p>
           </div>
@@ -268,7 +267,7 @@ export default function ForYou({
               <h3 className="kicker">Genres you rate highest</h3>
               {taste.topGenres.slice(0, 5).map((genre) => (
                 <div key={genre.id} className="flex flex-col gap-1.5">
-                  <div className="flex justify-between gap-3 text-[13px]">
+                  <div className="flex justify-between gap-3 text-ui">
                     <span className="font-medium">
                       {genreMap.get(Number(genre.id)) ?? genre.name}
                     </span>
@@ -294,7 +293,7 @@ export default function ForYou({
               {insights.map((text) => (
                 <p
                   key={text}
-                  className="m-0 rounded-control border border-line bg-canvas px-3 py-2.5 text-[13px] leading-copy"
+                  className="m-0 rounded-control border border-line bg-canvas px-3 py-2.5 text-ui leading-copy"
                 >
                   {text}
                 </p>
@@ -344,7 +343,7 @@ function Reasons({
         <span
           key={reason.label}
           className={cn(
-            "max-w-full rounded-[3px] px-1.5 py-0.5 text-xs wrap-break-word",
+            "max-w-full rounded-item px-1.5 py-0.5 text-xs wrap-break-word",
             highlightFirst && index === 0
               ? "bg-accent/15 font-semibold text-accent-text"
               : "bg-wash-6 text-muted",
@@ -431,15 +430,13 @@ function TopPick({
             {movie.title}
             <AgeCaption rating={movie.certification} />
           </span>
-          <span className="text-[13px] text-muted tabular">
-            {metaLine(movie)}
-          </span>
+          <span className="text-ui text-muted tabular">{metaLine(movie)}</span>
         </span>
         <Reasons movie={movie} highlightFirst />
       </span>
       <span className="flex w-28 flex-col gap-2 border-l border-line pl-5">
         <span className="kicker">Match</span>
-        <span className="text-[28px] leading-none font-semibold text-accent-text tabular">
+        <span className="text-display leading-none font-semibold text-accent-text tabular">
           {match == null ? "—" : `${match}%`}
         </span>
         <span aria-hidden="true" className="block h-0.5 bg-track">
@@ -497,9 +494,7 @@ function RankedRow({
             {movie.title}
             <AgeCaption rating={movie.certification} />
           </span>
-          <span className="text-[13px] text-muted tabular">
-            {metaLine(movie)}
-          </span>
+          <span className="text-ui text-muted tabular">{metaLine(movie)}</span>
         </span>
         <Reasons movie={movie} />
       </span>

@@ -20,7 +20,7 @@ export default function Caption({
       className={
         compact
           ? "truncate text-xs leading-caption text-muted tabular"
-          : "truncate text-[13px] leading-copy text-muted tabular"
+          : "truncate text-ui leading-copy text-muted tabular"
       }
     >
       {parts.join(" · ")}

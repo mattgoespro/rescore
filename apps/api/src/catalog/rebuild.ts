@@ -1,6 +1,5 @@
 import type Database from "better-sqlite3";
 import { imdbValue, readTsvRows } from "../services/gzip-tsv.js";
-import { bayesianScore } from "./bayesian.js";
 import { invalidateQueryCache, invalidateCountCache } from "./query-cache.js";
 import { now } from "./now.js";
 import {
@@ -24,7 +23,7 @@ const PERSON_VALUE_CHUNK = 80;
 const IMDB_ID = /^tt\d+$/i;
 
 const UPDATE_RATING_SQL = `UPDATE titles
-  SET imdb_rating = ?, imdb_votes = ?, bayesian_score = ?, updated_at = ?
+  SET imdb_rating = ?, imdb_votes = ?, updated_at = ?
   WHERE id = ? AND (imdb_rating IS NOT ? OR imdb_votes IS NOT ?)`;
 
 export function beginBulkLoad(db: Database.Database): void {
@@ -67,10 +66,10 @@ export function insertTitleRows(
       let statement = statements.get(chunk.length);
       if (!statement) {
         const placeholders = chunk
-          .map(() => "(?,?,?,?,?,?,NULL,NULL,?,?,?,?)")
+          .map(() => "(?,?,?,?,?,?,NULL,NULL,?,?,?)")
           .join(",");
         statement = db.prepare(
-          `INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at) VALUES ${placeholders}`,
+          `INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,updated_at) VALUES ${placeholders}`,
         );
         statements.set(chunk.length, statement);
       }
@@ -85,7 +84,6 @@ export function insertTitleRows(
           row.runtimeMinutes,
           row.imdbRating,
           row.imdbVotes,
-          bayesianScore(row.imdbRating, row.imdbVotes),
           updatedAt,
         );
       }
@@ -179,8 +177,8 @@ export function replaceTitleCredits(
   invalidateCountCache(db);
 }
 
-const UPSERT_TITLE_SQL = `INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,bayesian_score,updated_at)
-VALUES (?,?,?,?,?,?,NULL,NULL,?,?,?,?)
+const UPSERT_TITLE_SQL = `INSERT INTO titles(id,title,original_title,kind,year,runtime_minutes,synopsis,poster_url,imdb_rating,imdb_votes,updated_at)
+VALUES (?,?,?,?,?,?,NULL,NULL,?,?,?)
 ON CONFLICT(id) DO UPDATE SET
   title=excluded.title,
   original_title=excluded.original_title,
@@ -189,7 +187,6 @@ ON CONFLICT(id) DO UPDATE SET
   runtime_minutes=excluded.runtime_minutes,
   imdb_rating=excluded.imdb_rating,
   imdb_votes=excluded.imdb_votes,
-  bayesian_score=excluded.bayesian_score,
   updated_at=excluded.updated_at
 WHERE titles.title IS NOT excluded.title
   OR titles.original_title IS NOT excluded.original_title
@@ -271,7 +268,6 @@ export function upsertTitleRows(
         row.runtimeMinutes,
         row.imdbRating,
         row.imdbVotes,
-        bayesianScore(row.imdbRating, row.imdbVotes),
         updatedAt,
       );
       const next = [...row.genres].sort();
@@ -321,7 +317,6 @@ function applyRatingUpdates(
       count += statement.run(
         rating.rating,
         rating.votes,
-        bayesianScore(rating.rating, rating.votes),
         updatedAt,
         id.toLowerCase(),
         rating.rating,

@@ -8,11 +8,10 @@ import { afterEach, test } from "node:test";
 import { createApp } from "../app.js";
 import { ingestTitles } from "../build/import-basics.js";
 import { RatingsStore } from "../services/ratings-store.js";
-import { bayesianScore } from "./bayesian.js";
 import { CatalogDatabase } from "./database.js";
 import Database from "better-sqlite3";
 import { FTS_SET_THRESHOLD, libraryListSql } from "./query.js";
-import { migrations } from "./schema.js";
+import { applyMigrations, migrations } from "./schema.js";
 
 const dirs: string[] = [];
 
@@ -662,8 +661,26 @@ test("rating sort uses displayed IMDb rating then votes", () => {
   catalog.close();
 });
 
-test("bayesian helper still weights vote counts", () => {
-  assert.ok(bayesianScore(9, 500_000) > bayesianScore(10, 12));
+test("migrations drop indexes and columns with no reader", () => {
+  const db = new Database(":memory:");
+  applyMigrations(db);
+  const columns = (
+    db.prepare("PRAGMA table_info(titles)").all() as Array<{ name: string }>
+  ).map((column) => column.name);
+  assert.ok(!columns.includes("bayesian_score"));
+  const indexes = (
+    db
+      .prepare("SELECT name FROM sqlite_schema WHERE type = 'index'")
+      .all() as Array<{ name: string }>
+  ).map((index) => index.name);
+  for (const name of [
+    "titles_bayesian_idx",
+    "titles_votes_idx",
+    "titles_sort_idx",
+    "titles_poster_pending_idx",
+  ])
+    assert.ok(!indexes.includes(name), name);
+  db.close();
 });
 
 test("FTS prefix search finds titles", () => {

@@ -36,7 +36,7 @@ export default function GenreChips({
               state === "any" ? false : state === "include" ? true : "mixed"
             }
             className={cn(
-              "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-140",
+              "inline-flex h-8 items-center gap-1 rounded-full px-3 text-ui font-medium whitespace-nowrap transition-colors duration-140",
               state === "include" &&
                 "bg-accent font-semibold text-accent-ink hover:bg-accent/90",
               state === "exclude" &&

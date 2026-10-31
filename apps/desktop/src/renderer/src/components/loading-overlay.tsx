@@ -30,18 +30,18 @@ export default function LoadingOverlay({
       aria-atomic="true"
       aria-busy={busy}
       className={cn(
-        "flex flex-col gap-3 text-[13px] text-muted",
+        "flex flex-col gap-3 text-ui text-muted",
         inline
           ? "w-full items-start"
           : "absolute inset-0 z-3 items-center justify-center overflow-auto bg-canvas/90 p-4 text-center",
       )}
     >
       {busy ? icon === undefined ? <Spinner /> : icon : null}
-      <p className="m-0 text-[13px] font-medium text-ink">
+      <p className="m-0 text-ui font-medium text-ink">
         {busy ? loadingText : completeText}
       </p>
       {detail ? (
-        <div className="max-w-140 text-[13px] leading-relaxed">{detail}</div>
+        <div className="max-w-140 text-ui leading-relaxed">{detail}</div>
       ) : null}
       {children}
     </div>

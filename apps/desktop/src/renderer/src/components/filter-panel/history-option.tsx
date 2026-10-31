@@ -52,7 +52,7 @@ export default function HistoryOption({
               </dt>
               <dd
                 className={cn(
-                  "m-0 min-w-0 text-[13px] leading-detail wrap-break-word",
+                  "m-0 min-w-0 text-ui leading-detail wrap-break-word",
                   label === "Title type"
                     ? "font-semibold text-ink"
                     : "text-ink",

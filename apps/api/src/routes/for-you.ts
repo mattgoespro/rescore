@@ -32,8 +32,6 @@ export function forYouHandler(db: CatalogDatabase) {
   return (req: Request, res: Response): void => {
     const { limit, genre, director, decade } = query.parse(req.query);
     const body: ForYouResponse = {
-      library: db.listLibrary(),
-      facets: db.facets(),
       candidates: db.listForYouCandidates(limit, {
         genres: genre,
         directors: director,

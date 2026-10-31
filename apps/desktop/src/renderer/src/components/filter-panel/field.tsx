@@ -11,7 +11,7 @@ export default function Field({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <label className="flex min-w-0 flex-col gap-2 text-[13px] text-muted">
+    <label className="flex min-w-0 flex-col gap-2 text-ui text-muted">
       <span className="flex items-baseline justify-between gap-3">
         <span>{label}</span>
         {value != null ? (

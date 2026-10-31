@@ -388,20 +388,33 @@ export function facets(db: Database.Database): FacetsResponse {
   const cache = queryCache(db);
   if (cache.facets && Date.now() <= cache.facets.expires)
     return cache.facets.value;
+  const kinds = db
+    .prepare(
+      "SELECT kind AS value, count(*) AS count FROM titles GROUP BY kind ORDER BY count DESC, kind",
+    )
+    .all() as FacetsResponse["kinds"];
+  // Each kind's ends are two seeks into its year range; min and max over the
+  // whole table read every entry of an index.
+  const ends = db.prepare(
+    `SELECT (SELECT min(year) FROM titles INDEXED BY titles_kind_year_idx WHERE kind = @kind) AS min,
+            (SELECT max(year) FROM titles INDEXED BY titles_kind_year_idx WHERE kind = @kind) AS max`,
+  );
+  const years: FacetsResponse["years"] = { min: null, max: null };
+  for (const { value: kind } of kinds) {
+    const range = ends.get({ kind }) as FacetsResponse["years"];
+    if (range.min != null && (years.min == null || range.min < years.min))
+      years.min = range.min;
+    if (range.max != null && (years.max == null || range.max > years.max))
+      years.max = range.max;
+  }
   const value: FacetsResponse = {
     genres: db
       .prepare(
         "SELECT genre AS value, count(*) AS count FROM title_genres GROUP BY genre ORDER BY count DESC, genre",
       )
       .all() as FacetsResponse["genres"],
-    kinds: db
-      .prepare(
-        "SELECT kind AS value, count(*) AS count FROM titles GROUP BY kind ORDER BY count DESC, kind",
-      )
-      .all() as FacetsResponse["kinds"],
-    years: db
-      .prepare("SELECT min(year) AS min, max(year) AS max FROM titles")
-      .get() as FacetsResponse["years"],
+    kinds,
+    years,
   };
   cache.facets = { value, expires: Date.now() + FACETS_TTL_MS };
   return value;

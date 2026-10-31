@@ -152,7 +152,7 @@ function GenresEditor({
             onCycle={cycle}
           />
         ) : (
-          <p className="m-0 text-[13px] text-muted">No genre matches that.</p>
+          <p className="m-0 text-ui text-muted">No genre matches that.</p>
         )}
       </div>
       <p className={hintClass}>

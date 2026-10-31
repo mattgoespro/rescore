@@ -128,7 +128,7 @@ export default function Inspector({
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-18 hero-fade" />
           </div>
           <div
-            className="min-w-0 animate-fade px-4 pt-4 pb-[18px] wrap-break-word"
+            className="min-w-0 animate-fade px-4 pt-4 pb-4.5 wrap-break-word"
             key={movie.imdbId}
           >
             <Heading
@@ -159,11 +159,11 @@ export default function Inspector({
               onRemove={onRemove}
             />
             {details?.tagline ? (
-              <div className="mb-2.5 text-[13px] text-accent-text italic">
+              <div className="mb-2.5 text-ui text-accent-text italic">
                 {details.tagline}
               </div>
             ) : null}
-            <p className="mb-3.5 text-[13px] leading-description text-muted">
+            <p className="mb-3.5 text-ui leading-description text-muted">
               {data.overview || movie.overview || "No synopsis available."}
             </p>
             <Stats

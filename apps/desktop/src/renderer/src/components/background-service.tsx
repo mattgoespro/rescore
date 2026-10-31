@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from "react";
+import { errorMessage } from "../lib/error-message";
 import type { BackgroundServiceStatus } from "../../../shared/background-service";
 import { pollWhileVisible } from "../lib/poll-while-visible";
 import { btn } from "../lib/ui";
@@ -37,9 +38,7 @@ export default function BackgroundService(): JSX.Element {
         .catch((cause: unknown) => {
           if (!disposed) {
             setPollError(
-              cause instanceof Error
-                ? cause.message
-                : "Could not check service status.",
+              errorMessage(cause, "Could not check service status."),
             );
           }
         })
@@ -72,9 +71,7 @@ export default function BackgroundService(): JSX.Element {
       if (mounted.current && next) setStatus(next);
     } catch (cause) {
       if (mounted.current) {
-        setError(
-          cause instanceof Error ? cause.message : "The service action failed.",
-        );
+        setError(errorMessage(cause, "The service action failed."));
       }
     } finally {
       acting.current = false;
@@ -88,10 +85,7 @@ export default function BackgroundService(): JSX.Element {
       className="my-4 border-t border-line pt-4"
       aria-labelledby="background-service-heading"
     >
-      <h3
-        id="background-service-heading"
-        className="m-0 text-[13px] font-semibold"
-      >
+      <h3 id="background-service-heading" className="m-0 text-ui font-semibold">
         Background catalogue service
       </h3>
       <p className="text-xs leading-copy text-pretty text-muted not-empty:mt-2">

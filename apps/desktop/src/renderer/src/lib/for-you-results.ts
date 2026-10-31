@@ -1,3 +1,4 @@
+import { errorMessage } from "./error-message";
 import type {
   ForYouResult,
   LibraryEntry,
@@ -27,8 +28,7 @@ export function createForYouResults(request: () => Promise<ForYouResult>) {
     } catch (error) {
       if (id === generation)
         publish({
-          error:
-            error instanceof Error ? error.message : "Could not build rankings",
+          error: errorMessage(error, "Could not build rankings"),
         });
     } finally {
       if (id === generation) publish({ loading: false });
