@@ -84,6 +84,13 @@ export default function SettingsView({
     mode !== settings.rankingMode ||
     (!serviceRequired && catalogApiUrl !== settings.catalogApiUrl);
 
+  // The colour picker reports every step of a drag. Saves run one at a time
+  // and the newest choice wins, so the stored accent is the one on screen.
+  const appearanceQueue = useRef<{
+    running: boolean;
+    next: Pick<Settings, "themeMode" | "accentColor"> | null;
+  }>({ running: false, next: null });
+
   // Appearance saves must not replace unrelated edits in the ranking form.
   useEffect(
     () => setCatalogApiUrl(settings.catalogApiUrl),
@@ -91,9 +98,13 @@ export default function SettingsView({
   );
   useEffect(() => setMode(settings.rankingMode), [settings.rankingMode]);
   // Each field follows only its own saved value: a theme save landing while
-  // the accent is being typed must not reset the draft.
-  useEffect(() => setThemeMode(settings.themeMode), [settings.themeMode]);
+  // the accent is being typed must not reset the draft. While queued
+  // appearance saves land, the newer choice already on screen stands.
   useEffect(() => {
+    if (!appearanceQueue.current.running) setThemeMode(settings.themeMode);
+  }, [settings.themeMode]);
+  useEffect(() => {
+    if (appearanceQueue.current.running) return;
     setAccentColor(settings.accentColor);
     setAccentDraft(settings.accentColor);
   }, [settings.accentColor]);
@@ -117,13 +128,6 @@ export default function SettingsView({
     return window.api.onImportProgress(setProgress);
   }, []);
 
-  // The colour picker reports every step of a drag. Saves run one at a time
-  // and the newest choice wins, so the stored accent is the one on screen.
-  const appearanceQueue = useRef<{
-    running: boolean;
-    next: Pick<Settings, "themeMode" | "accentColor"> | null;
-  }>({ running: false, next: null });
-
   async function commitAppearance(
     nextMode: ThemeMode,
     nextAccent: string,
@@ -138,19 +142,25 @@ export default function SettingsView({
     if (queue.running) return;
     queue.running = true;
     setAppearanceBusy(true);
+    // A failure reverts to the last appearance that reached the store.
+    let saved = {
+      themeMode: settings.themeMode,
+      accentColor: settings.accentColor,
+    };
     try {
       while (queue.next) {
         const patch = queue.next;
         queue.next = null;
         await onSave(patch);
+        saved = patch;
       }
       notify({ tone: "success", message: "Appearance saved." });
     } catch {
       queue.next = null;
-      applyAppearance(settings);
-      setThemeMode(settings.themeMode);
-      setAccentColor(settings.accentColor);
-      setAccentDraft(settings.accentColor);
+      applyAppearance(saved);
+      setThemeMode(saved.themeMode);
+      setAccentColor(saved.accentColor);
+      setAccentDraft(saved.accentColor);
       onError(
         "Could not save appearance. Try changing the theme or accent again.",
       );

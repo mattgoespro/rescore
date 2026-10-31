@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -190,10 +191,12 @@ export default function App(): JSX.Element {
     void loadTmdbHealth().catch(() => undefined);
   }, [catalogStatus, refresh, booting]);
 
+  // A catalogue switch reloads the app; the saved appearance applies again
+  // once it is back. Ordinary saves apply their own changes.
+  const applySavedAppearance = useEffectEvent(() => applyAppearance(settings));
   useEffect(() => {
-    if (booting) return;
-    applyAppearance(settings);
-  }, [booting, settings]);
+    if (!booting) applySavedAppearance();
+  }, [booting]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -306,9 +309,11 @@ export default function App(): JSX.Element {
     const next = await window.api.setSettings(patch);
     setSettings(next);
     setMediaProxyOrigin(next.catalogApiUrl);
-    applyAppearance(next);
     setError("");
+    // Settings previews appearance as it changes and reverts it on failure;
+    // applying each saved step again would flash older colours mid-drag.
     if (isAppearanceOnlyPatch(patch)) return;
+    applyAppearance(next);
     if (next.catalogApiUrl !== previousUrl) {
       setBooting(true);
       return;
