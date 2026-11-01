@@ -45,8 +45,7 @@ const EDITOR_WIDTH: Record<FilterFieldId, number> = {
   released: 360,
   quality: 340,
   runtime: 340,
-  languages: 360,
-  library: 300,
+  hiding: 360,
 };
 
 /**

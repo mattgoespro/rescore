@@ -24,7 +24,7 @@ test("a fresh search has no active filters", () => {
 test("the bar shows every filter, runtime included", () => {
   assert.deepEqual(
     FILTER_FIELDS.map((f) => f.id),
-    ["genres", "released", "quality", "runtime", "languages", "library"],
+    ["genres", "released", "quality", "runtime", "hiding"],
   );
 });
 
@@ -74,11 +74,33 @@ test("pill summaries read as the current setting", () => {
     "IMDb 7.5+, 1.5k+ votes",
   );
   assert.equal(field("runtime").summary(filters, genres), "Any length");
-  assert.equal(field("languages").summary(filters, genres), "no languages");
+  assert.equal(field("hiding").summary(filters, genres), "watched, watchlist");
   assert.equal(
-    field("library").summary(filters, genres),
-    "watched and watchlist",
+    field("hiding").summary(
+      { ...defaultFilters(), hideWatched: true, excludeLanguages: ["hi"] },
+      genres,
+    ),
+    "watched, Hindi",
   );
+  assert.equal(
+    field("hiding").summary(
+      { ...defaultFilters(), hideWatched: false, excludeLanguages: [] },
+      genres,
+    ),
+    "nothing",
+  );
+});
+
+test("hiding counts once and resets library and languages together", () => {
+  const filters = {
+    ...defaultFilters(),
+    hideWatched: !defaultFilters().hideWatched,
+    excludeLanguages: [],
+  };
+  assert.equal(activeFilterCount(filters), 1);
+  const reset = resetFilters(filters);
+  assert.equal(reset.hideWatched, defaultFilters().hideWatched);
+  assert.deepEqual(reset.excludeLanguages, defaultFilters().excludeLanguages);
 });
 
 test("reset clears every filter but keeps the query, type and sort", () => {

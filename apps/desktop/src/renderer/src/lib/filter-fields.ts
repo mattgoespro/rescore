@@ -13,7 +13,7 @@ import {
 } from "../components/filter-panel/constants";
 
 export type FilterFieldId =
-  "genres" | "released" | "quality" | "runtime" | "languages" | "library";
+  "genres" | "released" | "quality" | "runtime" | "hiding";
 
 /**
  * One filter in the Discover bar, shown as a pill that opens its editor.
@@ -139,36 +139,27 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     clear: () => ({ runtimeMin: base.runtimeMin, runtimeMax: base.runtimeMax }),
   },
   {
-    id: "languages",
+    id: "hiding",
     label: "Hiding",
-    name: "Languages",
-    changed: (f) => !sameSet(f.excludeLanguages, base.excludeLanguages),
-    summary: (f) =>
-      f.excludeLanguages.length === 0
-        ? "no languages"
-        : f.excludeLanguages.length === 1
-          ? languageName(f.excludeLanguages[0]!)
-          : `${f.excludeLanguages.length} languages`,
-    clear: () => ({ excludeLanguages: [...base.excludeLanguages] }),
-  },
-  {
-    id: "library",
-    label: "Hiding",
-    name: "Your library",
+    name: "Hidden titles",
     changed: (f) =>
       f.hideWatched !== base.hideWatched ||
-      f.hideWatchlist !== base.hideWatchlist,
-    summary: (f) =>
-      f.hideWatched && f.hideWatchlist
-        ? "watched and watchlist"
-        : f.hideWatched
-          ? "watched"
-          : f.hideWatchlist
-            ? "watchlist"
-            : "none of your library",
+      f.hideWatchlist !== base.hideWatchlist ||
+      !sameSet(f.excludeLanguages, base.excludeLanguages),
+    summary: (f) => {
+      const parts: string[] = [];
+      if (f.hideWatched) parts.push("watched");
+      if (f.hideWatchlist) parts.push("watchlist");
+      if (f.excludeLanguages.length === 1)
+        parts.push(languageName(f.excludeLanguages[0]!));
+      else if (f.excludeLanguages.length > 1)
+        parts.push(`${f.excludeLanguages.length} languages`);
+      return parts.length ? parts.join(", ") : "nothing";
+    },
     clear: () => ({
       hideWatched: base.hideWatched,
       hideWatchlist: base.hideWatchlist,
+      excludeLanguages: [...base.excludeLanguages],
     }),
   },
 ];

@@ -60,19 +60,22 @@ export default function FieldEditor({
           </p>
         </div>
       );
-    case "languages":
-      return <LanguagesEditor filters={filters} patch={patch} />;
-    case "library":
+    case "hiding":
       return (
-        <div className="flex flex-col gap-2">
-          <VisibilityToggles
-            hideWatched={filters.hideWatched}
-            hideWatchlist={filters.hideWatchlist}
-            onChange={patch}
-          />
-          <p className={hintClass}>
-            Titles you marked not for you are always hidden.
-          </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <VisibilityToggles
+              hideWatched={filters.hideWatched}
+              hideWatchlist={filters.hideWatchlist}
+              onChange={patch}
+            />
+            <p className={hintClass}>
+              Titles you marked not for you are always hidden.
+            </p>
+          </div>
+          <div className="border-t border-line pt-4">
+            <LanguagesEditor filters={filters} patch={patch} />
+          </div>
         </div>
       );
     case "runtime":

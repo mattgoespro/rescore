@@ -56,10 +56,7 @@ export default function HistoryMenu({
     const width = Math.min(MENU_WIDTH, window.innerWidth - 24);
     const next = {
       top: openUp ? rect.top - maxHeight - 4 : rect.bottom + 4,
-      left: Math.max(
-        12,
-        Math.min(rect.right - width, window.innerWidth - width - 12),
-      ),
+      left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
       width,
       maxHeight,
     };

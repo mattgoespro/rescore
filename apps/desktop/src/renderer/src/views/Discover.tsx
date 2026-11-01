@@ -236,20 +236,11 @@ export default function Discover({
       className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none"
     >
       <div className="flex min-h-0 min-w-0 flex-col pt-6 pr-0 pb-4 pl-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pr-6">
-          {/* The status sits beside the heading in a fixed slot, so its text
-              coming and going never moves the header or the filter bar. */}
-          <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className={pageTitleClass}>Discover</h1>
-            <p
-              className="m-0 w-32 shrink-0 truncate text-sm text-muted tabular"
-              role="status"
-              aria-live="polite"
-            >
-              {countLabel}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2.5">
+        {/* Everything that chooses the titles shares one left edge: the kind,
+            the history that restores a whole search, then the filters. */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 pr-6">
+          <h1 className={pageTitleClass}>Discover</h1>
+          <div className="flex items-center gap-2.5">
             <div className="w-72">
               <TitleKindField
                 value={filters.titleKind}
@@ -265,14 +256,6 @@ export default function Discover({
                         : filters.sortBy,
                     page: 1,
                   })
-                }
-              />
-            </div>
-            <div className="w-52">
-              <SortField
-                value={filters.sortBy}
-                onChange={(sortBy) =>
-                  setFilters({ ...filters, sortBy, page: 1 })
                 }
               />
             </div>
@@ -314,34 +297,52 @@ export default function Discover({
             genres={genres}
           />
         </div>
-        {/* How the results are drawn sits with the results, apart from the
-            filters that choose them. */}
-        <div className="mb-3 flex justify-end pr-6">
-          <div
-            className={segmentedGroup("icon")}
-            role="group"
-            aria-label="Result layout"
+        {/* How the results are ordered and drawn sits with the results, apart
+            from the filters that choose them. The count's text coming and
+            going moves nothing: the controls hold the bar's right end. */}
+        <div className="mr-6 mb-3 flex items-center justify-between gap-4 border-t border-line pt-3">
+          <p
+            className="m-0 min-w-0 truncate text-sm text-muted tabular"
+            role="status"
+            aria-live="polite"
           >
-            <button
-              type="button"
-              className={segmentedCell(layout === "list", "icon")}
-              aria-label="List view"
-              aria-pressed={layout === "list"}
-              onClick={() => setLayout("list")}
+            {countLabel}
+          </p>
+          <div className="flex shrink-0 items-center gap-2.5">
+            <div className="w-52">
+              <SortField
+                value={filters.sortBy}
+                onChange={(sortBy) =>
+                  setFilters({ ...filters, sortBy, page: 1 })
+                }
+              />
+            </div>
+            <div
+              className={segmentedGroup("icon")}
+              role="group"
+              aria-label="Result layout"
             >
-              <IconList className="size-3.5" />
-              <span aria-hidden="true">List</span>
-            </button>
-            <button
-              type="button"
-              className={segmentedCell(layout === "grid", "icon")}
-              aria-label="Grid view"
-              aria-pressed={layout === "grid"}
-              onClick={() => setLayout("grid")}
-            >
-              <IconGrid className="size-3.5" />
-              <span aria-hidden="true">Grid</span>
-            </button>
+              <button
+                type="button"
+                className={segmentedCell(layout === "list", "icon")}
+                aria-label="List view"
+                aria-pressed={layout === "list"}
+                onClick={() => setLayout("list")}
+              >
+                <IconList className="size-3.5" />
+                <span aria-hidden="true">List</span>
+              </button>
+              <button
+                type="button"
+                className={segmentedCell(layout === "grid", "icon")}
+                aria-label="Grid view"
+                aria-pressed={layout === "grid"}
+                onClick={() => setLayout("grid")}
+              >
+                <IconGrid className="size-3.5" />
+                <span aria-hidden="true">Grid</span>
+              </button>
+            </div>
           </div>
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
