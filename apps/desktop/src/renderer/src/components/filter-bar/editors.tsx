@@ -65,12 +65,43 @@ export default function FieldEditor({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <VisibilityToggles
-              hideWatched={filters.hideWatched}
-              hideWatchlist={filters.hideWatchlist}
+              toggles={[
+                {
+                  key: "hideWatched",
+                  label: "Hide Watched",
+                  checked: filters.hideWatched,
+                },
+                {
+                  key: "hideWatchlist",
+                  label: "Hide Watchlist",
+                  checked: filters.hideWatchlist,
+                },
+              ]}
               onChange={patch}
             />
             <p className={hintClass}>
               Titles you marked not for you are always hidden.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 border-t border-line pt-4">
+            <VisibilityToggles
+              toggles={[
+                {
+                  key: "hideMissingPoster",
+                  label: "No posters",
+                  checked: filters.hideMissingPoster,
+                },
+                {
+                  key: "hideMissingSynopsis",
+                  label: "No synopsis",
+                  checked: filters.hideMissingSynopsis,
+                },
+              ]}
+              onChange={patch}
+            />
+            <p className={hintClass}>
+              Hides a title only once TMDb confirms it has none. Titles TMDb has
+              not described yet stay visible.
             </p>
           </div>
           <div className="border-t border-line pt-4">

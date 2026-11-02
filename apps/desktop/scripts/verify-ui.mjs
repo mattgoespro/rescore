@@ -258,11 +258,11 @@ await page.addInitScript(() => {
   };
 });
 
-/** Turns off "Hide watched", which lives in the library filter chip's popover. */
+/** Turns off "Hide Watched", which lives in the Hiding filter chip's popover. */
 async function showWatched() {
-  await page.getByRole("button", { name: /Hiding watched/ }).click();
+  await page.getByRole("button", { name: /Hiding Watched/ }).click();
   await page
-    .getByRole("checkbox", { name: "Hide watched", exact: true })
+    .getByRole("checkbox", { name: "Hide Watched", exact: true })
     .uncheck();
   await page.keyboard.press("Escape");
 }

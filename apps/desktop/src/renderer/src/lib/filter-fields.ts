@@ -145,11 +145,15 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     changed: (f) =>
       f.hideWatched !== base.hideWatched ||
       f.hideWatchlist !== base.hideWatchlist ||
+      f.hideMissingPoster !== base.hideMissingPoster ||
+      f.hideMissingSynopsis !== base.hideMissingSynopsis ||
       !sameSet(f.excludeLanguages, base.excludeLanguages),
     summary: (f) => {
       const parts: string[] = [];
-      if (f.hideWatched) parts.push("watched");
-      if (f.hideWatchlist) parts.push("watchlist");
+      if (f.hideWatched) parts.push("Watched");
+      if (f.hideWatchlist) parts.push("Watchlist");
+      if (f.hideMissingPoster) parts.push("No posters");
+      if (f.hideMissingSynopsis) parts.push("No synopsis");
       if (f.excludeLanguages.length === 1)
         parts.push(languageName(f.excludeLanguages[0]!));
       else if (f.excludeLanguages.length > 1)
@@ -159,6 +163,8 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
     clear: () => ({
       hideWatched: base.hideWatched,
       hideWatchlist: base.hideWatchlist,
+      hideMissingPoster: base.hideMissingPoster,
+      hideMissingSynopsis: base.hideMissingSynopsis,
       excludeLanguages: [...base.excludeLanguages],
     }),
   },

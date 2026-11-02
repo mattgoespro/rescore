@@ -38,6 +38,8 @@ export interface TitleQuery {
   votesMin?: number;
   hideWatched?: boolean;
   hideWatchlist?: boolean;
+  hideMissingPoster?: boolean;
+  hideMissingSynopsis?: boolean;
   genres?: string[];
   withoutGenres?: string[];
   withoutLanguages?: string[];

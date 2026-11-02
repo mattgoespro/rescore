@@ -44,6 +44,8 @@ export function searchHistoryKey(entry: {
     full.runtimeMax,
     full.hideWatched,
     full.hideWatchlist,
+    full.hideMissingPoster,
+    full.hideMissingSynopsis,
   ]);
 }
 
@@ -253,7 +255,12 @@ function normalizeHistoryFilters(raw: unknown): SearchHistoryEntry["filters"] {
   }
   for (const key of ["yearMin", "yearMax", "runtimeMin", "runtimeMax"] as const)
     filters[key] = numberOrNull(input[key]);
-  for (const key of ["hideWatched", "hideWatchlist"] as const) {
+  for (const key of [
+    "hideWatched",
+    "hideWatchlist",
+    "hideMissingPoster",
+    "hideMissingSynopsis",
+  ] as const) {
     if (typeof input[key] === "boolean") filters[key] = input[key];
   }
   for (const key of ["genres", "withoutGenres"] as const) {

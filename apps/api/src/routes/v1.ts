@@ -55,6 +55,8 @@ const listQuery = z
     runtimeMax: optionalInteger(1, 2000),
     hideWatched: optionalBoolean,
     hideWatchlist: optionalBoolean,
+    hideMissingPoster: optionalBoolean,
+    hideMissingSynopsis: optionalBoolean,
     includeTotal: optionalBoolean,
     cursor: z.string().trim().min(1).max(500).optional(),
   })

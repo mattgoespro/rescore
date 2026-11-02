@@ -154,7 +154,7 @@ try {
       .count(),
     calls: await page.evaluate(() => window.__review.discoverCalls),
     hideWatched: await page
-      .getByRole("checkbox", { name: "Hide watched" })
+      .getByRole("checkbox", { name: "Hide Watched" })
       .isChecked(),
   };
   assert.equal(evidence.discover.remainingAlpha, 0);

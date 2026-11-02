@@ -74,13 +74,13 @@ test("pill summaries read as the current setting", () => {
     "IMDb 7.5+, 1.5k+ votes",
   );
   assert.equal(field("runtime").summary(filters, genres), "Any length");
-  assert.equal(field("hiding").summary(filters, genres), "watched, watchlist");
+  assert.equal(field("hiding").summary(filters, genres), "Watched, Watchlist");
   assert.equal(
     field("hiding").summary(
       { ...defaultFilters(), hideWatched: true, excludeLanguages: ["hi"] },
       genres,
     ),
-    "watched, Hindi",
+    "Watched, Hindi",
   );
   assert.equal(
     field("hiding").summary(
@@ -89,6 +89,24 @@ test("pill summaries read as the current setting", () => {
     ),
     "nothing",
   );
+});
+
+test("hiding lists missing media after the library", () => {
+  assert.equal(
+    field("hiding").summary(
+      {
+        ...defaultFilters(),
+        hideMissingPoster: true,
+        hideMissingSynopsis: true,
+        excludeLanguages: [],
+      },
+      genres,
+    ),
+    "Watched, No posters, No synopsis",
+  );
+  const filters = { ...defaultFilters(), hideMissingSynopsis: true };
+  assert.equal(activeFilterCount(filters), 1);
+  assert.equal(resetFilters(filters).hideMissingSynopsis, false);
 });
 
 test("hiding counts once and resets library and languages together", () => {

@@ -19,6 +19,8 @@ export interface DiscoverFilters {
   sortBy: string;
   hideWatched: boolean;
   hideWatchlist: boolean;
+  hideMissingPoster: boolean;
+  hideMissingSynopsis: boolean;
   page: number;
   cursor?: string | null;
 }
@@ -68,11 +70,25 @@ export function defaultFilters(): DiscoverFilters {
     runtimeMin: null,
     runtimeMax: null,
     // Major languages supported by the catalogue for Pakistan, Bangladesh,
-    // and Sri Lanka: Urdu, Punjabi, Pashto, Sindhi, Bengali, Sinhala, Tamil.
-    excludeLanguages: ["ur", "pa", "ps", "sd", "bn", "si", "ta"],
+    // and Sri Lanka: Urdu, Punjabi, Pashto, Sindhi, Bengali, Sinhala, Tamil,
+    // plus the Indian languages Marathi, Kannada, and Telugu.
+    excludeLanguages: [
+      "ur",
+      "pa",
+      "ps",
+      "sd",
+      "bn",
+      "si",
+      "ta",
+      "mr",
+      "kn",
+      "te",
+    ],
     sortBy: "match",
     hideWatched: true,
     hideWatchlist: false,
+    hideMissingPoster: false,
+    hideMissingSynopsis: false,
     page: 1,
   };
 }

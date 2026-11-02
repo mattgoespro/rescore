@@ -1447,6 +1447,67 @@ test("excluded languages drop a title when any stored language matches", () => {
   catalog.close();
 });
 
+test("missing media filters hide confirmed misses and keep titles not yet hydrated", async () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Complete", kind: "movie" },
+    { id: "tt0000002", title: "No poster", kind: "movie" },
+    { id: "tt0000003", title: "No synopsis", kind: "movie" },
+    { id: "tt0000004", title: "Pending", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    { id: "tt0000001", posterUrl: "https://x/1.jpg", synopsis: "One." },
+    { id: "tt0000002", posterUrl: null, synopsis: "Two." },
+    { id: "tt0000003", posterUrl: "https://x/3.jpg", synopsis: null },
+  ]);
+  const base = {
+    page: 1,
+    pageSize: 10,
+    sort: "title" as const,
+    order: "asc" as const,
+    includeTotal: true,
+  };
+  const ids = (query: object) =>
+    catalog.listTitles({ ...base, ...query }).data.map((row) => row.id);
+  assert.deepEqual(ids({ hideMissingPoster: true }), [
+    "tt0000001",
+    "tt0000003",
+    "tt0000004",
+  ]);
+  assert.deepEqual(ids({ hideMissingSynopsis: true }), [
+    "tt0000001",
+    "tt0000002",
+    "tt0000004",
+  ]);
+  assert.deepEqual(
+    ids({ hideMissingPoster: true, hideMissingSynopsis: true }),
+    ["tt0000001", "tt0000004"],
+  );
+  assert.equal(
+    catalog.listTitles({ ...base, hideMissingPoster: true }).pagination.total,
+    3,
+  );
+  const server = createApp(new RatingsStore(catalog), catalog).listen(
+    0,
+    "127.0.0.1",
+  );
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/titles?hideMissingPoster=true&hideMissingSynopsis=true`,
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { data: Array<{ id: string }> };
+    assert.deepEqual(
+      body.data.map((row) => row.id),
+      ["tt0000001", "tt0000004"],
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    catalog.close();
+  }
+});
+
 test("tmdb coverage counts filled posters, synopses, and age ratings", () => {
   const catalog = openCatalog();
   catalog.upsertTitles([

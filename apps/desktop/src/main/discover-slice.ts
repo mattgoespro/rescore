@@ -41,6 +41,8 @@ export function discoverQueryParams(
       : undefined,
     hideWatched: filters.hideWatched ? "true" : undefined,
     hideWatchlist: filters.hideWatchlist ? "true" : undefined,
+    hideMissingPoster: filters.hideMissingPoster ? "true" : undefined,
+    hideMissingSynopsis: filters.hideMissingSynopsis ? "true" : undefined,
     sort: sortFor(filters.sortBy),
     order: orderFor(filters.sortBy),
     includeTotal: "false",

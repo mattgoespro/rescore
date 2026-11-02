@@ -28,6 +28,8 @@ test("history round trips the whole form and clears unrelated current filters", 
     withoutGenres: [5],
     excludeLanguages: ["fr"],
     hideWatched: false,
+    hideMissingPoster: true,
+    hideMissingSynopsis: true,
   };
   const [entry] = normalizeSearchHistory(
     upsertSearchHistory([], snapshotSearchHistory(filters, [])),

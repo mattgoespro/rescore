@@ -782,6 +782,12 @@ function buildWhere(
     where.push("(t.imdb_rating IS NULL OR t.imdb_rating <= @ratingMax)");
     params.ratingMax = query.ratingMax;
   }
+  // '' is TMDb's answer that a title has no poster or synopsis; NULL is a
+  // title TMDb has not been asked about yet, which stays. About 1% of titles
+  // are '', so a sort walk reads a few extra rows: 0.07 ms a page on a real
+  // catalogue, where a NOT IN over a partial index of the '' rows cost 2 ms.
+  if (query.hideMissingPoster) where.push("t.poster_url IS NOT ''");
+  if (query.hideMissingSynopsis) where.push("t.synopsis IS NOT ''");
   const exclusion = libraryExclusionClause(
     excludedLibraryStatuses({
       kind: "discover",

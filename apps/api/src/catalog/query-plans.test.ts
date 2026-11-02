@@ -86,6 +86,13 @@ test("Discover pages never read the whole titles table", () => {
     { ...page, sort: "rating", kind: "movie", genres: ["Drama"] },
     { ...page, sort: "year", kind: "movie", ratingMin: 7 },
     { ...page, sort: "votes", kind: "movie", query: "title" },
+    {
+      ...page,
+      sort: "votes",
+      kind: "movie",
+      hideMissingPoster: true,
+      hideMissingSynopsis: true,
+    },
     { ...page, sort: "title" },
   ];
   for (const search of searches) {

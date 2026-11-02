@@ -146,6 +146,8 @@ interface TitleQuery {
   votesMin?: number;
   hideWatched?: boolean;
   hideWatchlist?: boolean;
+  hideMissingPoster?: boolean;
+  hideMissingSynopsis?: boolean;
   genres?: string[];
   runtimeMin?: number;
   runtimeMax?: number;
@@ -379,6 +381,8 @@ From `defaultFilters()`:
 | `voteCountMin`              | `1000`                |
 | `hideWatched`               | `true`                |
 | `hideWatchlist`             | `false`               |
+| `hideMissingPoster`         | `false`               |
+| `hideMissingSynopsis`       | `false`               |
 | `sortBy`                    | `"match"`             |
 | `page`                      | `1`                   |
 | `runtimeMin` / `runtimeMax` | `null`                |
@@ -395,6 +399,7 @@ From `defaultFilters()`:
 | `voteCountMin`                                  | yes          | `votesMin`; omitted if `0`                                                       |
 | `runtimeMin` / `runtimeMax`                     | yes          | omitted if null                                                                  |
 | `hideWatched` / `hideWatchlist`                 | yes          | `"true"` only when true                                                          |
+| `hideMissingPoster` / `hideMissingSynopsis`     | yes          | `"true"` only when true; hides `''` (TMDb has none), keeps `NULL` (not hydrated) |
 | `sortBy`                                        | yes          | see sort map                                                                     |
 | `page`                                          | yes          | `page`; `includeTotal` is `"false"` when `page > 1` else `"true"`                |
 | `withoutGenres`                                 | **no**       | unused                                                                           |
@@ -511,22 +516,23 @@ Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 
 **`listQuery` (GET `/v1/titles`):**
 
-| Param                           | Constraint                                             | Default                     |
-| ------------------------------- | ------------------------------------------------------ | --------------------------- |
-| `page`                          | int 1–100000                                           | 1                           |
-| `pageSize`                      | int 1–100                                              | 25                          |
-| `limit`                         | int 1–100                                              | overrides `pageSize` if set |
-| `sort`                          | `title\|year\|rating\|votes\|updatedAt`                | `title`                     |
-| `order`                         | `asc\|desc`                                            | `asc`                       |
-| `query`                         | trim, 1–200 chars                                      | omitted                     |
-| `genre`                         | string or array, split commas, max 30 names × 60 chars | → `genres`                  |
-| `kind`                          | 1–40 chars                                             | omitted                     |
-| `yearMin` / `yearMax`           | int 1870–3000; min ≤ max                               | omitted                     |
-| `ratingMin`                     | 0–10                                                   | omitted                     |
-| `votesMin`                      | 0–2_000_000_000                                        | omitted                     |
-| `runtimeMin` / `runtimeMax`     | 1–2000                                                 | omitted                     |
-| `hideWatched` / `hideWatchlist` | `"true"` / `"false"`                                   | omitted                     |
-| `includeTotal`                  | `"true"` / `"false"`                                   | true                        |
+| Param                                       | Constraint                                             | Default                     |
+| ------------------------------------------- | ------------------------------------------------------ | --------------------------- |
+| `page`                                      | int 1–100000                                           | 1                           |
+| `pageSize`                                  | int 1–100                                              | 25                          |
+| `limit`                                     | int 1–100                                              | overrides `pageSize` if set |
+| `sort`                                      | `title\|year\|rating\|votes\|updatedAt`                | `title`                     |
+| `order`                                     | `asc\|desc`                                            | `asc`                       |
+| `query`                                     | trim, 1–200 chars                                      | omitted                     |
+| `genre`                                     | string or array, split commas, max 30 names × 60 chars | → `genres`                  |
+| `kind`                                      | 1–40 chars                                             | omitted                     |
+| `yearMin` / `yearMax`                       | int 1870–3000; min ≤ max                               | omitted                     |
+| `ratingMin`                                 | 0–10                                                   | omitted                     |
+| `votesMin`                                  | 0–2_000_000_000                                        | omitted                     |
+| `runtimeMin` / `runtimeMax`                 | 1–2000                                                 | omitted                     |
+| `hideWatched` / `hideWatchlist`             | `"true"` / `"false"`                                   | omitted                     |
+| `hideMissingPoster` / `hideMissingSynopsis` | `"true"` / `"false"`; drop only `''` media             | omitted                     |
+| `includeTotal`                              | `"true"` / `"false"`                                   | true                        |
 
 **HealthResponse:**
 

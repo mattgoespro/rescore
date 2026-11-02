@@ -31,6 +31,23 @@ test("discover query omits the rating ceiling and fixes the page size", () => {
   assert.equal("votesMin" in params, false);
 });
 
+test("missing media filters are sent only when on", () => {
+  const names = { genres: [], withoutGenres: [] };
+  const off = discoverQueryParams(defaultFilters(), names);
+  assert.equal("hideMissingPoster" in off, false);
+  assert.equal("hideMissingSynopsis" in off, false);
+  const on = discoverQueryParams(
+    {
+      ...defaultFilters(),
+      hideMissingPoster: true,
+      hideMissingSynopsis: true,
+    },
+    names,
+  );
+  assert.equal(on.hideMissingPoster, "true");
+  assert.equal(on.hideMissingSynopsis, "true");
+});
+
 test("a lowered rating ceiling is sent", () => {
   const params = discoverQueryParams(
     { ...defaultFilters(), ratingMax: 8 },
