@@ -75,6 +75,12 @@ export const rangeInputClass =
 export const overlayPanelClass =
   "fixed z-40 overflow-auto overscroll-contain rounded-control border border-line bg-raised p-1";
 
+/** A search field on a wash, with `searchIconClass` placed at its left. */
+export const searchInputClass =
+  "h-8 w-full min-w-0 rounded-control border border-transparent bg-wash-6 pl-9 text-ui text-ink outline-none placeholder:text-muted focus:border-accent [&::-webkit-search-cancel-button]:hidden";
+export const searchIconClass =
+  "pointer-events-none absolute left-3 size-4 text-muted";
+
 export const progressBarClass = "h-0.5 overflow-hidden bg-track";
 export const progressFillClass = "h-full bg-accent";
 

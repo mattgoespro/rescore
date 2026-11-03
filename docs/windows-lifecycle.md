@@ -20,7 +20,7 @@ The single service remains `RescoreCatalogue`, displayed as **Rescore API**, run
 5. **Uninstall:** after the user's catalogue choice, maintenance stops/removes SCM registration and then executable directories. Removal uses SCM even when the wrapper or catalogue configuration is missing. Default uninstall retains shared data in place and does not copy it into a profile. An unrelated installation cannot remove another managing installation's service.
 6. **Reinstall after removal:** the retained shared catalogue wins over the initial desktop seed for all accounts. Explicit deletion remains opt-in, validates all targets before deleting data, and keeps settings/logs.
 
-Lifecycle elevation targets a GUI executable. Native PowerShell uses `CreateNoWindow=true` and `UseShellExecute=false`; it is never the UAC target. **Rescore Logs** intentionally opens a terminal when selected. Setup's finish-page launch targets the installed executable directly and remains unchecked by default.
+Lifecycle elevation targets a GUI executable. Native PowerShell uses `CreateNoWindow=true` and `UseShellExecute=false`; it is never the UAC target. Setup's finish-page launch targets the installed executable directly and remains unchecked by default.
 
 ## Verification
 

@@ -30,6 +30,7 @@ import CatalogLoader from "./components/catalog-loader";
 import SetupScreen from "./components/setup-screen";
 import Inspector from "./components/inspector";
 import { useNotify } from "./components/notifications";
+import ServiceLog from "./components/service-log";
 import TopBar from "./components/top-bar";
 import { applyAppearance } from "./lib/appearance";
 import {
@@ -109,6 +110,12 @@ export default function App(): JSX.Element {
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(
     null,
   );
+  const [logOpen, setLogOpen] = useState(false);
+  const retryCatalog = (): Promise<CatalogStatus> => {
+    setError("");
+    setBooting(true);
+    return window.api.retryCatalog();
+  };
   const detailsCache = useRef(new Map<string, MovieDetails>());
   const cacheDetails = useCallback((key: string, movie: MovieDetails) => {
     const cache = detailsCache.current;
@@ -204,7 +211,7 @@ export default function App(): JSX.Element {
       if (
         event.key === "Escape" &&
         !(event.target as HTMLElement)?.closest(
-          '[role="dialog"], [role="listbox"], [role="combobox"]',
+          'dialog, [role="dialog"], [role="listbox"], [role="combobox"]',
         )
       )
         setSelected(null);
@@ -461,6 +468,7 @@ export default function App(): JSX.Element {
         query={filters.query}
         queryRef={queryInput}
         catalogStatus={catalogStatus}
+        onOpenLog={() => setLogOpen(true)}
         onQueryChange={(query) => {
           setFilters((current) => ({ ...current, query, page: 1 }));
           if (view !== "discover") navigate("discover");
@@ -524,13 +532,16 @@ export default function App(): JSX.Element {
                 <button
                   type="button"
                   className={btn("primary")}
-                  onClick={() => {
-                    setError("");
-                    setBooting(true);
-                    void window.api.retryCatalog();
-                  }}
+                  onClick={() => void retryCatalog()}
                 >
                   Try again
+                </button>
+                <button
+                  type="button"
+                  className={btn()}
+                  onClick={() => setLogOpen(true)}
+                >
+                  View service log
                 </button>
                 <button
                   type="button"
@@ -594,6 +605,13 @@ export default function App(): JSX.Element {
           ) : null}
         </main>
       </div>
+      {logOpen ? (
+        <ServiceLog
+          catalogStatus={catalogStatus}
+          onRetry={retryCatalog}
+          onClose={() => setLogOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

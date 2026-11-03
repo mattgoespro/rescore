@@ -28,7 +28,8 @@ export interface ApiLaunchSuccess {
   args: string[];
   cwd: string;
   dataDir: string;
-  stdio: "ignore" | "inherit";
+  /** Copy the API's output to this terminal as well as the log view. */
+  echoOutput: boolean;
   windowsHide: true;
 }
 
@@ -68,7 +69,7 @@ export function planApiLaunch(
     args,
     cwd: apiRoot,
     dataDir: ctx.dev ? join(apiRoot, "data") : join(ctx.userDataDir, "data"),
-    stdio: ctx.dev ? "inherit" : "ignore",
+    echoOutput: ctx.dev,
     windowsHide: true,
   };
 }

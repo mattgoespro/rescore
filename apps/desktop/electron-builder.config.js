@@ -49,10 +49,6 @@ function copyApiRuntime(context) {
     throw new Error(`API runtime missing at ${src}.`);
   }
   cpSync(src, dest, { recursive: true });
-  copyFileSync(
-    join(context.packager.projectDir, "build/service/Rescore Logs.exe"),
-    join(context.appOutDir, "Rescore Logs.exe"),
-  );
   checkPackage(context.appOutDir);
 }
 
@@ -68,21 +64,6 @@ async function stageApiRuntimeToDisk(projectDir) {
   const apiRoot = join(repoRoot, "apps/api");
   const serviceBuild = join(projectDir, "build/service");
   mkdirSync(serviceBuild, { recursive: true });
-  execFileSync(
-    join(
-      process.env.SystemRoot ?? "C:\\Windows",
-      "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
-    ),
-    [
-      "/nologo",
-      "/target:winexe",
-      "/platform:x64",
-      "/reference:System.Windows.Forms.dll",
-      `/out:${join(serviceBuild, "Rescore Logs.exe")}`,
-      join(projectDir, "resources/service/logs-launcher.cs"),
-    ],
-    { stdio: "inherit", windowsHide: true },
-  );
   execFileSync(
     join(
       process.env.SystemRoot ?? "C:\\Windows",

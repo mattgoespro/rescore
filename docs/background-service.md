@@ -2,13 +2,13 @@
 
 No manual service setup is required. Users only install or launch Rescore and approve a Windows administrator prompt if Windows requires one. Rescore handles user identification, registration, data transfer, startup, runtime updates, and health checks.
 
-Installation, startup/recovery, and uninstallation use a windowless maintenance helper. Administrator approval does not open a PowerShell terminal. **Rescore Logs** opens its terminal when explicitly selected.
+Installation, startup/recovery, and uninstallation use a windowless maintenance helper. Administrator approval does not open a PowerShell terminal.
 
 Windows Services displays the service as **Rescore API**. One shared catalogue service serves every account on the computer.
 
-During TMDb hydration, stdout logs report completed/total lookups and the completion rate every 30 seconds, including when a batch is waiting. Reports include actual poster and synopsis coverage, the latest error and retry countdown, plus a final completion or shutdown report. Lookup completion includes titles TMDb could not match; it does not mean all metadata is available. The rate measures durable title completions, not HTTP requests. **Open logs** opens the folder containing `RescoreService.out.log`.
+During TMDb hydration, stdout logs report completed/total lookups and the completion rate every 30 seconds, including when a batch is waiting. Reports include actual poster and synopsis coverage, the latest error and retry countdown, plus a final completion or shutdown report. Lookup completion includes titles TMDb could not match; it does not mean all metadata is available. The rate measures durable title completions, not HTTP requests. **Hide progress** in the service log hides these reports.
 
-**Rescore Logs** in the Start Menu opens a terminal showing the live API log.
+Selecting the catalogue status in the top bar opens the service log: a full-window view of `RescoreService.out.log` that follows new lines until you scroll up (**Follow new lines** resumes), keeps the newest 2,000, and filters by level, channel and text. When the catalogue has failed it shows the failure and **Retry** above the log. A session that started the API itself (development or `npm start`) shows that API's output instead; in development the output is also echoed, uncoloured, to the terminal. In Settings, **Open log folder** opens the folder containing the log files.
 
 ## Installed app
 
@@ -30,7 +30,7 @@ The uninstall wizard offers **Delete catalogue data for all users**, unchecked b
 
 Service code lives in `%ProgramFiles%\Rescore Catalogue`, separately from the desktop app. Default uninstall keeps shared data in `%ProgramData%\Rescore`; reinstall uses it without copying stale desktop data over it. Setup repairs missing service files/registration and reconciles interrupted removal.
 
-If administrator approval is cancelled or an operation fails, the app explains the failure. **Retry** repeats the automated operation; **Open logs** provides diagnostic details. The app never substitutes a second catalogue API process.
+If administrator approval is cancelled or an operation fails, the app explains the failure. **Retry** repeats the automated operation; the service log provides diagnostic details. The app never substitutes a second catalogue API process.
 
 Each app launch allows one automatic preparation attempt when needed. After failure, Rescore keeps checking for recovery without repeatedly requesting administrator approval. It connects automatically once the catalogue becomes healthy; **Retry** explicitly requests another repair attempt. If maintenance is already running, the app waits for it rather than starting another operation. Rebuild requests are rejected while preparation, repair, or unverified maintenance is active.
 

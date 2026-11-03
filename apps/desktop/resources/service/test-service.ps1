@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-foreach ($test in @('test-helper.ps1', 'test-maintenance.ps1', 'test-installer-workflow.ps1', 'test-lifecycle.ps1', 'test-installer-files.ps1', 'test-installer-processes.ps1', 'test-logs.ps1')) {
+foreach ($test in @('test-helper.ps1', 'test-maintenance.ps1', 'test-installer-workflow.ps1', 'test-lifecycle.ps1', 'test-installer-files.ps1', 'test-installer-processes.ps1')) {
   $start = New-Object Diagnostics.ProcessStartInfo
   $start.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $start.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + (Join-Path $PSScriptRoot $test) + '"'

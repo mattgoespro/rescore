@@ -1,7 +1,7 @@
 import { useId, type JSX, type Ref } from "react";
 import type { AppView, CatalogStatus } from "../../../shared/types";
 import mark from "../assets/rescore-mark.png";
-import { catalogIndicator } from "../lib/catalog-busy";
+import { CATALOG_INDICATOR_COLOR, catalogIndicator } from "../lib/catalog-busy";
 import { cn } from "../lib/cn";
 import { iconBtn } from "../lib/ui";
 import QueryField from "./filter-panel/query-field";
@@ -13,16 +13,11 @@ const NAV: ReadonlyArray<{ id: AppView; label: string; shortcut: string }> = [
   { id: "library", label: "Library", shortcut: "Control+3" },
 ];
 
-const STATUS_COLOR = {
-  loaded: "bg-ok",
-  starting: "bg-warn",
-  failed: "bg-danger",
-} as const;
-
 /**
  * The single 48px title bar: brand mark, primary navigation, search,
- * catalogue status and Settings. It is the window drag region and leaves room
- * on the right for the native caption buttons drawn by titleBarOverlay.
+ * catalogue status (which opens the service log) and Settings. It is the
+ * window drag region and leaves room on the right for the native caption
+ * buttons drawn by titleBarOverlay.
  */
 export default function TopBar({
   view,
@@ -31,6 +26,7 @@ export default function TopBar({
   onQueryChange,
   queryRef,
   catalogStatus,
+  onOpenLog,
 }: {
   view: AppView;
   onNavigate: (view: AppView) => void;
@@ -38,6 +34,7 @@ export default function TopBar({
   onQueryChange: (query: string) => void;
   queryRef?: Ref<HTMLInputElement>;
   catalogStatus: CatalogStatus | null;
+  onOpenLog: () => void;
 }): JSX.Element {
   const tipId = useId();
   const status = catalogIndicator(catalogStatus);
@@ -82,16 +79,20 @@ export default function TopBar({
       </div>
       <div className="flex shrink-0 items-center gap-1 app-no-drag">
         <div className="group relative">
-          {/* Settings holds the catalogue controls the status points to. */}
+          {/* The status opens the catalogue service log. */}
           <button
             type="button"
+            aria-haspopup="dialog"
             aria-describedby={tipId}
             className="flex h-8 items-center gap-2 rounded-control bg-wash-6 px-2.5 text-xs font-medium text-muted transition-colors duration-140 hover:bg-wash-8 hover:text-ink"
-            onClick={() => onNavigate("settings")}
+            onClick={onOpenLog}
           >
             <span
               aria-hidden="true"
-              className={cn("size-2 rounded-pip", STATUS_COLOR[status.state])}
+              className={cn(
+                "size-2 rounded-pip",
+                CATALOG_INDICATOR_COLOR[status.state],
+              )}
             />
             {status.label}
           </button>
@@ -103,6 +104,9 @@ export default function TopBar({
             <span className="text-ui font-semibold text-ink">{status.tip}</span>
             <span className="text-xs leading-copy text-muted">
               {status.detail}
+            </span>
+            <span className="text-xs leading-copy text-faint">
+              Select to view the service log.
             </span>
           </div>
         </div>

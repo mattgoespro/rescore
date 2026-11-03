@@ -142,12 +142,12 @@ export default function BackgroundService({
           className={btn("small")}
           disabled={busy || !status?.logsAvailable}
           onClick={() =>
-            void run("Opening logs…", () =>
+            void run("Opening log folder…", () =>
               window.api.backgroundService.openLogs(),
             )
           }
         >
-          Open logs
+          Open log folder
         </button>
       </div>
     </section>

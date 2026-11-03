@@ -14,7 +14,9 @@ import {
   type CatalogStatus,
 } from "../shared/types";
 import type { BackgroundServiceStatus } from "../shared/background-service";
+import type { ServiceLogRead } from "../shared/service-log";
 import { planApiLaunch } from "./api-launch";
+import { SessionLog } from "./service-log";
 import { BackgroundService, serviceOwnsCatalog } from "./background-service";
 import {
   blockCatalogConnection,
@@ -56,6 +58,8 @@ export interface CatalogRuntime {
   stop(): Promise<void>;
   repairService(): Promise<BackgroundServiceStatus>;
   serviceStatus(): BackgroundServiceStatus;
+  /** Output of an API this session spawned. */
+  readSessionLog(cursor: string | null): ServiceLogRead;
 }
 
 export function createCatalogRuntime(
@@ -66,6 +70,7 @@ export function createCatalogRuntime(
 ): CatalogRuntime {
   let spawned: ChildProcess | null = null;
   let childUrl = "";
+  const sessionLog = new SessionLog();
   const controlToken = randomBytes(32).toString("hex");
   const url = () => catalogUrl(store);
   const childAlive = () =>
@@ -124,17 +129,27 @@ export function createCatalogRuntime(
       delete env.RESCORE_SERVICE_CONFIG;
       delete env.TMDB_API_KEYS;
       delete env.TMDB_API_KEY;
+      // The log view always gets the output; a dev terminal gets a copy.
       const child = spawn(plan.command, plan.args, {
         cwd: plan.cwd,
         env,
-        stdio:
-          plan.stdio === "inherit"
-            ? ["ignore", "inherit", "inherit"]
-            : "ignore",
+        stdio: ["ignore", "pipe", "pipe"],
         windowsHide: plan.windowsHide,
+      });
+      sessionLog.begin();
+      const echo = plan.echoOutput;
+      child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+        if (echo) process.stdout.write(chunk);
+        sessionLog.append("stdout", chunk);
+      });
+      child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+        if (echo) process.stderr.write(chunk);
+        sessionLog.append("stderr", chunk);
       });
       spawned = child;
       childUrl = baseUrl;
+      // 'close' waits for both pipes to drain; 'exit' can come first.
+      child.once("close", () => sessionLog.end());
       child.on("exit", () => {
         if (spawned === child) {
           spawned = null;
@@ -242,7 +257,15 @@ export function createCatalogRuntime(
       onStatus?.(status);
     },
   });
-  return lifecycle;
+  return {
+    ...lifecycle,
+    // The output belongs to the API at the URL it was started on. After a
+    // crash it stays readable; after the URL changes it is another API's.
+    readSessionLog: (cursor) =>
+      childUrl && childUrl === url()
+        ? sessionLog.read(cursor)
+        : { source: "none", reset: true, lines: [], cursor: null },
+  };
 }
 
 function catalogUrl(store: AppStore): string {

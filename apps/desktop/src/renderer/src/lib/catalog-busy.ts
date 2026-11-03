@@ -59,6 +59,13 @@ export function catalogLoaderDetail(
 
 export type CatalogIndicatorState = "loaded" | "starting" | "failed";
 
+/** The pip beside each catalogue status word. */
+export const CATALOG_INDICATOR_COLOR: Record<CatalogIndicatorState, string> = {
+  loaded: "bg-ok",
+  starting: "bg-warn",
+  failed: "bg-danger",
+};
+
 export interface CatalogIndicator {
   state: CatalogIndicatorState;
   label: string;

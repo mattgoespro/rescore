@@ -98,6 +98,14 @@ export function registerIpc(
       throw new Error("Untrusted service request");
     return backgroundService.openLogs();
   });
+  ipcMain.handle("service-log:read", (event, cursor: string | null) => {
+    if (!trustedServiceSender(event))
+      throw new Error("Untrusted service request");
+    const from = typeof cursor === "string" ? cursor : null;
+    return serviceOwnsCatalog()
+      ? backgroundService.readLog(from)
+      : catalog.readSessionLog(from);
+  });
   ipcMain.handle("settings:get", () => store.getSettings());
   ipcMain.handle("settings:set", (_event, patch: Partial<Settings>) => {
     const previousUrl = store.getSettings().catalogApiUrl;

@@ -18,6 +18,7 @@ import type {
   WatchStatus,
 } from "../shared/types";
 import type { SearchHistoryInput } from "../shared/search-history";
+import type { ServiceLogRead } from "../shared/service-log";
 
 const api = {
   backgroundService: {
@@ -27,6 +28,8 @@ const api = {
       ipcRenderer.invoke("background-service:retry"),
     openLogs: (): Promise<void> =>
       ipcRenderer.invoke("background-service:logs"),
+    readLog: (cursor: string | null): Promise<ServiceLogRead> =>
+      ipcRenderer.invoke("service-log:read", cursor),
   },
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("settings:get"),
   setSettings: (patch: Partial<Settings>): Promise<Settings> =>

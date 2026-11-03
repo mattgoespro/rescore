@@ -17,7 +17,7 @@ function checkPackage(folder) {
     read(posix.join("out/renderer", match[1]));
   }
   for (const path of [
-    "Rescore.exe", "Rescore Logs.exe",
+    "Rescore.exe",
     "resources/service/Rescore Maintenance.exe",
     "resources/service/maintenance.ps1", "resources/service/manage-service.ps1",
     "resources/api/node.exe", "resources/api/RescoreService.exe",

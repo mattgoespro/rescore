@@ -235,6 +235,92 @@ await page.addInitScript(() => {
         logsAvailable: true,
         message: "Running",
       }),
+      openLogs: async () => {},
+      // A first read returns the tail; each later read adds one progress line.
+      readLog: async (cursor) => {
+        control.logReads = (control.logReads ?? 0) + 1;
+        const line = (time, channel, phase, level, message) => ({
+          time,
+          channel,
+          phase,
+          level,
+          message,
+        });
+        if (cursor === null)
+          return {
+            source: "service",
+            reset: true,
+            cursor: "1",
+            lines: [
+              line(
+                "09:14:01.902",
+                "api",
+                "startup",
+                "info",
+                "Rescore catalogue API listening on http://127.0.0.1:3847",
+              ),
+              line(
+                "09:14:03.020",
+                "catalog",
+                "download",
+                "info",
+                "Reusing title.basics.tsv.gz",
+              ),
+              line(
+                "09:14:42.004",
+                "catalog",
+                "credits",
+                "info",
+                "Importing cast and directors",
+              ),
+              line(
+                "09:15:10.771",
+                "http",
+                "request",
+                "info",
+                "GET /v1/titles 200 41ms genres,sort,year",
+              ),
+              line(
+                "09:15:13.118",
+                "posters",
+                "posters",
+                "warn",
+                "Poster lookup failed: TMDb responded 429 Too Many Requests",
+              ),
+              line(
+                "09:15:44.630",
+                "ratings",
+                "reconcile",
+                "warn",
+                "IMDb ratings refresh failed; keeping the last loaded dataset. fetch failed",
+              ),
+              line(
+                "09:16:02.218",
+                "http",
+                "request",
+                "error",
+                "req 7f3a  SQLITE_BUSY: database is locked\n    at CatalogDatabase.search (catalog/db.js:412:18)",
+              ),
+            ],
+          };
+        const next = Number(cursor);
+        if (next > 3)
+          return { source: "service", reset: false, cursor, lines: [] };
+        return {
+          source: "service",
+          reset: false,
+          cursor: String(next + 1),
+          lines: [
+            line(
+              `09:16:1${next}.300`,
+              "posters",
+              "posters",
+              "info",
+              `Progress ${next}/3 | 11.4 titles/s | running`,
+            ),
+          ],
+        };
+      },
     },
     clearLibrary: async () => (library = []),
     tmdbHealth: async () => {
@@ -986,6 +1072,27 @@ try {
   await assertCentered(overlay);
   await page.screenshot({ path: join(output, "library-empty.png") });
   check("Empty shelf uses the compact centered completion overlay");
+  await page.getByRole("button", { name: "Loaded", exact: true }).click();
+  const log = page.getByRole("dialog", { name: "Catalogue service log" });
+  await log.getByText(/SQLITE_BUSY: database is locked/).waitFor();
+  await log.getByText(/^Progress 3\/3/).waitFor();
+  const logLines = log.getByRole("log").locator(":scope > div > div");
+  assert.equal(await logLines.count(), 10);
+  await page.screenshot({ path: join(output, "service-log.png") });
+  await log.getByRole("button", { name: "Hide progress" }).click();
+  assert.equal(await logLines.count(), 7);
+  await log.getByRole("button", { name: /^Errors/ }).click();
+  assert.equal(await logLines.count(), 1);
+  const logSearch = log.getByRole("searchbox", { name: "Search log lines" });
+  await logSearch.fill("nothing matches this");
+  await logSearch.press("Escape");
+  assert.equal(await logSearch.inputValue(), "");
+  assert.ok(await log.isVisible());
+  await logSearch.press("Escape");
+  await log.waitFor({ state: "hidden" });
+  check(
+    "Catalogue status opens the service log, which adds new lines, filters them, clears a search on Escape and then closes",
+  );
   assert.deepEqual(runtimeErrors, []);
   check("No renderer runtime exceptions");
   await writeFile(

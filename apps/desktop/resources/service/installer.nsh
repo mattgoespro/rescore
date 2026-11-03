@@ -182,8 +182,10 @@
     SetErrorLevel 1
     Abort
   ${EndIf}
+  ; Rescore shows the service log itself; remove the viewer earlier versions shipped.
   ${GetParent} "$newStartMenuLink" $2
-  CreateShortCut "$2\Rescore Logs.lnk" "$INSTDIR\Rescore Logs.exe"
+  Delete "$2\Rescore Logs.lnk"
+  Delete "$INSTDIR\Rescore Logs.exe"
 !macroend
 
 !macro customUnInit
