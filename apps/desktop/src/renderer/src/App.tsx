@@ -208,6 +208,8 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.defaultPrevented) return;
+      // A modal dialog owns the keyboard; these would act behind it.
+      if (document.querySelector("dialog:modal")) return;
       if (
         event.key === "Escape" &&
         !(event.target as HTMLElement)?.closest(

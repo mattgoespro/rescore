@@ -14,7 +14,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { BackgroundServiceStatus } from "../shared/background-service";
 import type { ServiceLogRead } from "../shared/service-log";
-import { readServiceLogFile } from "./service-log";
+import { readServiceLogs } from "./service-log";
 import type { ServiceInspection, ServiceIntent } from "./catalog-lifecycle";
 import {
   runServiceMaintenance,
@@ -328,7 +328,7 @@ export class BackgroundService {
     return this.getStatus();
   }
 
-  /** WinSW writes the API's output here, rolling it at 10 MB. */
+  /** WinSW writes the API's output to this folder, rolling files at 10 MB. */
   readLog(cursor: string | null): Promise<ServiceLogRead> {
     if (!this.root)
       return Promise.resolve({
@@ -337,10 +337,7 @@ export class BackgroundService {
         lines: [],
         cursor: null,
       });
-    return readServiceLogFile(
-      join(this.root, "logs", "RescoreService.out.log"),
-      cursor,
-    );
+    return readServiceLogs(join(this.root, "logs"), cursor);
   }
 
   async openLogs(): Promise<void> {

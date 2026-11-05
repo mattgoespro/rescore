@@ -1090,8 +1090,16 @@ try {
   assert.ok(await log.isVisible());
   await logSearch.press("Escape");
   await log.waitFor({ state: "hidden" });
+  await page.mouse.move(0, 400);
+  assert.equal(
+    await page
+      .getByRole("tooltip")
+      .filter({ hasText: "service log" })
+      .isVisible(),
+    false,
+  );
   check(
-    "Catalogue status opens the service log, which adds new lines, filters them, clears a search on Escape and then closes",
+    "Catalogue status opens the service log, which adds new lines, filters them, clears a search on Escape and then closes without leaving the status tooltip open",
   );
   assert.deepEqual(runtimeErrors, []);
   check("No renderer runtime exceptions");

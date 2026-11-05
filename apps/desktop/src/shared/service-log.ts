@@ -15,11 +15,13 @@ export interface ServiceLogRead {
    * Rescore can read (an API it did not start).
    */
   source: "service" | "session" | "none";
-  /** These lines replace any read before: a first read, or the log rolled over. */
+  /** These lines replace any read before: a first read, or too far behind. */
   reset: boolean;
   lines: ServiceLogLine[];
   /** Pass back on the next read to get only newer lines. */
   cursor: string | null;
+  /** Part of the log could not be read; these lines are still good. */
+  warning?: string;
 }
 
 /** Lines the log view keeps; older ones drop off the top. */

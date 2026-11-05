@@ -25,6 +25,14 @@ import { catalogStatus } from "./services/ensure-catalog.js";
 import { retryDelay, permanentFailure } from "./services/service-retry.js";
 import { closeHydrationEventStreams } from "./routes/hydration-events.js";
 
+// A closed log pipe means the desktop that started this API has gone. Losing
+// its log lines must not stop catalogue work.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") throw error;
+  });
+}
+
 function failureText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const stack =

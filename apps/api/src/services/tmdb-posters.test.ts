@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, test, type TestContext } from "node:test";
 import { CatalogDatabase } from "../catalog/index.js";
 import {
   TMDB_CONCURRENCY,
@@ -133,6 +133,137 @@ test("interactive requests join active work and overtake queued background title
     assert.equal(calls.length, 3, "durable completion skips another lookup");
   } finally {
     release();
+    catalog.close();
+  }
+});
+
+/** Collects log output; the test runner reports through stdout too, so it still goes out. */
+function captureStdout(t: TestContext): string[] {
+  const lines: string[] = [];
+  const write = process.stdout.write.bind(process.stdout) as (
+    chunk: unknown,
+    ...rest: unknown[]
+  ) => boolean;
+  t.mock.method(
+    process.stdout,
+    "write",
+    (chunk: unknown, ...rest: unknown[]) => {
+      lines.push(String(chunk));
+      return write(chunk, ...rest);
+    },
+  );
+  return lines;
+}
+
+const settle = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
+test("a single failed lookup logs a warning that names the title, not its id", async (t) => {
+  const catalog = new CatalogDatabase(":memory:");
+  catalog.upsertTitles([
+    { id: "tt0113277", title: "Heat", kind: "movie", year: 1995 },
+  ]);
+  const coordinator = new TmdbHydrationCoordinator(["test"], {
+    requestsPerSecond: 1000,
+    concurrency: 1,
+  });
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new TypeError("fetch failed");
+  });
+  const lines = captureStdout(t);
+  try {
+    await coordinator.hydrate(catalog, "tt0113277", "movie", false);
+    await settle();
+  } finally {
+    t.mock.restoreAll();
+    catalog.close();
+  }
+  const logged = lines.filter((line) => line.includes("TMDb lookup"));
+  assert.equal(logged.length, 1);
+  assert.match(
+    logged[0],
+    /warn\s+TMDb lookup failed for "Heat" \(1995\): fetch failed/,
+  );
+  assert.doesNotMatch(logged[0], /tt\d+/);
+});
+
+test("a burst of failed lookups logs one line with a count for each cause", async (t) => {
+  const catalog = new CatalogDatabase(":memory:");
+  catalog.upsertTitles([
+    { id: "tt0113277", title: "Heat", kind: "movie", year: 1995 },
+    { id: "tt0000002", title: "Second", kind: "movie" },
+    { id: "tt0000003", title: "Third", kind: "movie" },
+  ]);
+  const coordinator = new TmdbHydrationCoordinator(["test"], {
+    requestsPerSecond: 100_000,
+    concurrency: 3,
+  });
+  t.mock.method(globalThis, "fetch", async (input: URL) => {
+    throw new TypeError(
+      input.pathname.endsWith("tt0000003") ? "timed out" : "fetch failed",
+    );
+  });
+  const lines = captureStdout(t);
+  try {
+    await Promise.all(
+      ["tt0113277", "tt0000002", "tt0000003"].map((id) =>
+        coordinator.hydrate(catalog, id, "movie", false),
+      ),
+    );
+    await settle();
+  } finally {
+    t.mock.restoreAll();
+    catalog.close();
+  }
+  const logged = lines.filter((line) => line.includes("TMDb lookup"));
+  assert.equal(logged.length, 1);
+  assert.match(
+    logged[0],
+    /warn\s+3 TMDb lookups failed, starting with "Heat" \(1995\): fetch failed \(2\), timed out \(1\)/,
+  );
+});
+
+test("failures are reported within the window even while other lookups run", async (t) => {
+  const catalog = new CatalogDatabase(":memory:");
+  catalog.upsertTitles([
+    { id: "tt0113277", title: "Heat", kind: "movie", year: 1995 },
+    { id: "tt0000002", title: "Slow", kind: "movie" },
+  ]);
+  // Two keys, so neither lookup waits on the other's rate limit.
+  const coordinator = new TmdbHydrationCoordinator(["one", "two"], {
+    requestsPerSecond: 1000,
+    concurrency: 1,
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  t.mock.method(globalThis, "fetch", async (input: URL) => {
+    if (input.pathname.endsWith("tt0113277"))
+      throw new TypeError("fetch failed");
+    await gate;
+    return Response.json({ movie_results: [], tv_results: [] });
+  });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const lines = captureStdout(t);
+  const logged = (): string[] =>
+    lines.filter((line) => line.includes("TMDb lookup"));
+  try {
+    const failed = coordinator.hydrate(catalog, "tt0113277", "movie", false);
+    const slow = coordinator.hydrate(catalog, "tt0000002", "movie", false);
+    assert.equal(await failed, false);
+    await settle();
+    assert.equal(logged().length, 0);
+    t.mock.timers.tick(30_000);
+    assert.equal(logged().length, 1);
+    release();
+    assert.equal(await slow, true);
+    await settle();
+    assert.equal(logged().length, 1);
+  } finally {
+    release();
+    t.mock.restoreAll();
+    t.mock.timers.reset();
     catalog.close();
   }
 });

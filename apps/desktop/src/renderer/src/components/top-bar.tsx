@@ -1,4 +1,4 @@
-import { useId, type JSX, type Ref } from "react";
+import { useId, useState, type JSX, type Ref } from "react";
 import type { AppView, CatalogStatus } from "../../../shared/types";
 import mark from "../assets/rescore-mark.png";
 import { CATALOG_INDICATOR_COLOR, catalogIndicator } from "../lib/catalog-busy";
@@ -38,6 +38,9 @@ export default function TopBar({
 }): JSX.Element {
   const tipId = useId();
   const status = catalogIndicator(catalogStatus);
+  // The log hands focus back to the status when it closes; that alone should
+  // not reopen the tooltip. Focusing it again later does.
+  const [focusTipOff, setFocusTipOff] = useState(false);
   return (
     <header className="flex h-12 items-center gap-4 border-b border-line bg-canvas pl-4 app-drag">
       <img
@@ -85,7 +88,14 @@ export default function TopBar({
             aria-haspopup="dialog"
             aria-describedby={tipId}
             className="flex h-8 items-center gap-2 rounded-control bg-wash-6 px-2.5 text-xs font-medium text-muted transition-colors duration-140 hover:bg-wash-8 hover:text-ink"
-            onClick={onOpenLog}
+            onClick={() => {
+              setFocusTipOff(true);
+              onOpenLog();
+            }}
+            onBlur={() => {
+              if (!document.querySelector("dialog:modal"))
+                setFocusTipOff(false);
+            }}
           >
             <span
               aria-hidden="true"
@@ -99,7 +109,10 @@ export default function TopBar({
           <div
             id={tipId}
             role="tooltip"
-            className="invisible absolute top-10 right-0 z-50 flex w-60 flex-col gap-1 rounded-control border border-line bg-raised px-3 py-2.5 text-left group-focus-within:visible group-hover:visible"
+            className={cn(
+              "invisible absolute top-10 right-0 z-50 flex w-60 flex-col gap-1 rounded-control border border-line bg-raised px-3 py-2.5 text-left group-hover:visible",
+              !focusTipOff && "group-focus-within:visible",
+            )}
           >
             <span className="text-ui font-semibold text-ink">{status.tip}</span>
             <span className="text-xs leading-copy text-muted">

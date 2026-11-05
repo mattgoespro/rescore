@@ -29,6 +29,7 @@ import {
   segmentedGroup,
 } from "../lib/ui";
 import { IconClose, IconSearch } from "./icons";
+import { useNotificationHost } from "./notifications";
 
 const LEVELS: ReadonlyArray<{ id: ServiceLogLevel; label: string }> = [
   { id: "debug", label: "All" },
@@ -42,7 +43,14 @@ const RANK: Record<ServiceLogLevel, number> = {
   warn: 2,
   error: 3,
 };
-const CHANNELS = ["catalog", "posters", "ratings", "http", "api"] as const;
+const CHANNELS = [
+  "catalog",
+  "posters",
+  "ratings",
+  "http",
+  "api",
+  "stderr",
+] as const;
 const LEVEL_TEXT: Record<ServiceLogLevel, string> = {
   debug: "text-faint",
   info: "text-ok",
@@ -52,8 +60,8 @@ const LEVEL_TEXT: Record<ServiceLogLevel, string> = {
 const ROW_TINT: Record<ServiceLogLevel, string> = {
   debug: "",
   info: "",
-  warn: "bg-warn/8",
-  error: "bg-danger/10",
+  warn: "bg-warn/6",
+  error: "bg-danger/6",
 };
 /** The file is local, so a read is cheap; it only runs while the log is open. */
 const POLL_MS = 1_000;
@@ -131,12 +139,16 @@ export default function ServiceLog({
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
+  const setNotificationHost = useNotificationHost();
   useEffect(() => {
     dialog.current?.showModal();
+    // Outside a modal dialog, notifications would be covered and inert.
+    setNotificationHost(dialog.current);
     return () => {
+      setNotificationHost(null);
       if (copiedTimer.current != null) window.clearTimeout(copiedTimer.current);
     };
-  }, []);
+  }, [setNotificationHost]);
 
   useEffect(() => {
     let disposed = false;
@@ -152,7 +164,7 @@ export default function ServiceLog({
           if (disposed) return;
           cursor = read.cursor;
           setSource(read.source);
-          setPollError("");
+          setPollError(read.warning ?? "");
           const fresh = read.lines.map((line) => ({ ...line, id: nextId++ }));
           if (read.reset)
             setRows((current) =>
@@ -226,11 +238,12 @@ export default function ServiceLog({
   const empty =
     source === "none"
       ? "Rescore did not start this catalogue API, so its log is not available here. Its output is in the terminal that runs it."
-      : source === null
-        ? "Reading the catalogue log…"
-        : rows.length === 0
-          ? "No log lines yet. The catalogue service writes here once it starts."
-          : "No lines match. Clear the search or widen the filters.";
+      : rows.length > 0
+        ? "No lines match. Clear the search or widen the filters."
+        : pollError ||
+          (source === null
+            ? "Reading the catalogue log…"
+            : "No log lines yet. The catalogue service writes here once it starts.");
 
   return (
     <dialog
@@ -247,12 +260,14 @@ export default function ServiceLog({
             </h2>
             <p className="m-0 text-xs leading-copy text-muted">
               {source === "session"
-                ? "Output of the catalogue API this session started."
+                ? "Output of the catalogue API this session starts."
                 : source === "service"
-                  ? "RescoreService.out.log, written by the RescoreCatalogue service."
+                  ? "RescoreService.out.log and its stderr log, written by the RescoreCatalogue service."
                   : source === "none"
                     ? "No log is available for this catalogue API."
-                    : "Reading the catalogue log…"}
+                    : pollError
+                      ? "The catalogue log could not be read."
+                      : "Reading the catalogue log…"}
             </p>
           </div>
           <span className="flex h-7 items-center gap-2 rounded-full bg-wash-6 px-2.5 text-xs font-medium">

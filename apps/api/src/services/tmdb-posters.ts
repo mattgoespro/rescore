@@ -14,6 +14,7 @@ import {
   tmdbApiKeys,
 } from "../config.js";
 import { languageCodes } from "../catalog/languages.js";
+import type { LogLevel } from "../log/format.js";
 import { emit } from "../log/write.js";
 import type { CatalogDatabase, HydrationStats } from "./catalog-db.js";
 
@@ -202,6 +203,38 @@ interface HydrationJob {
   finish: (complete: boolean) => void;
 }
 
+/** Falls back to the id: reporting a failure must never raise another. */
+function describeTitle(job: HydrationJob): string {
+  try {
+    return job.catalog.titleLabel(job.id) ?? job.id;
+  } catch {
+    return job.id;
+  }
+}
+
+/**
+ * A network drop fails every lookup in flight at once, so failures are logged
+ * as one line: when the coordinator goes idle, or after this long at most.
+ */
+const FAILURE_REPORT_MS = 30_000;
+
+interface LookupFailures {
+  firstTitle: string;
+  causes: Map<string, number>;
+  level: LogLevel;
+}
+
+function formatLookupFailures(failures: LookupFailures): string {
+  const causes = [...failures.causes];
+  const count = causes.reduce((total, [, times]) => total + times, 0);
+  if (count === 1)
+    return `TMDb lookup failed for ${failures.firstTitle}: ${causes[0][0]}`;
+  const summary = causes
+    .map(([cause, times]) => `${cause} (${times.toLocaleString("en-US")})`)
+    .join(", ");
+  return `${count.toLocaleString("en-US")} TMDb lookups failed, starting with ${failures.firstTitle}: ${summary}`;
+}
+
 export class TmdbHydrationCoordinator {
   readonly clients: TmdbClientPool;
   private readonly workersPerKey: number;
@@ -236,6 +269,8 @@ export class TmdbHydrationCoordinator {
   private readonly queue: HydrationJob[] = [];
   private running = 0;
   private interactiveStreak = 0;
+  private failures: LookupFailures | null = null;
+  private failureTimer: NodeJS.Timeout | null = null;
 
   hydrate(
     catalog: CatalogDatabase,
@@ -293,6 +328,7 @@ export class TmdbHydrationCoordinator {
         job.finish(false);
       }
     }
+    if (this.running === 0 && !this.queue.length) this.reportFailures();
   }
 
   private async execute(job: HydrationJob): Promise<void> {
@@ -313,13 +349,52 @@ export class TmdbHydrationCoordinator {
         this.retryAfter.set(job.catalog, retry);
       }
       retry.set(job.id, Date.now() + 30_000);
-      log(
-        `Failed ${job.id}: ${error instanceof Error ? error.message : "unknown error"}`,
-      );
+      this.noteFailure(job, error);
     } finally {
       this.jobs.get(job.catalog)?.delete(job.id);
       job.finish(complete);
     }
+  }
+
+  private noteFailure(job: HydrationJob, error: unknown): void {
+    // Stopping cancels lookups on purpose, and a failed title is retried
+    // later, unless no TMDb key is left to retry it with.
+    const level: LogLevel = shutdownSignal.aborted
+      ? "info"
+      : this.clients.activeCount === 0
+        ? "error"
+        : "warn";
+    const cause = error instanceof Error ? error.message : "unknown error";
+    if (!this.failures) {
+      this.failures = {
+        firstTitle: describeTitle(job),
+        causes: new Map(),
+        level,
+      };
+      this.failureTimer = setTimeout(
+        () => this.reportFailures(),
+        FAILURE_REPORT_MS,
+      );
+      this.failureTimer.unref();
+    } else if (level === "error" || this.failures.level === "info") {
+      this.failures.level = level;
+    }
+    const { causes } = this.failures;
+    causes.set(cause, (causes.get(cause) ?? 0) + 1);
+  }
+
+  private reportFailures(): void {
+    if (this.failureTimer) clearTimeout(this.failureTimer);
+    this.failureTimer = null;
+    const failures = this.failures;
+    this.failures = null;
+    if (!failures) return;
+    emit({
+      channel: "posters",
+      phase: "posters",
+      level: failures.level,
+      message: formatLookupFailures(failures),
+    });
   }
 
   diagnostics(): ReturnType<TmdbClientPool["diagnostics"]> {

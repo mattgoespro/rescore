@@ -3,11 +3,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type JSX,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
 import {
   dropNotice,
@@ -22,6 +24,15 @@ import { IconCheck, IconClose, IconUndo } from "./icons";
 type Notify = (notice: NoticeInput) => void;
 
 const NotifyContext = createContext<Notify>(() => undefined);
+
+const NotificationHostContext = createContext<
+  (host: HTMLElement | null) => void
+>(() => undefined);
+
+/** Lets an open modal dialog hold the notices, which it would otherwise cover. */
+export function useNotificationHost(): (host: HTMLElement | null) => void {
+  return useContext(NotificationHostContext);
+}
 
 /** Raises a notice in the bottom-right stack. */
 export function useNotify(): Notify {
@@ -38,6 +49,7 @@ export function NotificationsProvider({
   children: ReactNode;
 }): JSX.Element {
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [host, setHost] = useState<HTMLElement | null>(null);
   const nextId = useRef(1);
   const notify = useCallback<Notify>((notice) => {
     const id = nextId.current++;
@@ -46,19 +58,31 @@ export function NotificationsProvider({
   const dismiss = useCallback((id: number) => {
     setNotices((current) => dropNotice(current, id));
   }, []);
+  // One container that moves, so a toast keeps its state (and a running undo
+  // stays marked) when a dialog takes over the notices.
+  const [container] = useState(() => document.createElement("div"));
+  useLayoutEffect(() => {
+    (host ?? document.body).append(container);
+    return () => container.remove();
+  }, [host, container]);
+  const region = (
+    <section
+      aria-label="Notifications"
+      aria-live="polite"
+      aria-relevant="additions"
+      className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-90 max-w-[calc(100vw-2rem)] flex-col gap-2"
+    >
+      {notices.map((notice) => (
+        <Toast key={notice.id} notice={notice} onDismiss={dismiss} />
+      ))}
+    </section>
+  );
   return (
     <NotifyContext.Provider value={notify}>
-      {children}
-      <section
-        aria-label="Notifications"
-        aria-live="polite"
-        aria-relevant="additions"
-        className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-90 max-w-[calc(100vw-2rem)] flex-col gap-2"
-      >
-        {notices.map((notice) => (
-          <Toast key={notice.id} notice={notice} onDismiss={dismiss} />
-        ))}
-      </section>
+      <NotificationHostContext.Provider value={setHost}>
+        {children}
+      </NotificationHostContext.Provider>
+      {createPortal(region, container)}
     </NotifyContext.Provider>
   );
 }

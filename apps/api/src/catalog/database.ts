@@ -267,6 +267,16 @@ export class CatalogDatabase {
     return Boolean(row);
   }
 
+  /** How a person would name the title, such as `"Heat" (1995)`, for log lines. */
+  titleLabel(id: string): string | null {
+    const row = this.db
+      .prepare("SELECT title, year FROM titles WHERE id = ?")
+      .get(id.toLowerCase()) as
+      { title: string; year: number | null } | undefined;
+    if (!row) return null;
+    return row.year ? `"${row.title}" (${row.year})` : `"${row.title}"`;
+  }
+
   mediaFor(ids: string[]): Array<{
     id: string;
     kind: string;

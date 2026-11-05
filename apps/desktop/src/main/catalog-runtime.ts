@@ -136,20 +136,20 @@ export function createCatalogRuntime(
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: plan.windowsHide,
       });
-      sessionLog.begin();
+      const output = sessionLog.output();
       const echo = plan.echoOutput;
       child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
         if (echo) process.stdout.write(chunk);
-        sessionLog.append("stdout", chunk);
+        output.append("stdout", chunk);
       });
       child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
         if (echo) process.stderr.write(chunk);
-        sessionLog.append("stderr", chunk);
+        output.append("stderr", chunk);
       });
       spawned = child;
       childUrl = baseUrl;
       // 'close' waits for both pipes to drain; 'exit' can come first.
-      child.once("close", () => sessionLog.end());
+      child.once("close", () => output.end());
       child.on("exit", () => {
         if (spawned === child) {
           spawned = null;
@@ -157,8 +157,18 @@ export function createCatalogRuntime(
         }
       });
       await new Promise<void>((resolve, reject) => {
-        child.once("spawn", resolve);
-        child.once("error", reject);
+        child.once("spawn", () => {
+          sessionLog.begin();
+          resolve();
+        });
+        child.once("error", (error) => {
+          // No pid: the process never ran, so nothing else will say why.
+          if (child.pid === undefined)
+            sessionLog.fail(
+              `Could not start the catalogue API: ${error.message}`,
+            );
+          reject(error);
+        });
       });
     },
     killOwned: async () => {
