@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defaultFilters, SORT_OPTIONS } from "./filters.js";
+import { isLanguageCode } from "./languages.js";
 
 test("default discover filters do not advertise catalogue fields IMDb dumps lack", () => {
   const filters = defaultFilters() as unknown as Record<string, unknown>;
@@ -12,22 +13,12 @@ test("default discover filters do not advertise catalogue fields IMDb dumps lack
 });
 
 test("best match is the taste sort, with the selected default language exclusions", () => {
-  const filters = defaultFilters();
-  assert.deepEqual(filters.excludeLanguages, [
-    "ur",
-    "pa",
-    "ps",
-    "sd",
-    "bn",
-    "si",
-    "ta",
-    "mr",
-    "kn",
-    "te",
-    "gu",
-    "hi",
-    "ml",
-  ]);
+  const { excludeLanguages } = defaultFilters();
+  assert.equal(excludeLanguages.length, 68);
+  assert.equal(new Set(excludeLanguages).size, 68);
+  for (const code of excludeLanguages) assert.equal(isLanguageCode(code), true);
+  for (const code of ["ur", "hi", "bn", "si", "ta", "ml", "bsk", "syl", "bo"])
+    assert.ok(excludeLanguages.includes(code as never));
   assert.equal(
     SORT_OPTIONS.find((option) => option.value === "match")?.label,
     "Best match for you",
@@ -37,5 +28,5 @@ test("best match is the taste sort, with the selected default language exclusion
 test("changing language exclusions does not change another default filter instance", () => {
   const filters = defaultFilters();
   filters.excludeLanguages.length = 0;
-  assert.equal(defaultFilters().excludeLanguages.length, 13);
+  assert.equal(defaultFilters().excludeLanguages.length, 68);
 });
