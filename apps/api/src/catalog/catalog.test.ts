@@ -1447,6 +1447,42 @@ test("excluded languages drop a title when any stored language matches", () => {
   catalog.close();
 });
 
+test("the titles route accepts an exclusion of every language", async () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "French", kind: "movie" },
+    { id: "tt0000002", title: "Unlisted", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([{ id: "tt0000001", languages: ["fr"] }]);
+  const letter = (index: number) => String.fromCharCode(97 + index);
+  const codes = [
+    "fr",
+    ...Array.from(
+      { length: 399 },
+      (_, index) => `q${letter(Math.floor(index / 26))}${letter(index % 26)}`,
+    ),
+  ];
+  const server = createApp(new RatingsStore(catalog), catalog).listen(
+    0,
+    "127.0.0.1",
+  );
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/titles?withoutLanguage=${codes.join(",")}`,
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { data: Array<{ id: string }> };
+    assert.deepEqual(
+      body.data.map((row) => row.id),
+      ["tt0000002"],
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    catalog.close();
+  }
+});
+
 test("missing media filters hide confirmed misses and keep titles not yet hydrated", async () => {
   const catalog = openCatalog();
   catalog.upsertTitles([

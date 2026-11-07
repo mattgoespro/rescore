@@ -69,9 +69,8 @@ export function defaultFilters(): DiscoverFilters {
     voteCountMin: 1000,
     runtimeMin: null,
     runtimeMax: null,
-    // Major languages supported by the catalogue for Pakistan, Bangladesh,
-    // and Sri Lanka: Urdu, Punjabi, Pashto, Sindhi, Bengali, Sinhala, Tamil,
-    // plus the Indian languages Marathi, Kannada, and Telugu.
+    // Urdu, Punjabi, Pashto, Sindhi, Bengali, Sinhala, Tamil, Marathi, Kannada,
+    // Telugu, Gujarati, Hindi, and Malayalam.
     excludeLanguages: [
       "ur",
       "pa",
@@ -83,6 +82,9 @@ export function defaultFilters(): DiscoverFilters {
       "mr",
       "kn",
       "te",
+      "gu",
+      "hi",
+      "ml",
     ],
     sortBy: "match",
     hideWatched: true,

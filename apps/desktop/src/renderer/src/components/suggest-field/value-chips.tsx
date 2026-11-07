@@ -11,7 +11,7 @@ export default function ValueChips<
 }): JSX.Element | null {
   if (!values.length) return null;
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex max-h-60 flex-wrap gap-1.5 overflow-auto overscroll-contain">
       {values.map((value) => (
         <span
           className="inline-flex h-7 items-center gap-0.5 rounded-control bg-selected pr-0.5 pl-2.5 text-ui text-ink"

@@ -258,9 +258,9 @@ function LanguagesEditor({
 }): JSX.Element {
   const search = useCallback(
     async (query: string) =>
-      searchLanguages(query).filter(
-        (language) => !filters.excludeLanguages.includes(language.id),
-      ),
+      searchLanguages(query, Infinity)
+        .filter((language) => !filters.excludeLanguages.includes(language.id))
+        .slice(0, 8),
     [filters.excludeLanguages],
   );
   return (
@@ -280,9 +280,7 @@ function LanguagesEditor({
       }))}
       onChange={(languages) =>
         patch({
-          excludeLanguages: languages
-            .map((language) => language.id)
-            .slice(0, 12),
+          excludeLanguages: languages.map((language) => language.id),
         })
       }
       search={search}

@@ -42,7 +42,8 @@ const listQuery = z
     query: z.string().trim().min(1).max(200).optional(),
     genre: queryList(z.string().trim().min(1).max(60), 30),
     withoutGenre: queryList(z.string().trim().min(1).max(60), 30),
-    withoutLanguage: queryList(z.string().regex(/^[a-z]{2,3}$/), 24, (value) =>
+    // Above every code the desktop can send, so any selection is accepted.
+    withoutLanguage: queryList(z.string().regex(/^[a-z]{2,3}$/), 400, (value) =>
       value.toLowerCase(),
     ),
     kind: z.string().trim().min(1).max(40).optional(),

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  COMPATIBILITY_LANGUAGE_CODES,
   formatLanguages,
   isLanguageCode,
   languageQueryCodes,
@@ -21,6 +22,15 @@ test("language search prefers a name or code prefix", () => {
 
 test("cantonese and hebrew exclusions cover the codes catalogues actually store", () => {
   assert.deepEqual(languageQueryCodes(["cn", "he"]), ["cn", "yue", "he", "iw"]);
+});
+
+test("excluding every language stays within the API's list limit", () => {
+  const codes = languageQueryCodes([
+    ...IMDB_LANGUAGES.map(({ id }) => id),
+    ...COMPATIBILITY_LANGUAGE_CODES,
+  ]);
+  assert.ok(codes.length <= 400);
+  for (const code of codes) assert.match(code, /^[a-z]{2,3}$/);
 });
 
 test("language details format as names", () => {

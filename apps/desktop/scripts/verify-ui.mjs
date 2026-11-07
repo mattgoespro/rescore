@@ -1101,6 +1101,57 @@ try {
   check(
     "Catalogue status opens the service log, which adds new lines, filters them, clears a search on Escape and then closes without leaving the status tooltip open",
   );
+  await page.getByRole("button", { name: "Discover", exact: true }).click();
+  await page.getByRole("button", { name: /Hiding/ }).click();
+  const addLanguage = page.getByRole("combobox", { name: "Hide titles in" });
+  const chips = page.getByRole("button", { name: /^Remove / });
+  const addedLanguages = [
+    "German",
+    "Spanish",
+    "Italian",
+    "Japanese",
+    "Korean",
+    "Thai",
+    "Dutch",
+    "Polish",
+    "Swedish",
+    "Danish",
+    "Greek",
+    "Finnish",
+    "Arabic",
+    "Czech",
+    "Turkish",
+    "Russian",
+    "Persian",
+    "Hebrew",
+    "Hungarian",
+    "Romanian",
+    "Vietnamese",
+    "Indonesian",
+    "Ukrainian",
+    "Malay",
+    "Filipino",
+    "Bulgarian",
+  ];
+  const chipsBefore = await chips.count();
+  for (const name of addedLanguages) {
+    await addLanguage.fill(name);
+    await page.getByRole("option", { name, exact: true }).click();
+  }
+  const languageTotal = chipsBefore + addedLanguages.length;
+  assert.equal(await chips.count(), languageTotal);
+  await page.waitForFunction(
+    (total) => window.__uiTest.lastFilters.excludeLanguages.length === total,
+    languageTotal,
+  );
+  const hidingBox = await page
+    .getByRole("dialog")
+    .filter({ has: addLanguage })
+    .boundingBox();
+  assert.ok(hidingBox.y >= 0 && hidingBox.y + hidingBox.height <= 920);
+  await page.keyboard.press("Escape");
+  check("Hiding takes any number of languages and stays on screen");
+
   assert.deepEqual(runtimeErrors, []);
   check("No renderer runtime exceptions");
   await writeFile(

@@ -24,6 +24,9 @@ test("best match is the taste sort, with the selected default language exclusion
     "mr",
     "kn",
     "te",
+    "gu",
+    "hi",
+    "ml",
   ]);
   assert.equal(
     SORT_OPTIONS.find((option) => option.value === "match")?.label,
@@ -34,5 +37,5 @@ test("best match is the taste sort, with the selected default language exclusion
 test("changing language exclusions does not change another default filter instance", () => {
   const filters = defaultFilters();
   filters.excludeLanguages.length = 0;
-  assert.equal(defaultFilters().excludeLanguages.length, 10);
+  assert.equal(defaultFilters().excludeLanguages.length, 13);
 });
