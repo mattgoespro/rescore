@@ -5,6 +5,7 @@ export { default as IconSettings } from "./settings";
 export { default as IconList } from "./list";
 export { default as IconGrid } from "./grid";
 export { default as IconStar } from "./star";
+export { default as IconStarOutline } from "./star-outline";
 export { default as IconRefresh } from "./refresh";
 export { default as IconHistory } from "./history";
 export { default as IconCheck } from "./check";

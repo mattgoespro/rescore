@@ -8,7 +8,6 @@ import {
   type JSX,
 } from "react";
 import { isAppearanceOnlyPatch } from "../../shared/appearance";
-import { applySearchHistory } from "../../shared/search-history";
 import type {
   AppView,
   CatalogStatus,
@@ -46,7 +45,6 @@ import {
 } from "./lib/use-visible-media";
 import { cn } from "./lib/cn";
 import { pollWhileVisible } from "./lib/poll-while-visible";
-import { listSearchHistory } from "./lib/search-history-store";
 import { btn, pageTitleClass } from "./lib/ui";
 import { libraryMovie } from "./lib/library-movie";
 import Discover from "./views/Discover";
@@ -168,12 +166,6 @@ export default function App(): JSX.Element {
       applyAppearance(next);
     });
     void window.api.catalogStatus().then(setCatalogStatus);
-    void listSearchHistory().then((entries) => {
-      const latest = entries[0];
-      if (latest) {
-        setFilters((current) => applySearchHistory(current, latest));
-      }
-    });
     return window.api.onCatalogStatus((next) =>
       setCatalogStatus((current) =>
         current && sameCatalogView(current, next) ? current : next,

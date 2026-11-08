@@ -68,29 +68,6 @@ export function snapshotSearchHistory(
   };
 }
 
-export function isDefaultSearchHistory(snapshot: SearchHistoryInput): boolean {
-  const defaults = defaultFilters();
-  return (
-    searchHistoryKey(snapshot) ===
-    searchHistoryKey({
-      titleKind: defaults.titleKind,
-      genres: defaults.genres,
-      yearMin: defaults.yearMin,
-      yearMax: defaults.yearMax,
-      ratingMin: defaults.ratingMin,
-      sortBy: defaults.sortBy,
-    })
-  );
-}
-
-export function shouldRecordSearchHistory(options: {
-  saved: boolean;
-  snapshot: SearchHistoryInput;
-}): boolean {
-  if (options.saved) return false;
-  return !isDefaultSearchHistory(options.snapshot);
-}
-
 export function upsertSearchHistory(
   current: SearchHistoryEntry[],
   input: SearchHistoryInput,

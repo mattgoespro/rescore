@@ -26,7 +26,6 @@ import { titleKey } from "../../../shared/types";
 import {
   applySearchHistory,
   matchesSearchHistory,
-  shouldRecordSearchHistory,
   snapshotSearchHistory,
 } from "../../../shared/search-history";
 import {
@@ -43,11 +42,16 @@ import OverlayScroll from "../components/overlay-scroll";
 import VirtualList from "../components/virtual-list";
 import CatalogLoader from "../components/catalog-loader";
 import { useNotify } from "../components/notifications";
-import { IconGrid, IconList } from "../components/icons";
+import { IconGrid, IconList, IconStarOutline } from "../components/icons";
 import { enterDelayMs } from "../motion";
 import { cn } from "../lib/cn";
 import { discoverCountLabel } from "../lib/discover-count";
-import { pageTitleClass, segmentedCell, segmentedGroup } from "../lib/ui";
+import {
+  iconBtn,
+  pageTitleClass,
+  segmentedCell,
+  segmentedGroup,
+} from "../lib/ui";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const SCROLLABLE_TARGET_ID = "discover-results-scroll";
@@ -114,8 +118,6 @@ export default function Discover({
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const openedId = useRef<string | null>(null);
-  const historySession = useRef({ saved: false });
-  const replayKey = useRef<string | null>(null);
   const [historyReplay, setHistoryReplay] = useState(0);
 
   const filterKey = useMemo(
@@ -126,11 +128,6 @@ export default function Discover({
       }),
     [filters],
   );
-
-  useEffect(() => {
-    historySession.current = { saved: replayKey.current === filterKey };
-    replayKey.current = null;
-  }, [filterKey, historyReplay]);
 
   useEffect(() => {
     void listSearchHistory().then(setHistory);
@@ -166,8 +163,8 @@ export default function Discover({
     reportedError.current = snapshot.error;
     onError(snapshot.error);
   }, [snapshot.error, onError]);
-  // A finished search opens its first title and records itself once; the
-  // items and callbacks it reads are the latest, not reasons to run again.
+  // A finished search opens its first title; the items and callbacks it
+  // reads are the latest, not reasons to run again.
   const onSearchComplete = useEffectEvent(() => {
     scrollerRef.current?.scrollTo({ top: 0 });
     const first = snapshot.items[0];
@@ -176,7 +173,6 @@ export default function Discover({
       onOpen(first);
     }
     setEntering(true);
-    recordSearchHistory();
   });
   useEffect(() => {
     if (snapshot.completion?.reset) onSearchComplete();
@@ -193,30 +189,6 @@ export default function Discover({
     onOpen(movie);
   }
 
-  function recordSearchHistory(): void {
-    if (historySession.current.saved) return;
-    if (history.some((entry) => matchesSearchHistory(filters, entry))) {
-      historySession.current.saved = true;
-      return;
-    }
-    const snapshot = snapshotSearchHistory(filters, genres);
-    if (
-      !shouldRecordSearchHistory({
-        saved: historySession.current.saved,
-        snapshot,
-      })
-    ) {
-      historySession.current.saved = true;
-      return;
-    }
-    historySession.current.saved = true;
-    void saveSearchHistory(snapshot)
-      .then(setHistory)
-      .catch(() => {
-        historySession.current.saved = false;
-      });
-  }
-
   useEffect(() => {
     if (!entering) return;
     const handle = window.setTimeout(() => setEntering(false), 640);
@@ -229,6 +201,38 @@ export default function Discover({
   const countLabel = discoverCountLabel(totalResults, loading && !items.length);
   const activeHistoryId =
     history.find((entry) => matchesSearchHistory(filters, entry))?.id ?? null;
+
+  // Searches are saved only from the star; it removes the search when saved.
+  function toggleSavedSearch(): void {
+    if (activeHistoryId) {
+      removeSavedSearch(activeHistoryId);
+      return;
+    }
+    void saveSearchHistory(snapshotSearchHistory(filters, genres)).then(
+      setHistory,
+      () => notify({ tone: "error", message: "Could not save this search." }),
+    );
+  }
+
+  function removeSavedSearch(id: string): void {
+    const removed = history.find((entry) => entry.id === id);
+    void removeSearchHistory(id).then((next) => {
+      setHistory(next);
+      if (!removed) return;
+      const { id: _id, savedAt: _savedAt, ...input } = removed;
+      notify({
+        tone: "success",
+        message: "Saved search removed.",
+        undo: () =>
+          saveSearchHistory(input).then(setHistory, () =>
+            notify({
+              tone: "error",
+              message: "Could not restore that saved search.",
+            }),
+          ),
+      });
+    });
+  }
 
   return (
     <section
@@ -263,31 +267,28 @@ export default function Discover({
               entries={history}
               activeId={activeHistoryId}
               onApply={(entry) => {
-                const next = applySearchHistory(filters, entry);
-                replayKey.current = JSON.stringify({ ...next, page: 1 });
-                setFilters(next);
+                setFilters(applySearchHistory(filters, entry));
                 setHistoryReplay((revision) => revision + 1);
               }}
-              onRemove={(id) => {
-                const removed = history.find((entry) => entry.id === id);
-                void removeSearchHistory(id).then((next) => {
-                  setHistory(next);
-                  if (!removed) return;
-                  const { id: _id, savedAt: _savedAt, ...input } = removed;
-                  notify({
-                    tone: "success",
-                    message: "Saved search removed.",
-                    undo: () =>
-                      saveSearchHistory(input).then(setHistory, () =>
-                        notify({
-                          tone: "error",
-                          message: "Could not restore that saved search.",
-                        }),
-                      ),
-                  });
-                });
-              }}
+              onRemove={removeSavedSearch}
             />
+            <button
+              type="button"
+              className={cn(
+                iconBtn("bare"),
+                "size-8",
+                activeHistoryId && "text-accent-text",
+              )}
+              title={activeHistoryId ? "Remove saved search" : "Save search"}
+              aria-label="Save search"
+              aria-pressed={activeHistoryId !== null}
+              onClick={toggleSavedSearch}
+            >
+              <IconStarOutline
+                className="size-4"
+                filled={activeHistoryId !== null}
+              />
+            </button>
           </div>
         </div>
         <div className="mb-4 pr-6">

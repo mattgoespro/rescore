@@ -158,8 +158,16 @@ await page.addInitScript(() => {
       };
     },
     listSearchHistory: async () => history,
-    saveSearchHistory: async () => {
+    saveSearchHistory: async (input) => {
       control.historyWrites++;
+      history = [
+        {
+          ...input,
+          id: `saved-${control.historyWrites}`,
+          savedAt: new Date().toISOString(),
+        },
+        ...history,
+      ];
       return history;
     },
     removeSearchHistory: async (id) =>
@@ -444,6 +452,38 @@ try {
     true,
   );
   check("Tab and Shift+Tab leave the history popover without losing focus");
+
+  const saveSearch = page.getByRole("button", {
+    name: "Save search",
+    exact: true,
+  });
+  const starred = (pressed) =>
+    page.waitForFunction(
+      (want) =>
+        document
+          .querySelector('button[aria-label="Save search"]')
+          ?.getAttribute("aria-pressed") === want,
+      String(pressed),
+    );
+  if ((await saveSearch.getAttribute("aria-pressed")) === "true") {
+    await saveSearch.click();
+    await starred(false);
+  }
+  const starWrites = await page.evaluate(() => window.__uiTest.historyWrites);
+  await saveSearch.click();
+  await starred(true);
+  assert.equal(
+    await page.evaluate(() => window.__uiTest.historyWrites),
+    starWrites + 1,
+  );
+  await saveSearch.click();
+  await starred(false);
+  // Removal toasts carry their own Undo; clear them for the checks that follow.
+  const dismissNotice = page.getByRole("button", {
+    name: "Dismiss notification",
+  });
+  while (await dismissNotice.count()) await dismissNotice.first().click();
+  check("Only the star saves a search, and starring it again removes it");
 
   const inspector = page.getByRole("complementary", { name: "Title details" });
   const retainedScroll = await scroll.evaluate((element) => element.scrollTop);

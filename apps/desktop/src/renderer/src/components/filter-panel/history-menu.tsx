@@ -190,8 +190,8 @@ export default function HistoryMenu({
                 </>
               ) : (
                 <p className="m-0 p-3 text-ui leading-copy text-muted">
-                  No saved searches yet. Run a search with filters or a sort
-                  other than the defaults to record it.
+                  No saved searches yet. Use the star beside this button to save
+                  the current search.
                 </p>
               )}
             </div>,
