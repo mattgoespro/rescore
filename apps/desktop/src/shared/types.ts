@@ -57,6 +57,7 @@ export type {
 } from "./ranking-types";
 export { applyMovieEnrichment } from "./ranking-types";
 export type { Settings } from "./settings";
+export type { ImdbAuthStatus } from "./imdb-auth";
 export {
   DEFAULT_CATALOG_API_URL,
   defaultSettings,

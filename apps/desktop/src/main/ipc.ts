@@ -21,6 +21,10 @@ import {
 import { CatalogClient, CatalogError } from "./catalog-client";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
+import {
+  clearImdbWatchedSession,
+  scrapeImdbCheckins,
+} from "./imdb-watched-window";
 import type { SearchHistoryInput } from "../shared/search-history";
 import { buildProfile, describeProfile, publicProfile } from "./ranking";
 import {
@@ -176,6 +180,20 @@ export function registerIpc(
   ipcMain.handle("library:clear", () => workflow.clear());
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
+  ipcMain.handle("imdb:authStatus", () => store.imdbAuthStatus());
+  ipcMain.handle(
+    "imdb:setCredentials",
+    (_event, payload: { email?: string; password?: string }) => {
+      const previous = store.imdbAuthStatus().email;
+      const status = store.setImdbCredentials(
+        payload?.email ?? "",
+        payload?.password ?? "",
+      );
+      if (status.email !== previous) clearImdbWatchedSession();
+      return status;
+    },
+  );
+  ipcMain.handle("imdb:importWatched", () => importImdbWatched());
   ipcMain.handle("search-history:list", () => store.listSearchHistory());
   ipcMain.handle("search-history:save", (_event, input: SearchHistoryInput) =>
     store.saveSearchHistory(input),
@@ -254,6 +272,35 @@ function importImdbCsv(): Promise<ImportProgress> {
     importing = null;
   });
   return importing;
+}
+
+function importImdbWatched(): Promise<ImportProgress> {
+  importing ??= scrapeAndImportWatched().finally(() => {
+    importing = null;
+  });
+  return importing;
+}
+
+async function scrapeAndImportWatched(): Promise<ImportProgress> {
+  const credentials = store.getImdbCredentials();
+  if (!credentials) throw new Error("Save your IMDb email and password first.");
+  sendToWindow(getWindow(), "library:importProgress", {
+    current: 0,
+    total: 0,
+    title: "Reading Your Check-ins on IMDb",
+    imported: 0,
+    skipped: 0,
+    errors: 0,
+    done: false,
+  } satisfies ImportProgress);
+  const ids = await scrapeImdbCheckins(credentials, getWindow());
+  let sentAt = 0;
+  return workflow.importWatched(ids, (progress) => {
+    const now = Date.now();
+    if (!progress.done && now - sentAt < IMPORT_PROGRESS_INTERVAL_MS) return;
+    sentAt = now;
+    sendToWindow(getWindow(), "library:importProgress", progress);
+  });
 }
 
 async function pickAndImportCsv(): Promise<ImportProgress> {

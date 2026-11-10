@@ -603,6 +603,9 @@ Invoke (renderer → main):
 | `library:list`           | `listLibrary()`     | `GET /v1/library`                                |
 | `library:upsert`         | `upsertLibrary()`   | `PUT /v1/library/:id`                            |
 | `library:remove`         | `removeLibrary()`   | `DELETE /v1/library/:id`                         |
+| `imdb:authStatus`        | `imdbAuthStatus()`  | stored IMDb email; whether a password is saved   |
+| `imdb:setCredentials`    | `setImdbCredentials()` | main-process IMDb email/password store        |
+| `imdb:importWatched`     | `importImdbWatched()` | scrape Check-ins, `PUT` watched, no score      |
 
 Push (main → renderer): `catalog:status` with `CatalogStatus`.
 

@@ -209,3 +209,13 @@ test("For You ranks with the shared taste inputs that chose its hints", async ()
   assert.equal(sent.length, 2);
   assert.equal(reads, 1, "the second load reuses the taste inputs");
 });
+
+test("importWatched saves present titles without a rating and skips misses", async () => {
+  const f = fixture();
+  const result = await f.workflow.importWatched(["tt1", "tt404"]);
+  assert.equal(result.imported, 1);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.errors, 0);
+  assert.equal(result.done, true);
+  assert.deepEqual(f.writes, [["tt1", "watched", undefined, undefined]]);
+});

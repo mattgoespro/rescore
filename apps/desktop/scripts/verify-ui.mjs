@@ -38,6 +38,7 @@ await page.addInitScript(() => {
     failUpsert: false,
     discoverCalls: 0,
     historyWrites: 0,
+    imdbImports: 0,
     searchDelay: 120,
     healthMode: "normal",
     catalogListeners: new Set(),
@@ -91,6 +92,7 @@ await page.addInitScript(() => {
     rating: 8,
     updatedAt: "2026-10-01T00:00:00Z",
   }));
+  let imdbAuth = { email: "", passwordSaved: false };
   let history = [
     {
       id: "saved-1",
@@ -155,6 +157,26 @@ await page.addInitScript(() => {
       control.importHandler = handler;
       return () => {
         control.importHandler = null;
+      };
+    },
+    imdbAuthStatus: async () => ({ ...imdbAuth }),
+    setImdbCredentials: async (email, password) => {
+      imdbAuth = {
+        email,
+        passwordSaved: Boolean(password) || imdbAuth.passwordSaved,
+      };
+      return { ...imdbAuth };
+    },
+    importImdbWatched: async () => {
+      control.imdbImports++;
+      return {
+        current: 2,
+        total: 2,
+        title: "Import complete",
+        imported: 1,
+        skipped: 1,
+        errors: 0,
+        done: true,
       };
     },
     listSearchHistory: async () => history,
@@ -720,11 +742,48 @@ try {
   );
   assert.equal(
     await page
-      .getByRole("progressbar", { name: "Ratings import" })
+      .getByRole("progressbar", { name: "Import progress" })
       .getAttribute("aria-valuenow"),
     "4",
   );
   check("Import progress has a labelled accessible value and live status");
+
+  const importWatched = page.getByRole("button", {
+    name: "Import IMDb watched",
+    exact: true,
+  });
+  assert.equal(await importWatched.isDisabled(), true);
+  const imdbPassword = page.getByLabel("IMDb password", { exact: true });
+  await page.getByLabel("IMDb email", { exact: true }).fill("me@imdb.test");
+  await page
+    .getByRole("button", { name: "Save credentials", exact: true })
+    .click();
+  await page
+    .getByRole("region", { name: "Notifications" })
+    .getByText("IMDb email saved. Add a password to import.")
+    .waitFor();
+  assert.equal(await importWatched.isDisabled(), true);
+  await imdbPassword.fill("test-only-password");
+  await page
+    .getByRole("button", { name: "Save credentials", exact: true })
+    .click();
+  await page
+    .getByRole("region", { name: "Notifications" })
+    .getByText("IMDb credentials saved.")
+    .waitFor();
+  assert.equal(await imdbPassword.inputValue(), "");
+  assert.equal(
+    await imdbPassword.getAttribute("placeholder"),
+    "Password saved",
+  );
+  await importWatched.click();
+  await page
+    .getByText(/2\/2 Import complete · imported 1 · skipped 1/)
+    .waitFor();
+  assert.equal(await page.evaluate(() => window.__uiTest.imdbImports), 1);
+  check(
+    "IMDb import waits for a saved password, never echoes it, and reports the result",
+  );
 
   await page.getByRole("button", { name: "Discover", exact: true }).click();
   await results.getByRole("listitem").first().waitFor();

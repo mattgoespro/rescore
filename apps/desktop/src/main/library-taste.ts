@@ -270,6 +270,57 @@ export function createLibraryTasteWorkflow<
       report({ ...progress });
       return progress;
     });
+  const importWatched = (
+    ids: string[],
+    report: (progress: ImportProgress) => void = () => {},
+  ) =>
+    run(async (client, captured) => {
+      const progress: ImportProgress = {
+        current: 0,
+        total: ids.length,
+        title: "",
+        imported: 0,
+        skipped: 0,
+        errors: 0,
+        done: false,
+      };
+      let next = 0;
+      const importId = async (imdbId: string): Promise<void> => {
+        try {
+          const movie = await client.findByImdb(imdbId);
+          check(captured);
+          if (!movie) progress.skipped++;
+          else {
+            await client.saveLibrary(movie, "watched");
+            progress.imported++;
+          }
+        } catch {
+          check(captured);
+          progress.errors++;
+        }
+        progress.current++;
+        progress.title = imdbId;
+        report({ ...progress });
+      };
+      const worker = async (): Promise<void> => {
+        while (next < ids.length) {
+          check(captured);
+          await importId(ids[next++]!);
+        }
+      };
+      await withLibraryWrite(taste, () =>
+        Promise.all(
+          Array.from(
+            { length: Math.min(IMPORT_CONCURRENCY, ids.length) },
+            worker,
+          ),
+        ),
+      );
+      progress.done = true;
+      progress.title = "Import complete";
+      report({ ...progress });
+      return progress;
+    });
   return {
     client: () => connection().client,
     list,
@@ -281,6 +332,7 @@ export function createLibraryTasteWorkflow<
     profile,
     enrich,
     importRatings,
+    importWatched,
     invalidate: () => taste.drop(),
   };
 }

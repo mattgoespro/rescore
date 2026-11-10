@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, safeStorage } from "electron";
 import {
   existsSync,
   mkdirSync,
@@ -7,6 +7,11 @@ import {
   writeFileSync,
 } from "fs";
 import { join } from "path";
+import {
+  createImdbAuthStore,
+  type ImdbAuthStatus,
+  type ImdbCredentials,
+} from "./imdb-auth";
 import {
   normalizeSearchHistory,
   upsertSearchHistory,
@@ -36,12 +41,17 @@ export class AppStore {
   private path: string;
   private state: PersistedState;
   private legacySettings = false;
+  private auth: ReturnType<typeof createImdbAuthStore>;
 
   constructor() {
     const dir = app.getPath("userData");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     this.path = join(dir, "rescore.json");
     this.state = this.load();
+    this.auth = createImdbAuthStore({
+      dir,
+      ...imdbAuthCrypto(),
+    });
     if (this.legacySettings) this.save();
   }
 
@@ -105,6 +115,30 @@ export class AppStore {
     this.save();
     return this.listSearchHistory();
   }
+
+  imdbAuthStatus(): ImdbAuthStatus {
+    return this.auth.status();
+  }
+
+  getImdbCredentials(): ImdbCredentials | null {
+    return this.auth.getCredentials();
+  }
+
+  setImdbCredentials(email: string, password: string): ImdbAuthStatus {
+    return this.auth.setCredentials(email, password);
+  }
+}
+
+function imdbAuthCrypto(): {
+  encrypt?(plain: string): string;
+  decrypt?(stored: string): string;
+} {
+  if (!safeStorage.isEncryptionAvailable()) return {};
+  return {
+    encrypt: (plain) => safeStorage.encryptString(plain).toString("base64"),
+    decrypt: (stored) =>
+      safeStorage.decryptString(Buffer.from(stored, "base64")),
+  };
 }
 
 function hasLegacySettings(settings: unknown): boolean {

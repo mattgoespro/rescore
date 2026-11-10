@@ -5,6 +5,7 @@ import type {
   DiscoverFilters,
   ForYouResult,
   Genre,
+  ImdbAuthStatus,
   ImportProgress,
   LibraryEntry,
   MediaType,
@@ -92,6 +93,15 @@ const api = {
     ipcRenderer.invoke("library:export"),
   importImdbCsv: (): Promise<ImportProgress> =>
     ipcRenderer.invoke("library:importImdbCsv"),
+  imdbAuthStatus: (): Promise<ImdbAuthStatus> =>
+    ipcRenderer.invoke("imdb:authStatus"),
+  setImdbCredentials: (
+    email: string,
+    password: string,
+  ): Promise<ImdbAuthStatus> =>
+    ipcRenderer.invoke("imdb:setCredentials", { email, password }),
+  importImdbWatched: (): Promise<ImportProgress> =>
+    ipcRenderer.invoke("imdb:importWatched"),
   listSearchHistory: (): Promise<SearchHistoryEntry[]> =>
     ipcRenderer.invoke("search-history:list"),
   saveSearchHistory: (

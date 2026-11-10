@@ -70,6 +70,10 @@ export default function SettingsView({
   const [accentDraft, setAccentDraft] = useState(settings.accentColor);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [busy, setBusy] = useState(false);
+  const [imdbEmail, setImdbEmail] = useState("");
+  const [imdbPassword, setImdbPassword] = useState("");
+  const [imdbPasswordSaved, setImdbPasswordSaved] = useState(false);
+  const [savingImdb, setSavingImdb] = useState(false);
   const [saving, setSaving] = useState(false);
   const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -121,6 +125,19 @@ export default function SettingsView({
 
   useEffect(() => {
     return window.api.onImportProgress(setProgress);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.api.imdbAuthStatus().then((status) => {
+      if (cancelled) return;
+      // An email typed before the stored one arrives is the newer value.
+      setImdbEmail((current) => current || status.email);
+      setImdbPasswordSaved(status.passwordSaved);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function commitAppearance(
@@ -215,6 +232,46 @@ export default function SettingsView({
     onError("");
     try {
       const result = await window.api.importImdbCsv();
+      setProgress(result);
+      onLibraryChange(await window.api.listLibrary());
+    } catch (error) {
+      onError(errorMessage(error, "Import failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveImdbCredentials(): Promise<void> {
+    setSavingImdb(true);
+    onError("");
+    try {
+      const status = await window.api.setImdbCredentials(
+        imdbEmail,
+        imdbPassword,
+      );
+      setImdbEmail(status.email);
+      setImdbPassword("");
+      setImdbPasswordSaved(status.passwordSaved);
+      notify({
+        tone: "success",
+        message: status.passwordSaved
+          ? "IMDb credentials saved."
+          : status.email
+            ? "IMDb email saved. Add a password to import."
+            : "IMDb credentials removed.",
+      });
+    } catch {
+      onError("Could not save IMDb credentials.");
+    } finally {
+      setSavingImdb(false);
+    }
+  }
+
+  async function importWatched(): Promise<void> {
+    setBusy(true);
+    onError("");
+    try {
+      const result = await window.api.importImdbWatched();
       setProgress(result);
       onLibraryChange(await window.api.listLibrary());
     } catch (error) {
@@ -372,18 +429,68 @@ export default function SettingsView({
           <div className="rounded-app border border-line bg-rail p-5">
             <h2 className="kicker">Ratings import</h2>
             <p className="text-ui leading-copy text-pretty text-muted not-empty:mt-2">
-              Export your ratings from IMDb, then choose the CSV. Imported
-              titles are marked watched.
+              Save your IMDb email and password, then import Your Check-ins as
+              watched titles. Existing scores stay. You can still import a
+              ratings.csv instead.
             </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 min-[560px]:grid-cols-2">
+              <label className="mb-1 flex min-w-0 flex-col gap-2 text-ui text-muted">
+                IMDb email
+                <input
+                  type="email"
+                  name="imdbEmail"
+                  autoComplete="username"
+                  spellCheck={false}
+                  disabled={savingImdb || busy}
+                  value={imdbEmail}
+                  onChange={(event) => setImdbEmail(event.target.value)}
+                />
+              </label>
+              <label className="mb-1 flex min-w-0 flex-col gap-2 text-ui text-muted">
+                IMDb password
+                <input
+                  type="password"
+                  name="imdbPassword"
+                  autoComplete="current-password"
+                  disabled={savingImdb || busy}
+                  value={imdbPassword}
+                  placeholder={imdbPasswordSaved ? "Password saved" : undefined}
+                  onChange={(event) => setImdbPassword(event.target.value)}
+                />
+              </label>
+            </div>
             <div className="my-3 flex flex-wrap gap-2.5">
               <button
                 type="button"
+                className={btn("small")}
+                disabled={savingImdb || busy}
+                aria-busy={savingImdb}
+                onClick={() => void saveImdbCredentials()}
+              >
+                {savingImdb ? "Saving…" : "Save credentials"}
+              </button>
+              <button
+                type="button"
                 className={btn("primary", "small")}
+                disabled={busy || !imdbPasswordSaved}
+                aria-busy={busy}
+                title={
+                  imdbPasswordSaved
+                    ? undefined
+                    : "Save your IMDb email and password first"
+                }
+                onClick={() => void importWatched()}
+              >
+                {busy ? "Importing…" : "Import IMDb watched"}
+              </button>
+              <button
+                type="button"
+                className={btn("small")}
                 disabled={busy}
                 aria-busy={busy}
                 onClick={() => void importCsv()}
               >
-                {busy ? "Importing…" : "Import ratings.csv"}
+                Import ratings.csv
               </button>
               <button
                 type="button"
@@ -426,7 +533,7 @@ export default function SettingsView({
                 <div
                   className={cn("my-2.5", progressBarClass)}
                   role="progressbar"
-                  aria-label="Ratings import"
+                  aria-label="Import progress"
                   aria-valuemin={0}
                   aria-valuemax={progress.total || 1}
                   aria-valuenow={progress.current}
