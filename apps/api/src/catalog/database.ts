@@ -11,7 +11,12 @@ import type {
   TitleListResponse,
 } from "../catalog-types.js";
 import { normalizeLanguageCodes } from "./languages.js";
-import { invalidateQueryCache, invalidateCountCache } from "./query-cache.js";
+import {
+  invalidateQueryCache,
+  invalidateCountCache,
+  queryCache,
+  type TmdbCoverage,
+} from "./query-cache.js";
 import {
   flagIsSet,
   getMetaValue,
@@ -73,15 +78,6 @@ type LibraryWriteRow = {
   note: string | null;
   updated_at: string;
 };
-
-interface TmdbCoverage {
-  total: number;
-  posters: number;
-  synopses: number;
-  certifications: number;
-}
-
-const COVERAGE_TTL_MS = 10_000;
 
 const NO_TIMINGS: SetupTimings = {
   downloadBytesPerSecond: null,
@@ -212,19 +208,16 @@ export class CatalogDatabase {
   }
 
   /**
-   * How many titles have each kind of TMDb metadata. It reads every title, so
-   * a reading is reused for a few seconds: hydration reports after each batch
-   * and Settings polls, and neither needs it fresher.
+   * How many titles have each kind of TMDb metadata. Counting reads every
+   * title, which held the service's only thread for over a second each time
+   * hydration reported, so it is counted once and `updatePosterUrls` keeps it
+   * current. A title insert or delete drops it and the next read counts again.
    */
   tmdbCoverage(): TmdbCoverage {
-    const cached = this.coverageCache;
-    if (cached && Date.now() < cached.expires) return { ...cached.value };
-    const value = this.readTmdbCoverage();
-    this.coverageCache = { value, expires: Date.now() + COVERAGE_TTL_MS };
-    return { ...value };
+    const cache = queryCache(this.db);
+    cache.coverage ??= this.readTmdbCoverage();
+    return { ...cache.coverage };
   }
-
-  private coverageCache: { value: TmdbCoverage; expires: number } | null = null;
 
   private readTmdbCoverage(): TmdbCoverage {
     const row = this.db
@@ -553,12 +546,31 @@ export class CatalogDatabase {
     const markLanguagesChecked = this.db.prepare(
       "UPDATE titles SET languages_checked = 1 WHERE id = ?",
     );
+    // Each field is written only while it is NULL, so a write fills it when
+    // it was NULL and the new value is not empty.
+    const unset = this.db.prepare(
+      `SELECT poster_url IS NULL AS poster, synopsis IS NULL AS synopsis,
+         certification IS NULL AS certification FROM titles WHERE id = ?`,
+    );
+    const coverage = queryCache(this.db).coverage;
+    const filled = { posters: 0, synopses: 0, certifications: 0 };
     this.db.transaction(() => {
       for (const row of rows) {
         const setPoster = row.posterUrl !== undefined;
         const setSynopsis = row.synopsis !== undefined;
         const setCertification =
           row.certification !== undefined && row.certification !== null;
+        const before = coverage
+          ? (unset.get(row.id) as
+              | { poster: number; synopsis: number; certification: number }
+              | undefined)
+          : undefined;
+        if (before) {
+          if (before.poster && row.posterUrl) filled.posters++;
+          if (before.synopsis && row.synopsis) filled.synopses++;
+          if (before.certification && row.certification)
+            filled.certifications++;
+        }
         update.run({
           id: row.id,
           setPoster: setPoster ? 1 : 0,
@@ -582,6 +594,11 @@ export class CatalogDatabase {
         }
       }
     })();
+    if (coverage) {
+      coverage.posters += filled.posters;
+      coverage.synopses += filled.synopses;
+      coverage.certifications += filled.certifications;
+    }
     if (rows.some((row) => row.languages?.length))
       invalidateCountCache(this.db);
   }

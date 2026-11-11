@@ -22,12 +22,16 @@ import { genreId, movieFromTitle } from "../shared/movie";
 
 type QueryValue = string | number | ReadonlyArray<string | number> | undefined;
 
-export type RequestKind = "search" | "health" | "long";
+export type RequestKind = "search" | "health" | "long" | "write";
 
 const REQUESTS: Record<RequestKind, { retries: number; timeoutMs: number }> = {
   search: { retries: 2, timeoutMs: 4000 },
   health: { retries: 1, timeoutMs: 1000 },
   long: { retries: 4, timeoutMs: 20000 },
+  // Library writes are idempotent, so a reset connection is sent again. The
+  // service can stall for several seconds during TMDb batches; a write that
+  // gives up first still lands, and the app would show it as failed.
+  write: { retries: 2, timeoutMs: 20000 },
 };
 
 export class CatalogError extends Error {
@@ -80,6 +84,7 @@ export class CatalogClient {
     path: string,
     query?: Record<string, QueryValue>,
     kind: RequestKind = "search",
+    write?: { method: "PUT" | "DELETE"; body?: unknown },
   ): Promise<T> {
     const url = new URL(
       path,
@@ -97,7 +102,16 @@ export class CatalogClient {
       let response: Response;
       try {
         response = await catalogFetch(url, {
-          headers: { Accept: "application/json" },
+          method: write?.method ?? "GET",
+          headers:
+            write?.body === undefined
+              ? { Accept: "application/json" }
+              : {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+          body:
+            write?.body === undefined ? undefined : JSON.stringify(write.body),
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch {
@@ -213,54 +227,37 @@ export class CatalogClient {
     rating?: number,
     ratedAt?: string,
   ): Promise<void> {
-    const url = new URL(
+    await this.request(
       `/v1/library/${encodeURIComponent(movie.imdbId)}`,
-      this.baseUrl,
+      undefined,
+      "write",
+      { method: "PUT", body: { status, personalRating: rating, ratedAt } },
     );
-    const response = await catalogFetch(url, {
-      method: "PUT",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status, personalRating: rating, ratedAt }),
-      signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
-    });
-    if (!response.ok)
-      throw new CatalogError(
-        `Could not save library entry (${response.status})`,
-        response.status,
-      );
   }
 
   async clearLibrary(): Promise<LibraryEntry[]> {
-    const response = await catalogFetch(new URL("/v1/library", this.baseUrl), {
-      method: "DELETE",
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
-    });
-    if (!response.ok)
-      throw new CatalogError(
-        `Could not clear the library (${response.status})`,
-        response.status,
-      );
-    const body = (await response.json()) as { data: LibraryEntryDto[] };
+    const body = await this.request<{ data: LibraryEntryDto[] }>(
+      "/v1/library",
+      undefined,
+      "write",
+      { method: "DELETE" },
+    );
     return body.data.map(libraryEntryFromDto);
   }
 
   async removeLibrary(imdbId: string): Promise<void> {
-    const response = await catalogFetch(
-      new URL(`/v1/library/${encodeURIComponent(imdbId)}`, this.baseUrl),
-      {
-        method: "DELETE",
-        signal: AbortSignal.timeout(REQUESTS.search.timeoutMs),
-      },
-    );
-    if (!response.ok && response.status !== 404)
-      throw new CatalogError(
-        `Could not remove library entry (${response.status})`,
-        response.status,
+    try {
+      await this.request(
+        `/v1/library/${encodeURIComponent(imdbId)}`,
+        undefined,
+        "write",
+        { method: "DELETE" },
       );
+    } catch (error) {
+      // A retried delete finds the entry already gone.
+      if (error instanceof CatalogError && error.status === 404) return;
+      throw error;
+    }
   }
 
   async fillMedia(ids: string[]): Promise<

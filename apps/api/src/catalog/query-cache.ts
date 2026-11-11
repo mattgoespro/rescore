@@ -1,9 +1,22 @@
 import type Database from "better-sqlite3";
 import type { FacetsResponse } from "../catalog-types.js";
 
+/** Titles with each kind of TMDb metadata filled. */
+export interface TmdbCoverage {
+  total: number;
+  posters: number;
+  synopses: number;
+  certifications: number;
+}
+
 interface QueryCache {
   counts: CountCache;
   facets: { value: FacetsResponse; expires: number } | null;
+  /**
+   * Read once by a scan of every title, then kept current by media writes.
+   * Title inserts and deletes drop the whole cache, so the next read rescans.
+   */
+  coverage: TmdbCoverage | null;
 }
 const connections = new WeakMap<Database.Database, QueryCache>();
 export const FACETS_TTL_MS = 10 * 60 * 1000;
@@ -45,7 +58,7 @@ export class CountCache {
 export function queryCache(db: Database.Database): QueryCache {
   let cache = connections.get(db);
   if (!cache) {
-    cache = { counts: new CountCache(), facets: null };
+    cache = { counts: new CountCache(), facets: null, coverage: null };
     connections.set(db, cache);
   }
   return cache;

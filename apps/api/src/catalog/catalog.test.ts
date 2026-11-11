@@ -1572,6 +1572,55 @@ test("tmdb coverage counts filled posters, synopses, and age ratings", () => {
   catalog.close();
 });
 
+test("tmdb coverage read before media writes stays equal to a fresh count", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "Found", kind: "movie" },
+    { id: "tt0000002", title: "Missed", kind: "movie" },
+    { id: "tt0000003", title: "Retried", kind: "movie" },
+  ]);
+  assert.deepEqual(catalog.tmdbCoverage(), {
+    total: 3,
+    posters: 0,
+    synopses: 0,
+    certifications: 0,
+  });
+  catalog.updatePosterUrls([
+    {
+      id: "tt0000001",
+      posterUrl: "https://image.tmdb.org/t/p/w500/a.jpg",
+      synopsis: "A synopsis.",
+      certification: "PG",
+    },
+    { id: "tt0000002", posterUrl: null, synopsis: null, certification: "" },
+    {
+      id: "tt0000003",
+      posterUrl: null,
+      synopsis: null,
+      certification: "",
+      languages: [],
+    },
+    // A second write for a filled field changes nothing.
+    { id: "tt0000001", posterUrl: "https://image.tmdb.org/t/p/w500/b.jpg" },
+  ]);
+  // The retry pass reopens confirmed misses, and a later lookup fills one.
+  catalog.requeueMissingMedia(Date.now() + 1);
+  catalog.updatePosterUrls([
+    { id: "tt0000003", posterUrl: "https://image.tmdb.org/t/p/w500/c.jpg" },
+  ]);
+  const kept = catalog.tmdbCoverage();
+  assert.deepEqual(kept, {
+    total: 3,
+    posters: 2,
+    synopses: 1,
+    certifications: 1,
+  });
+  // A title insert drops the kept counts, and the next read counts again.
+  catalog.upsertTitles([{ id: "tt0000004", title: "New", kind: "movie" }]);
+  assert.deepEqual(catalog.tmdbCoverage(), { ...kept, total: 4 });
+  catalog.close();
+});
+
 test("tmdb hydration keeps confirmed misses complete and certifications pending", () => {
   const catalog = openCatalog();
   catalog.upsertTitles([

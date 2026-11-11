@@ -43,7 +43,7 @@ A `setState` that changes nothing keeps the same value, so React skips the rende
 - Measure the DOM at most once a frame (`requestAnimationFrame`), as `overlay-scroll` and `use-visible-media` do.
 - Throttle anything that fires per item across IPC. Import progress goes out at most every 100 ms, and the last update always goes out.
 - Compute a value once per path and pass it on. Don't query it again: `HydrationStats` goes from the enrichment loop to the publisher.
-- Cache stable reads for a bounded time: coverage for 10 s, facets for 10 min, and taste inputs until the next library write.
+- Cache stable reads for a bounded time: facets for 10 min, and taste inputs until the next library write. A count that background work reads again and again is kept current by the writes instead, as TMDb coverage is by `updatePosterUrls`: a scan of every title blocks the service's only thread, so recounting it on a timer stalls every request.
 - Renderer polling uses `pollWhileVisible`. Starting a process (PowerShell) costs about 300 ms, so poll it only while the view that shows it is visible.
 
 ## SQL on the titles table

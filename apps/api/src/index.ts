@@ -8,6 +8,7 @@ import {
 } from "./services/ensure-catalog.js";
 import { cleanupIncompleteDownloads } from "./services/gzip-tsv.js";
 import { emit } from "./log/write.js";
+import { watchEventLoopStalls } from "./log/stall.js";
 import { RatingsStore } from "./services/ratings-store.js";
 import { serviceConfig } from "./services/service-environment.js";
 import {
@@ -55,6 +56,7 @@ const onListen = (): void => {
     level: "info",
     message: `Rescore catalogue API listening on http://127.0.0.1:${PORT}`,
   });
+  watchEventLoopStalls();
 };
 const server = serviceConfig
   ? app.listen(PORT, "127.0.0.1", onListen)

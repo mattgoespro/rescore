@@ -42,3 +42,45 @@ test("watched writes omit absent scores and pass imported dates through to the A
     globalThis.fetch = fetch;
   }
 });
+
+test("library writes send again after a dropped connection, and a repeated delete is not an error", async () => {
+  const fetch = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push(`${init?.method} ${new URL(String(input)).pathname}`);
+    if (calls.length === 1) throw new TypeError("fetch failed");
+    if (init?.method === "DELETE")
+      return new Response('{"error":"Not found"}', { status: 404 });
+    return new Response("{}", { status: 200 });
+  };
+  try {
+    const client = new CatalogClient("http://127.0.0.1:3847");
+    await client.saveLibrary(
+      movieFromTitle({
+        id: "tt100",
+        title: "Fixture",
+        originalTitle: null,
+        kind: "movie",
+        year: 2000,
+        runtimeMinutes: 100,
+        synopsis: null,
+        posterUrl: null,
+        certification: null,
+        imdbRating: 8,
+        imdbVotes: 1000,
+        genres: [],
+        directors: [],
+        cast: [],
+      }),
+      "skipped",
+    );
+    await client.removeLibrary("tt100");
+    assert.deepEqual(calls, [
+      "PUT /v1/library/tt100",
+      "PUT /v1/library/tt100",
+      "DELETE /v1/library/tt100",
+    ]);
+  } finally {
+    globalThis.fetch = fetch;
+  }
+});
