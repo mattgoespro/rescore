@@ -148,6 +148,43 @@
   !insertmacro MUI_PAGE_WELCOME
 !macroend
 
+!macro customPageAfterChangeDir
+  ; Empty until the page unchecks the box, so silent installs and updates keep
+  ; electron-builder's behaviour: new installs get the shortcut, updates leave it alone.
+  Var /GLOBAL rescoreSkipDesktopShortcut
+  Var /GLOBAL rescoreDesktopShortcutCheckbox
+  Page custom RescoreShortcutPage RescoreShortcutPageLeave
+
+  Function RescoreShortcutPage
+    ${If} ${isUpdated}
+      Abort
+    ${EndIf}
+    !insertmacro MUI_HEADER_TEXT "Shortcuts" "Choose where Rescore can be opened from."
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+      Abort
+    ${EndIf}
+    ${NSD_CreateLabel} 0 0 100% 30u "Setup always adds Rescore to the Start Menu for everyone who uses this computer."
+    Pop $0
+    ${NSD_CreateCheckbox} 0 40u 100% 12u "Create a desktop shortcut for all users"
+    Pop $rescoreDesktopShortcutCheckbox
+    ${If} $rescoreSkipDesktopShortcut != "1"
+      ${NSD_Check} $rescoreDesktopShortcutCheckbox
+    ${EndIf}
+    nsDialogs::Show
+  FunctionEnd
+
+  Function RescoreShortcutPageLeave
+    ${NSD_GetState} $rescoreDesktopShortcutCheckbox $0
+    ${If} $0 == ${BST_CHECKED}
+      StrCpy $rescoreSkipDesktopShortcut ""
+    ${Else}
+      StrCpy $rescoreSkipDesktopShortcut "1"
+    ${EndIf}
+  FunctionEnd
+!macroend
+
 !macro customFinishPage
   ; StartApp declares a global variable, so it cannot be inserted inside this function.
   Function StartRescore
@@ -186,6 +223,11 @@
   ${GetParent} "$newStartMenuLink" $2
   Delete "$2\Rescore Logs.lnk"
   Delete "$INSTDIR\Rescore Logs.exe"
+  ; electron-builder has already created the desktop link; drop it if the shortcut page declined it.
+  ${If} $rescoreSkipDesktopShortcut == "1"
+    Delete "$newDesktopLink"
+    System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+  ${EndIf}
 !macroend
 
 !macro customUnInit
