@@ -103,7 +103,10 @@ export default function FilterBar({
             aria-label={`${field.name}: ${label === field.name ? "" : `${label} `}${summary}`}
             title={`${label} ${summary}`}
             className={cn(
-              "inline-flex h-8 max-w-80 items-center gap-1.5 rounded-full px-3 text-ui whitespace-nowrap transition-colors duration-140",
+              // Wrapping reads the basis, not the summary, so editing a filter
+              // never moves a pill to the next row; the pill grows back to its
+              // full width wherever the row has room.
+              "inline-flex h-8 max-w-max grow basis-44 items-center gap-1.5 rounded-full px-3 text-ui whitespace-nowrap transition-colors duration-140",
               isChanged
                 ? "bg-accent/15 text-accent-text hover:bg-accent/20"
                 : "bg-wash-6 text-ink hover:bg-wash-9",
@@ -115,31 +118,33 @@ export default function FilterBar({
               {label}
             </span>
             {tail ? (
-              <>
+              <span className="inline-flex max-w-60 min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate font-medium">
                   {tail.lead}
                 </span>
                 <ExclusionTail excluded={tail.excluded} />
-              </>
+              </span>
             ) : (
-              <span className="truncate font-medium">{summary}</span>
+              <span className="max-w-60 truncate font-medium">{summary}</span>
             )}
             <IconChevronDown className="size-3.5 shrink-0" />
           </button>
         );
       })}
-      {changed > 0 ? (
-        <button
-          type="button"
-          className="h-8 px-2 text-ui text-accent-text underline underline-offset-3 hover:text-ink"
-          onClick={() => {
-            setOpen(null);
-            setFilters(resetFilters(filters));
-          }}
-        >
-          Reset filters
-        </button>
-      ) : null}
+      {/* Always laid out so its appearing never wraps the row. */}
+      <button
+        type="button"
+        className={cn(
+          "h-8 px-2 text-ui text-accent-text underline underline-offset-3 hover:text-ink",
+          changed === 0 && "invisible",
+        )}
+        onClick={() => {
+          setOpen(null);
+          setFilters(resetFilters(filters));
+        }}
+      >
+        Reset filters
+      </button>
       <span className="sr-only" role="status" aria-live="polite">
         {changed === 0
           ? "Using the default filters"
