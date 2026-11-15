@@ -8,7 +8,11 @@ import {
 } from "./services/ensure-catalog.js";
 import { cleanupIncompleteDownloads } from "./services/gzip-tsv.js";
 import { emit } from "./log/write.js";
-import { watchEventLoopStalls } from "./log/stall.js";
+import {
+  reportSlowCatalogCall,
+  timeSlowCalls,
+  watchEventLoopStalls,
+} from "./log/stall.js";
 import { RatingsStore } from "./services/ratings-store.js";
 import { serviceConfig } from "./services/service-environment.js";
 import {
@@ -43,7 +47,12 @@ function failureText(error: unknown): string {
   return `${message}${stack}`;
 }
 
-const catalog = new CatalogDatabase(CATALOG_DB_PATH);
+// Every catalogue call runs SQLite on the API's only thread; a slow one is
+// named in the log so a stall says what held the thread.
+const catalog = timeSlowCalls(
+  new CatalogDatabase(CATALOG_DB_PATH),
+  reportSlowCatalogCall,
+);
 cleanupIncompleteDownloads(DATA_DIR);
 const store = new RatingsStore(catalog);
 const app = createApp(store, catalog, () => {
@@ -56,7 +65,7 @@ const onListen = (): void => {
     level: "info",
     message: `Rescore catalogue API listening on http://127.0.0.1:${PORT}`,
   });
-  watchEventLoopStalls();
+  watchEventLoopStalls(CATALOG_DB_PATH);
 };
 const server = serviceConfig
   ? app.listen(PORT, "127.0.0.1", onListen)

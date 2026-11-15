@@ -41,30 +41,47 @@ export function incomingMessage(input: {
   return `${input.id}  ${mark}${input.path}${tail}`;
 }
 
-export function requestLog(
+/**
+ * Request logging middleware. It takes exactly (req, res, next): Express
+ * treats a four-parameter function as an error handler, so the sink and
+ * clock that tests pass in live on the factory, not the middleware.
+ */
+export function createRequestLog(
+  sink?: LineSink,
+  now: () => number = Date.now,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => logRequest(req, res, next, sink, now());
+}
+
+export const requestLog = createRequestLog();
+
+function logRequest(
   req: Request,
   res: Response,
   next: NextFunction,
-  sink?: LineSink,
-  startedAt = Date.now(),
+  sink: LineSink | undefined,
+  startedAt: number,
 ): void {
   const id = requestId();
   res.locals.requestId = id;
   const query = req.query as Record<string, unknown>;
-  if (shouldLogIncoming(req.path)) {
+  // A mounted router trims its prefix from req.path before the response
+  // finishes, so /v1/titles would finish as /titles.
+  const path = req.path;
+  if (shouldLogIncoming(path)) {
     emit(
       {
         channel: "http",
         phase: req.method,
         level: "info",
-        message: incomingMessage({ id, path: req.path, query }),
+        message: incomingMessage({ id, path, query }),
       },
       sink,
     );
   }
   res.on("finish", () => {
     const status = res.statusCode;
-    if (!shouldLogRequest(req.path, status)) return;
+    if (!shouldLogRequest(path, status)) return;
     const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
     emit(
       {
@@ -75,7 +92,7 @@ export function requestLog(
           id,
           status,
           ms: Date.now() - startedAt,
-          path: req.path,
+          path,
           query,
         }),
       },

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   httpMessage,
   incomingMessage,
+  createRequestLog,
   requestLog,
   shouldLogRequest,
 } from "./http.js";
@@ -70,7 +71,11 @@ test("requestLog writes the incoming line before finish and skips a healthy poll
     res.locals = {};
     res.statusCode = status;
     const req = { method: "GET", path, originalUrl: path, query };
-    requestLog(req as never, res as never, () => undefined, sink, started);
+    createRequestLog(sink, () => started)(
+      req as never,
+      res as never,
+      () => undefined,
+    );
     return res;
   }
   open("/health", 200, {}).emit("finish");
@@ -95,4 +100,10 @@ test("requestLog writes the incoming line before finish and skips a healthy poll
   failingHealth.emit("finish");
   assert.equal(chunks.length, 3);
   assert.match(chunks[2] ?? "", /503 {3}\d+ms  \/health\n$/);
+});
+
+test("the request logger is ordinary middleware, not an error handler", () => {
+  // Express runs a four-parameter function only for errors; with five
+  // parameters the logger never saw a request and the log had no http lines.
+  assert.equal(requestLog.length, 3);
 });
