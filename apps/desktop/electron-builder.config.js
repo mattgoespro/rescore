@@ -285,6 +285,8 @@ module.exports = {
     perMachine: true,
     runAfterFinish: false,
     include: "resources/service/installer.nsh",
+    // 164x314 BMP shown on the Welcome and Finish pages; the uninstaller reuses it.
+    installerSidebar: "assets/installer-sidebar.bmp",
     artifactName: "${name}-${version}-setup.${ext}",
     shortcutName: "${productName}",
     uninstallDisplayName: "${productName}",
