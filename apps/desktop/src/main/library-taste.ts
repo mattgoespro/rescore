@@ -1,4 +1,4 @@
-import { CatalogError, type CatalogClient } from "./catalog-client";
+import type { CatalogClient } from "./catalog-client";
 import { loadDiscoverSlice } from "./discover-slice";
 import { createTasteCache, withLibraryWrite } from "./taste-cache";
 import {
@@ -180,17 +180,8 @@ export function createLibraryTasteWorkflow<
     });
   const profile = () =>
     run(async (client, captured) => {
-      try {
-        const { profile } = await tasteInputs(client, captured);
-        return publicProfile(profile);
-      } catch (error) {
-        // An unreachable catalogue reads as an empty profile, not an error.
-        if (error instanceof CatalogError && error.status === 0) {
-          console.warn(error.message);
-          return publicProfile(buildProfile([], []));
-        }
-        throw error;
-      }
+      const { profile } = await tasteInputs(client, captured);
+      return publicProfile(profile);
     });
   const enrich = (
     movies: MovieSummary[],

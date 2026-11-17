@@ -1,5 +1,5 @@
 import { libraryEntryFromDto } from "./catalog-mapping";
-import { catalogFetch } from "./catalog-connection";
+import { catalogFetch, systemResumes } from "./catalog-connection";
 import { discoverHasAnotherPage, discoverQueryParams } from "./discover-slice";
 import type {
   DiscoverFilters,
@@ -22,16 +22,26 @@ import { genreId, movieFromTitle } from "../shared/movie";
 
 type QueryValue = string | number | ReadonlyArray<string | number> | undefined;
 
-export type RequestKind = "search" | "health" | "long" | "write";
+export type RequestKind = "read" | "health" | "write" | "fill";
+
+/**
+ * The catalogue answers on the same machine, normally within milliseconds,
+ * and calls reach it only once it is usable. The timeout is a guard against a
+ * hung service, not an estimate of speed: a call that hits it is a bug to
+ * report, and is not sent again. A dropped connection is retried, and so is a
+ * timeout across a sleep of the computer: Windows timers keep counting while
+ * it sleeps, so a call in flight then reaches its timeout on waking without
+ * anything having hung. Reads, library writes and media fills are idempotent.
+ */
+const DEADLOCK_GUARD_MS = 30_000;
 
 const REQUESTS: Record<RequestKind, { retries: number; timeoutMs: number }> = {
-  search: { retries: 2, timeoutMs: 4000 },
+  read: { retries: 2, timeoutMs: DEADLOCK_GUARD_MS },
+  // configured() probes an address the user typed, so it answers fast.
   health: { retries: 1, timeoutMs: 1000 },
-  long: { retries: 4, timeoutMs: 20000 },
-  // Library writes are idempotent, so a reset connection is sent again. The
-  // service can stall for several seconds during TMDb batches; a write that
-  // gives up first still lands, and the app would show it as failed.
-  write: { retries: 2, timeoutMs: 20000 },
+  write: { retries: 2, timeoutMs: DEADLOCK_GUARD_MS },
+  // A media fill waits on TMDb lookups for up to 40 titles.
+  fill: { retries: 2, timeoutMs: 60_000 },
 };
 
 export class CatalogError extends Error {
@@ -61,9 +71,7 @@ export class CatalogClient {
         synopses: number;
         certifications: number;
       };
-    }>("/v1/catalog/tmdb-health", undefined, "health").then(
-      (body) => body.data,
-    );
+    }>("/v1/catalog/tmdb-health").then((body) => body.data);
   }
 
   async configured(): Promise<boolean> {
@@ -83,8 +91,8 @@ export class CatalogClient {
   private async request<T>(
     path: string,
     query?: Record<string, QueryValue>,
-    kind: RequestKind = "search",
-    write?: { method: "PUT" | "DELETE"; body?: unknown },
+    kind: RequestKind = "read",
+    write?: { method: "POST" | "PUT" | "DELETE"; body?: unknown },
   ): Promise<T> {
     const url = new URL(
       path,
@@ -100,6 +108,7 @@ export class CatalogClient {
     let lastError: CatalogError | null = null;
     for (let attempt = 0; attempt < retries; attempt++) {
       let response: Response;
+      const resumesBefore = systemResumes();
       try {
         response = await catalogFetch(url, {
           method: write?.method ?? "GET",
@@ -114,7 +123,16 @@ export class CatalogClient {
             write?.body === undefined ? undefined : JSON.stringify(write.body),
           signal: AbortSignal.timeout(timeoutMs),
         });
-      } catch {
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "TimeoutError" &&
+          systemResumes() === resumesBefore
+        )
+          throw new CatalogError(
+            `The catalogue did not answer ${path} within ${timeoutMs / 1000} seconds.`,
+            0,
+          );
         lastError = new CatalogError(
           "Cannot reach the local catalogue API.",
           0,
@@ -156,8 +174,6 @@ export class CatalogClient {
   async title(imdbId: string): Promise<MovieDetails> {
     const response = await this.request<{ data: TitleDto }>(
       `/v1/titles/${encodeURIComponent(imdbId)}`,
-      undefined,
-      "long",
     );
     return toDetails(response.data);
   }
@@ -271,26 +287,7 @@ export class CatalogClient {
   > {
     const unique = [...new Set(ids.map((id) => id.toLowerCase()))].slice(0, 40);
     if (!unique.length) return [];
-    const url = new URL(
-      "/v1/catalog/fill",
-      this.baseUrl.endsWith("/") ? this.baseUrl : `${this.baseUrl}/`,
-    );
-    const response = await catalogFetch(url, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ids: unique }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!response.ok) {
-      throw new CatalogError(
-        `Could not fill title media (${response.status})`,
-        response.status,
-      );
-    }
-    const body = (await response.json()) as {
+    const body = await this.request<{
       data: Array<{
         id: string;
         synopsis: string | null;
@@ -298,7 +295,10 @@ export class CatalogClient {
         certification: string | null;
         hydrationComplete: boolean;
       }>;
-    };
+    }>("/v1/catalog/fill", undefined, "fill", {
+      method: "POST",
+      body: { ids: unique },
+    });
     return body.data;
   }
 

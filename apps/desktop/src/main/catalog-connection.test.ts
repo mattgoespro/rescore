@@ -8,6 +8,7 @@ import {
   matchesServiceHealth,
   serviceConnection,
   setServiceConnection,
+  whenCatalogConnectionOpen,
   type ServiceConnection,
 } from "./catalog-connection.js";
 
@@ -144,4 +145,16 @@ test("service health requires matching catalogue, protocol, version and mode", (
     { ...health, runtimeMode: "desktop" },
   ])
     assert.equal(matchesServiceHealth(invalid, connection), false);
+});
+
+test("catalogue calls wait out a data transfer instead of failing", async () => {
+  blockCatalogConnection(true);
+  let open = false;
+  const waiting = whenCatalogConnectionOpen().then(() => (open = true));
+  await Promise.resolve();
+  assert.equal(open, false);
+  blockCatalogConnection(false);
+  await waiting;
+  assert.equal(open, true);
+  await whenCatalogConnectionOpen();
 });

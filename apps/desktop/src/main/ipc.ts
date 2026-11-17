@@ -1,4 +1,8 @@
-import { effectiveCatalogUrl, serviceConnection } from "./catalog-connection";
+import {
+  effectiveCatalogUrl,
+  serviceConnection,
+  whenCatalogConnectionOpen,
+} from "./catalog-connection";
 import { sendToWindow } from "./window-lifecycle";
 import { catalogOwner, catalogUrlChangeAllowed } from "./catalog-owner";
 import {
@@ -13,12 +17,11 @@ import { readFile, writeFile } from "fs/promises";
 import { isAppearanceOnlyPatch } from "../shared/appearance";
 import {
   type DiscoverFilters,
-  type ForYouResult,
   type ImportProgress,
   type MovieSummary,
   type Settings,
 } from "../shared/types";
-import { CatalogClient, CatalogError } from "./catalog-client";
+import { CatalogClient } from "./catalog-client";
 import type { CatalogRuntime } from "./catalog-runtime";
 import { parseImdbRatingsCsv } from "./csv";
 import {
@@ -26,7 +29,6 @@ import {
   scrapeImdbCheckins,
 } from "./imdb-watched-window";
 import type { SearchHistoryInput } from "../shared/search-history";
-import { buildProfile, describeProfile, publicProfile } from "./ranking";
 import {
   createLibraryTasteWorkflow,
   type LibraryUpsert,
@@ -34,15 +36,34 @@ import {
 import type { AppStore } from "./store";
 import { watchCreditsArrival } from "./credits-arrival";
 import { applyWindowChrome } from "./window-chrome";
+import { createCatalogGate } from "./catalog-gate";
+import type { CatalogStatus } from "../shared/catalog-status";
 
 let store: AppStore;
 let getWindow: () => BrowserWindow | null;
 let catalog: CatalogRuntime;
 
-/** Catalogue status from the runtime: reloads taste once cast and directors arrive. */
-export const noteCatalogStatus = watchCreditsArrival(() =>
-  workflow?.invalidate(),
-);
+const gate = createCatalogGate();
+const noteCreditsArrival = watchCreditsArrival(() => workflow?.invalidate());
+
+/**
+ * Catalogue status from the runtime: opens the gate catalogue calls wait on,
+ * and reloads taste once cast and directors arrive.
+ */
+export function noteCatalogStatus(status: CatalogStatus): void {
+  gate.note(status);
+  noteCreditsArrival(status);
+}
+
+/**
+ * Runs a catalogue call once the catalogue is usable and no catalogue data is
+ * being transferred: maintenance holds a call rather than failing it.
+ */
+async function whenReady<T>(run: () => Promise<T>): Promise<T> {
+  await gate.whenUsable();
+  await whenCatalogConnectionOpen();
+  return run();
+}
 
 function trustedServiceSender(event: Electron.IpcMainInvokeEvent): boolean {
   if (
@@ -75,6 +96,7 @@ export function registerIpc(
   store = appStore;
   getWindow = windowGetter;
   catalog = catalogRuntime;
+  gate.note(catalog.status());
   workflow = createLibraryTasteWorkflow({
     connection: () => {
       const url = effectiveCatalogUrl(store.getSettings().catalogApiUrl);
@@ -131,7 +153,9 @@ export function registerIpc(
     return next;
   });
   ipcMain.handle("catalog:status", () => catalog.status());
-  ipcMain.handle("catalog:tmdbHealth", () => getClient().tmdbHealth());
+  ipcMain.handle("catalog:tmdbHealth", () =>
+    whenReady(() => getClient().tmdbHealth()),
+  );
   ipcMain.handle("catalog:retry", async (event) => {
     if (serviceRequired()) {
       if (!trustedServiceSender(event))
@@ -145,39 +169,29 @@ export function registerIpc(
     return catalog.rebuild();
   });
   ipcMain.handle("catalog:configured", () => getClient().configured());
-  ipcMain.handle("catalog:genres", () =>
-    withCatalog([], () => getClient().genres()),
-  );
+  // Every catalogue call waits for a usable catalogue, and a failure reaches
+  // the renderer as an error: with the catalogue up, one is a bug.
+  ipcMain.handle("catalog:genres", () => whenReady(() => getClient().genres()));
   ipcMain.handle("catalog:discover", (_event, filters: DiscoverFilters) =>
-    withCatalog(
-      {
-        page: 1,
-        totalPages: 0,
-        totalResults: 0,
-        results: [],
-        nextCursor: null,
-        canLoadMore: false,
-      },
-      () => workflow.discover(filters),
-    ),
+    whenReady(() => workflow.discover(filters)),
   );
   ipcMain.handle("catalog:title", (_event, imdbId: string) =>
-    withCatalog(null, () => getClient().title(imdbId)),
+    whenReady(() => getClient().title(imdbId)),
   );
   ipcMain.handle("catalog:fillMedia", (_event, ids: string[]) =>
-    withCatalog([], () => getClient().fillMedia(ids)),
+    whenReady(() => getClient().fillMedia(ids)),
   );
   ipcMain.handle("catalog:movieMeta", (_event, movies: MovieSummary[]) =>
-    withCatalog({}, () => workflow.enrich(movies)),
+    whenReady(() => workflow.enrich(movies)),
   );
-  ipcMain.handle("library:list", () => withCatalog([], () => workflow.list()));
+  ipcMain.handle("library:list", () => whenReady(() => workflow.list()));
   ipcMain.handle("library:upsert", (_event, payload: LibraryUpsert) =>
-    workflow.upsert(payload),
+    whenReady(() => workflow.upsert(payload)),
   );
   ipcMain.handle("library:remove", (_event, imdbId: string) =>
-    workflow.remove(imdbId),
+    whenReady(() => workflow.remove(imdbId)),
   );
-  ipcMain.handle("library:clear", () => workflow.clear());
+  ipcMain.handle("library:clear", () => whenReady(() => workflow.clear()));
   ipcMain.handle("library:export", () => exportLibrary());
   ipcMain.handle("library:importImdbCsv", () => importImdbCsv());
   ipcMain.handle("imdb:authStatus", () => store.imdbAuthStatus());
@@ -201,36 +215,13 @@ export function registerIpc(
   ipcMain.handle("search-history:remove", (_event, id: string) =>
     store.removeSearchHistory(id),
   );
-  ipcMain.handle("ranking:forYou", () =>
-    withCatalog(emptyForYou(), () => workflow.forYou()),
-  );
-  ipcMain.handle("ranking:profile", () => workflow.profile());
+  ipcMain.handle("ranking:forYou", () => whenReady(() => workflow.forYou()));
+  ipcMain.handle("ranking:profile", () => whenReady(() => workflow.profile()));
 }
 
 let workflow: ReturnType<typeof createLibraryTasteWorkflow<CatalogClient>>;
 function getClient(): CatalogClient {
   return workflow.client();
-}
-
-async function withCatalog<T>(fallback: T, run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (error) {
-    if (error instanceof CatalogError && error.status === 0) {
-      console.warn(error.message);
-      return fallback;
-    }
-    throw error;
-  }
-}
-
-function emptyForYou(): ForYouResult {
-  const profile = buildProfile([], []);
-  return {
-    profile: publicProfile(profile),
-    insights: describeProfile(profile),
-    movies: [],
-  };
 }
 
 async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
@@ -249,7 +240,7 @@ async function exportLibrary(): Promise<{ ok: boolean; path?: string }> {
     JSON.stringify(
       {
         exportedAt: new Date().toISOString(),
-        library: await workflow.list(),
+        library: await whenReady(() => workflow.list()),
       },
       null,
       2,
@@ -295,6 +286,7 @@ async function scrapeAndImportWatched(): Promise<ImportProgress> {
   } satisfies ImportProgress);
   const ids = await scrapeImdbCheckins(credentials, getWindow());
   let sentAt = 0;
+  await whenReady(async () => undefined);
   return workflow.importWatched(ids, (progress) => {
     const now = Date.now();
     if (!progress.done && now - sentAt < IMPORT_PROGRESS_INTERVAL_MS) return;
@@ -327,6 +319,7 @@ async function pickAndImportCsv(): Promise<ImportProgress> {
   // A large export is thousands of rows; one message each redraws Settings
   // thousands of times.
   let sentAt = 0;
+  await whenReady(async () => undefined);
   return workflow.importRatings(rows, (progress) => {
     const now = Date.now();
     if (!progress.done && now - sentAt < IMPORT_PROGRESS_INTERVAL_MS) return;

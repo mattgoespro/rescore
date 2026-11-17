@@ -1,3 +1,4 @@
+import { isCatalogUsable } from "../../../shared/catalog-status";
 import { setupPercent } from "./setup-progress";
 
 const FIRST_BUILD_DETAIL =
@@ -27,20 +28,11 @@ export function catalogRebuildFeedback(
   };
 }
 
-/**
- * Browsing opens once the API reports titles usable. Cast, directors and TMDb
- * metadata may still be building; a forced rebuild reports unusable until its
- * titles are reconciled.
- */
+/** Views wait for the same rule the main process gates requests on. */
 export function isCatalogUiBlocked(
-  status: {
-    phase: string;
-    catalogUsable?: boolean;
-  } | null,
+  status: { phase: string; catalogUsable?: boolean } | null,
 ): boolean {
-  if (!status) return true;
-  if (status.phase === "error" || status.phase === "starting") return true;
-  return status.catalogUsable !== true;
+  return !isCatalogUsable(status);
 }
 
 export function catalogLoaderDetail(

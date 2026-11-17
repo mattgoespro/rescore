@@ -1,7 +1,19 @@
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import { app, BrowserWindow, dialog, protocol, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  powerMonitor,
+  protocol,
+  session,
+  shell,
+} from "electron";
 import { BackgroundService } from "./background-service";
-import { catalogFetch, effectiveCatalogUrl } from "./catalog-connection";
+import {
+  catalogFetch,
+  effectiveCatalogUrl,
+  noteSystemResume,
+} from "./catalog-connection";
 import { join } from "path";
 import icon from "../../assets/icon.png?asset";
 import {
@@ -102,6 +114,9 @@ function createWindow(store: AppStore): void {
 app.whenReady().then(async () => {
   if (!ownsInstance || stopping) return;
   electronApp.setAppUserModelId("com.rescore.app");
+  // A catalogue call in flight across sleep times out on waking; the client
+  // sends it again instead of reporting it.
+  powerMonitor.on("resume", noteSystemResume);
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     if (/tmdb\.org|themoviedb\.org/i.test(details.url)) {

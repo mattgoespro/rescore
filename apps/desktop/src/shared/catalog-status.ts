@@ -56,3 +56,17 @@ export interface CatalogStatus {
   catalogUsable: boolean;
   tmdbHydration?: TmdbHydrationProgress;
 }
+
+/**
+ * Browsing opens once the API reports titles usable. Cast, directors and TMDb
+ * metadata may still be building; a forced rebuild reports unusable until its
+ * titles are reconciled. The renderer shows its views and the main process
+ * sends catalogue requests by this one rule.
+ */
+export function isCatalogUsable(
+  status: { phase: string; catalogUsable?: boolean } | null,
+): boolean {
+  if (!status) return false;
+  if (status.phase === "error" || status.phase === "starting") return false;
+  return status.catalogUsable === true;
+}

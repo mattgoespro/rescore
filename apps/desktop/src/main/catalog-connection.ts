@@ -7,6 +7,8 @@ export interface ServiceConnection {
 
 let service: ServiceConnection | null = null;
 let blocked = false;
+let openWaiters: Array<() => void> = [];
+let resumes = 0;
 
 export function setServiceConnection(next: ServiceConnection | null): void {
   service = next;
@@ -16,6 +18,27 @@ export function serviceConnection(): ServiceConnection | null {
 }
 export function blockCatalogConnection(value: boolean): void {
   blocked = value;
+  if (blocked) return;
+  const open = openWaiters;
+  openWaiters = [];
+  for (const release of open) release();
+}
+
+/**
+ * Resolves once catalogue data is not being transferred. Catalogue calls wait
+ * here before they start, so maintenance holds them instead of failing them.
+ */
+export function whenCatalogConnectionOpen(): Promise<void> {
+  if (!blocked) return Promise.resolve();
+  return new Promise((resolve) => openWaiters.push(resolve));
+}
+
+/** Counts wakes from sleep, which a request in flight could not see. */
+export function noteSystemResume(): void {
+  resumes++;
+}
+export function systemResumes(): number {
+  return resumes;
 }
 export function effectiveCatalogUrl(configured: string): string {
   return service ? `http://127.0.0.1:${service.port}` : configured;

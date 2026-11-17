@@ -85,6 +85,7 @@ export default function Library({
   genreMap,
   selectedId,
   onOpen,
+  onError,
   onRemove,
   busy,
   inspector,
@@ -93,6 +94,7 @@ export default function Library({
   genreMap: Map<number, string>;
   selectedId: string | null;
   onOpen: (movie: MovieSummary) => void;
+  onError: (message: string) => void;
   onRemove: (id: string, mediaType: LibraryEntry["mediaType"]) => Promise<void>;
   busy: boolean;
   /** The open title's details, beside the shelves while one is open. */
@@ -100,7 +102,7 @@ export default function Library({
 }): JSX.Element {
   const [tab, setTab] = useState<Shelf>("watched");
   const tabsRef = useRef<HTMLDivElement>(null);
-  const { containerRef, media } = useVisibleMedia();
+  const { containerRef, media } = useVisibleMedia(onError);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const rows = useMemo(() => {

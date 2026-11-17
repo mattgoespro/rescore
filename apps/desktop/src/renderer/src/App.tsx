@@ -52,6 +52,7 @@ import ForYou from "./views/ForYou";
 import Library from "./views/Library";
 import SettingsView from "./views/Settings";
 import { loadTmdbHealth } from "./lib/tmdb-health";
+import { errorMessage } from "./lib/error-message";
 
 /** Title details kept for instant reopening, most recently opened last. */
 const DETAILS_CACHE_LIMIT = 60;
@@ -134,8 +135,13 @@ export default function App(): JSX.Element {
   const profileRequest = useRef(0);
   const refreshProfile = useCallback(async () => {
     const request = ++profileRequest.current;
-    const next = await window.api.profile().catch(() => null);
-    if (next && request === profileRequest.current) setProfile(next);
+    try {
+      const next = await window.api.profile();
+      if (request === profileRequest.current) setProfile(next);
+    } catch (cause) {
+      if (request === profileRequest.current)
+        setError(errorMessage(cause, "Could not load your taste profile."));
+    }
   }, []);
   // The only way to replace the library: the taste profile is built from it,
   // so every write reloads the profile too.
@@ -156,7 +162,7 @@ export default function App(): JSX.Element {
     setSettings(nextSettings);
     setMediaProxyOrigin(nextSettings.catalogApiUrl);
     changeLibrary(nextLibrary);
-    setGenres(await window.api.genres().catch(() => [] as Genre[]));
+    setGenres(await window.api.genres());
   }, [changeLibrary]);
 
   useEffect(() => {
@@ -185,7 +191,9 @@ export default function App(): JSX.Element {
     setBooting(false);
     if (!shouldRefresh) return;
     setError("");
-    void refresh().catch((err: Error) => setError(err.message));
+    void refresh().catch((cause: unknown) =>
+      setError(errorMessage(cause, "Could not load the catalogue.")),
+    );
     // Warm the coverage reading so Settings opens with its bars already filled.
     void loadTmdbHealth().catch(() => undefined);
   }, [catalogStatus, refresh, booting]);
@@ -251,8 +259,9 @@ export default function App(): JSX.Element {
           setDetails(movie);
           if (movie) cacheDetails(key, movie);
         }
-      } catch {
-        if (!cancelled) setDetails(null);
+      } catch (cause) {
+        if (!cancelled)
+          setError(errorMessage(cause, "Could not load this title."));
       }
     };
     setDetails(detailsCache.current.get(key) ?? null);
@@ -272,8 +281,9 @@ export default function App(): JSX.Element {
         const rows = await window.api.fillMedia(ids);
         if (mediaFillSettled(rows[0])) resolved.add(selected.imdbId);
         if (!cancelled) await loadDetails();
-      } catch {
-        /* Existing detail remains available while metadata retries. */
+      } catch (cause) {
+        if (!cancelled)
+          setError(errorMessage(cause, "Could not load this title's poster."));
       } finally {
         filling = false;
       }
@@ -592,6 +602,7 @@ export default function App(): JSX.Element {
               genreMap={genreMap}
               selectedId={selected ? titleKey(selected) : null}
               onOpen={setSelected}
+              onError={setError}
               onRemove={remove}
               busy={libraryBusy}
               inspector={closableInspector}

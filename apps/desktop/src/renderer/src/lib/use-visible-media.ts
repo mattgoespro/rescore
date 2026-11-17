@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { errorMessage } from "./error-message";
 import { pollWhileVisible } from "./poll-while-visible";
 
 export const MEDIA_FILL_LIMIT = 40;
@@ -121,9 +122,16 @@ export function mergeTitleMedia<
     : title;
 }
 
-/** Only visible rows request metadata. Results never replace the list or its cursor. */
-export function useVisibleMedia() {
+/**
+ * Only visible rows request metadata. Results never replace the list or its
+ * cursor. A failed request is reported: TMDb misses come back as rows, so a
+ * failure means the catalogue call itself broke.
+ */
+export function useVisibleMedia(onError: (message: string) => void) {
   const containerRef = useRef<HTMLElement | null>(null);
+  const reportFailure = useEffectEvent((cause: unknown) =>
+    onError(errorMessage(cause, "Could not load posters.")),
+  );
   const [media, setMedia] = useState<ReadonlyMap<string, TitleMedia>>(
     new Map(),
   );
@@ -160,8 +168,9 @@ export function useVisibleMedia() {
           for (const id of resolved) if (!next.has(id)) resolved.delete(id);
           return next;
         });
-      } catch {
-        /* Keep available data; retry visible failures after backoff. */
+      } catch (cause) {
+        // Available data stays; visible titles are asked again after backoff.
+        if (!disposed) reportFailure(cause);
       } finally {
         busy = false;
         if (!disposed) void fill();

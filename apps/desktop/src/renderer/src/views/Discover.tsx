@@ -97,7 +97,7 @@ export default function Discover({
   onError: (message: string) => void;
   inspector: ReactNode;
 }): JSX.Element {
-  const { containerRef, media } = useVisibleMedia();
+  const { containerRef, media } = useVisibleMedia(onError);
   const notify = useNotify();
   const results = useMemo(
     () => createDiscoverResults((filters) => window.api.discover(filters)),

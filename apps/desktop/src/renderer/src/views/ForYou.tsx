@@ -71,7 +71,7 @@ export default function ForYou({
   /** The open title's details, shown in place of the taste model. */
   inspector: ReactNode | null;
 }): JSX.Element {
-  const { containerRef, media } = useVisibleMedia();
+  const { containerRef, media } = useVisibleMedia(onError);
   const results = useMemo(
     () => createForYouResults(() => window.api.forYou()),
     [],
