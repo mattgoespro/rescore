@@ -433,7 +433,10 @@ export class CatalogDatabase {
 
   hydrationStats(): HydrationStats {
     // Two counts, not one CASE over every row: the pending count matches the
-    // partial index's predicate exactly, so it reads only that index.
+    // partial index's predicate exactly, so it reads only that index. The
+    // index is named because ANALYZE taken while every title was pending
+    // records it as covering the whole table; the planner then scanned every
+    // title instead, over a second on the service, three times per batch.
     const total = Number(
       (
         this.db.prepare("SELECT count(*) AS count FROM titles").get() as {
@@ -445,7 +448,7 @@ export class CatalogDatabase {
       (
         this.db
           .prepare(
-            `SELECT count(*) AS count FROM titles WHERE ${TMDB_HYDRATION_PENDING_SQL}`,
+            `SELECT count(*) AS count FROM titles INDEXED BY titles_tmdb_pending_idx WHERE ${TMDB_HYDRATION_PENDING_SQL}`,
           )
           .get() as { count: number }
       ).count,
@@ -477,9 +480,12 @@ export class CatalogDatabase {
     if (!fillRest || prioritized.length >= limit)
       return prioritized.slice(0, limit);
     const exclude = new Set(prioritized.map((row) => row.id));
+    // The partial index holds only pending titles in this order. Without the
+    // name, stale statistics sent the planner down the votes index past every
+    // finished title: 5 to 20 seconds once few titles were left.
     const rest = this.db
       .prepare(
-        `SELECT id, kind FROM titles WHERE ${needsEnrichment} ORDER BY imdb_votes DESC, id LIMIT ?`,
+        `SELECT id, kind FROM titles INDEXED BY titles_tmdb_pending_idx WHERE ${needsEnrichment} ORDER BY imdb_votes DESC, id LIMIT ?`,
       )
       .all(limit) as Array<{ id: string; kind: string }>;
     for (const row of rest) {
@@ -495,7 +501,7 @@ export class CatalogDatabase {
     return this.db.transaction(() => {
       const rows = this.db
         .prepare(
-          `SELECT id FROM titles
+          `SELECT id FROM titles INDEXED BY titles_tmdb_retry_idx
          WHERE (poster_url = '' OR synopsis = '')
            AND NOT (${TMDB_HYDRATION_PENDING_SQL})
            AND COALESCE(tmdb_checked_at, 0) <= ?

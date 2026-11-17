@@ -51,6 +51,7 @@ A `setState` that changes nothing keeps the same value, so React skips the rende
 The catalogue has about half a million titles, so a full table read or sorting every match costs tens to hundreds of milliseconds.
 
 - Walk an index in result order and stop at `LIMIT`. Name the index (`INDEXED BY`) where the planner lacks statistics, and name each `kind` so every kind is one range.
+- Name a partial index too. `ANALYZE` runs after a build, when every title is still pending, so its statistics record the hydration indexes as the whole table; once few titles were pending the planner scanned every title instead (seconds per call on the service). `query-plans.test.ts` loads such statistics to check the plans.
 - When a filter matches thousands of rows, pick ids from a covering index first, then read only those rows.
 - Write count predicates to match a partial index exactly (`TMDB_HYDRATION_PENDING_SQL`).
 - Use `CROSS JOIN` to keep a small table (the library, full-text hits) as the outer loop.

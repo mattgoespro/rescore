@@ -32,20 +32,28 @@ test("slow call timing names the outermost slow method once and keeps its receiv
   assert.deepEqual(reports, ["stats 300"]);
 });
 
-test("stall watch reports a tick that ran a second or more late, once", () => {
+test("stall watch reports a busy late tick once, and not a sleeping computer", () => {
   let clock = 0;
+  let cpu = 0;
   const reports: number[] = [];
   const tick = createStallWatch(
     (ms) => reports.push(ms),
     () => clock,
     250,
     1000,
+    () => cpu,
   );
   clock = 260;
   tick();
+  // The thread worked through four seconds.
   clock = 510 + 4000;
+  cpu += 3900;
   tick();
   clock = 4510 + 250;
+  tick();
+  // The computer slept for an hour; the process used no CPU.
+  clock = 4760 + 250 + 3_600_000;
+  cpu += 5;
   tick();
   assert.deepEqual(reports, [4000]);
 });

@@ -20,14 +20,25 @@ export function createStallWatch(
   now: () => number = Date.now,
   intervalMs = STALL_CHECK_MS,
   thresholdMs = STALL_REPORT_MS,
+  cpuMs: () => number = processCpuMs,
 ): () => void {
   let expected = now() + intervalMs;
+  let cpuAt = cpuMs();
   return () => {
     const at = now();
+    const cpu = cpuMs();
     const late = at - expected;
-    if (late >= thresholdMs) report(late);
+    // A blocked thread spends the gap working; a computer asleep spends none
+    // of it, and those gaps (hours, overnight) are not stalls.
+    if (late >= thresholdMs && cpu - cpuAt >= late / 2) report(late);
     expected = at + intervalMs;
+    cpuAt = cpu;
   };
+}
+
+function processCpuMs(): number {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
 }
 
 /**

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import Database from "better-sqlite3";
+import { CatalogDatabase } from "./database.js";
 import {
   facets,
   listForYouCandidates,
@@ -145,17 +149,39 @@ test("the facets year range seeks each kind's ends", () => {
   db.close();
 });
 
-test("the pending hydration count reads only the partial index", () => {
-  const db = catalogue();
-  const plan = (
-    db
-      .prepare(
-        `EXPLAIN QUERY PLAN SELECT count(*) FROM titles WHERE ${TMDB_HYDRATION_PENDING_SQL}`,
-      )
-      .all() as Array<{ detail: string }>
-  )
-    .map((row) => row.detail)
-    .join(" | ");
-  assert.match(plan, /titles_tmdb_pending_idx/);
-  db.close();
+test("hydration reads only its partial indexes, even with statistics from a fresh build", () => {
+  const dir = mkdtempSync(join(tmpdir(), "rescore-plans-"));
+  const catalog = new CatalogDatabase(join(dir, "catalog.sqlite"));
+  const db = (catalog as unknown as { db: Database.Database }).db;
+  try {
+    // ANALYZE right after a build sees every title pending, and records the
+    // pending index as the whole table. The planner then preferred a scan.
+    db.exec("ANALYZE");
+    db.prepare("DELETE FROM sqlite_stat1 WHERE tbl = 'titles'").run();
+    const stat = db.prepare(
+      "INSERT INTO sqlite_stat1(tbl, idx, stat) VALUES ('titles', ?, ?)",
+    );
+    stat.run("titles_tmdb_pending_idx", "486488 1");
+    stat.run("titles_tmdb_retry_idx", "486488 486488 1 1");
+    stat.run("titles_votes_desc_idx", "486488 1 1");
+    db.exec("ANALYZE sqlite_schema");
+    const seen = plans(db, () => {
+      catalog.hydrationStats();
+      catalog.listTitlesNeedingPosters(400, [], true);
+      catalog.requeueMissingMedia(Date.now(), 400);
+    });
+    const pending = seen.filter(({ sql }) =>
+      sql.includes(TMDB_HYDRATION_PENDING_SQL),
+    );
+    assert.equal(pending.length, 3);
+    for (const { sql, plan } of pending)
+      assert.match(
+        plan,
+        /USING (COVERING )?INDEX titles_tmdb_(pending|retry)_idx/,
+        sql,
+      );
+  } finally {
+    catalog.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

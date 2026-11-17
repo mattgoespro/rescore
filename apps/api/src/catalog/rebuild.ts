@@ -332,7 +332,6 @@ export async function upsertRatingsChunked(
   ratings: Map<string, { rating: number; votes: number }>,
 ): Promise<number> {
   return catalogWorkQueue.enqueue(async () => {
-    const kept = titleIdSet(db);
     let batch: Array<[string, { rating: number; votes: number }]> = [];
     let updated = 0;
     const flush = (): void => {
@@ -341,16 +340,13 @@ export async function upsertRatingsChunked(
       batch = [];
     };
     for (const [id, rating] of ratings) {
-      const key = id.toLowerCase();
-      if (!kept.has(key)) continue;
-      batch.push([key, rating]);
+      batch.push([id.toLowerCase(), rating]);
       if (batch.length >= RATING_CHUNK) {
         flush();
         await yieldEventLoop();
       }
     }
     flush();
-    invalidateQueryCache(db);
     invalidateCountCache(db);
     return updated;
   });
@@ -361,7 +357,6 @@ export async function upsertRatingsFromFile(
   file: string,
 ): Promise<number> {
   return catalogWorkQueue.enqueue(async () => {
-    const kept = titleIdSet(db);
     let batch: Array<[string, { rating: number; votes: number }]> = [];
     let updated = 0;
     const flush = (): void => {
@@ -369,9 +364,12 @@ export async function upsertRatingsFromFile(
       updated += applyRatingUpdates(db, batch);
       batch = [];
     };
+    // Rows for titles outside the catalogue cost one primary-key miss each
+    // in their chunk; loading every title id first held the API thread for
+    // seconds before the first chunk.
     for await (const [tconst, averageRating, numVotes] of readTsvRows(file)) {
       const id = imdbValue(tconst)?.toLowerCase();
-      if (!id || !IMDB_ID.test(id) || !kept.has(id)) continue;
+      if (!id || !IMDB_ID.test(id)) continue;
       const rating = Number(averageRating);
       const votes = Number(numVotes);
       if (!Number.isFinite(rating) || !Number.isFinite(votes)) continue;
@@ -382,18 +380,20 @@ export async function upsertRatingsFromFile(
       }
     }
     flush();
-    invalidateQueryCache(db);
     invalidateCountCache(db);
     return updated;
   });
 }
 
+/**
+ * Ratings change only what result counts filter on. Facets and TMDb coverage
+ * stay cached: dropping coverage made the next read scan every title.
+ */
 export function upsertRatingsSync(
   db: Database.Database,
   ratings: Map<string, { rating: number; votes: number }>,
 ): number {
   const updated = applyRatingUpdates(db, ratings);
-  invalidateQueryCache(db);
   invalidateCountCache(db);
   return updated;
 }
