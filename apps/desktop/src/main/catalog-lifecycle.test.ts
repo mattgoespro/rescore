@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { SimulatedClock } from "xstate";
 import {
   createCatalogLifecycle,
+  SERVICE_NOT_RESPONDING,
+  SERVICE_NOT_RUNNING,
   type LifecycleAdapters,
   type Probe,
 } from "./catalog-lifecycle";
@@ -51,6 +53,28 @@ test("transient service health misses retain readiness; repeated misses fail and
   assert.equal(f.runtime.status().phase, "ready");
   await f.runtime.stop();
 });
+test("unanswered health says whether the service is hung or not running", async () => {
+  for (const [portOpen, message] of [
+    [true, SERVICE_NOT_RESPONDING],
+    [false, SERVICE_NOT_RUNNING],
+  ] as const) {
+    const f = fixture();
+    f.setHealthy(true);
+    f.runtime.start();
+    await tick();
+    await tick();
+    f.setHealthy(false);
+    f.setOccupied(portOpen);
+    for (let miss = 0; miss < 3; miss++) {
+      f.clock.increment(10);
+      await tick();
+    }
+    assert.equal(f.runtime.status().phase, "error");
+    assert.equal(f.runtime.status().error, message);
+    await f.runtime.stop();
+  }
+});
+
 function fixture() {
   const clock = new SimulatedClock();
   let healthy = false;

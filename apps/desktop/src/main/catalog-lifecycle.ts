@@ -17,6 +17,13 @@ import { shouldFinishCatalogPoll } from "./catalog-poll";
 import { settleHealthMiss, shouldRestartHungChild } from "./api-watch";
 import type { ServiceMaintenanceAction } from "./service-launch";
 
+/** Health went unanswered while the service still accepted connections. */
+export const SERVICE_NOT_RESPONDING =
+  "The catalogue service is running but stopped responding. This is a bug: the service log shows what held it.";
+/** Health went unanswered because nothing accepted connections. */
+export const SERVICE_NOT_RUNNING =
+  "The catalogue service is not running. Use Retry in Settings, or wait for it to recover.";
+
 export type ServiceIntent = "launch" | "repair" | "observe";
 export interface ServiceInspection {
   status: BackgroundServiceStatus;
@@ -525,6 +532,16 @@ export function createCatalogLifecycle(
                   guard: ({ context }) =>
                     adapters.serviceOwned() && context.misses + 1 >= 3,
                   target: "#catalogue.unavailable",
+                  // A blocked API thread still accepts connections; a stopped
+                  // service does not. Only the first is a bug.
+                  actions: assign(({ context, event }) => ({
+                    status: errorStatus(
+                      context,
+                      event.output.portOpen
+                        ? SERVICE_NOT_RESPONDING
+                        : SERVICE_NOT_RUNNING,
+                    ),
+                  })),
                 },
                 {
                   guard: () => adapters.serviceOwned(),
