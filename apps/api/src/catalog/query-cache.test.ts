@@ -84,3 +84,24 @@ test("count cache keeps only the most recently used totals", () => {
   assert.equal(counts.get("a"), 1);
   assert.equal(counts.get("c"), 3);
 });
+
+test("facets are counted once and kept until titles change, not on a timer", () => {
+  const db = new CatalogDatabase(":memory:");
+  try {
+    db.upsertTitles([{ id: "tt1", title: "A", genres: ["Drama"] }]);
+    const first = db.facets();
+    // A ratings refresh changes no kind, year or genre.
+    db.upsertRatings(new Map([["tt1", { rating: 8, votes: 100 }]]));
+    assert.equal(db.facets(), first);
+    db.upsertTitles([{ id: "tt2", title: "B", genres: ["Comedy"] }]);
+    assert.deepEqual(
+      db
+        .facets()
+        .genres.map((genre) => genre.value)
+        .sort(),
+      ["Comedy", "Drama"],
+    );
+  } finally {
+    db.close();
+  }
+});

@@ -11,7 +11,12 @@ export interface TmdbCoverage {
 
 interface QueryCache {
   counts: CountCache;
-  facets: { value: FacetsResponse; expires: number } | null;
+  /**
+   * Kinds, years and genres change only when titles are inserted or deleted,
+   * and every such write drops the whole cache. Counting them reads every
+   * title, so they are counted once rather than on a timer.
+   */
+  facets: FacetsResponse | null;
   /**
    * Read once by a scan of every title, then kept current by media writes.
    * Title inserts and deletes drop the whole cache, so the next read rescans.
@@ -19,7 +24,6 @@ interface QueryCache {
   coverage: TmdbCoverage | null;
 }
 const connections = new WeakMap<Database.Database, QueryCache>();
-export const FACETS_TTL_MS = 10 * 60 * 1000;
 /**
  * Each search text and filter set is a key, and the service runs for weeks,
  * so only the most recently used totals are kept.

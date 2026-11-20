@@ -6,7 +6,7 @@ import type {
   TitleDto,
   TitleListResponse,
 } from "../catalog-types.js";
-import { queryCache, FACETS_TTL_MS } from "./query-cache.js";
+import { queryCache } from "./query-cache.js";
 import { getMetaValue } from "./meta.js";
 import { hydrateTitles } from "./hydrate.js";
 import { excludedLibraryStatuses } from "./library-visibility.js";
@@ -386,8 +386,7 @@ export function titleById(db: Database.Database, id: string): TitleDto | null {
 
 export function facets(db: Database.Database): FacetsResponse {
   const cache = queryCache(db);
-  if (cache.facets && Date.now() <= cache.facets.expires)
-    return cache.facets.value;
+  if (cache.facets) return cache.facets;
   const kinds = db
     .prepare(
       "SELECT kind AS value, count(*) AS count FROM titles GROUP BY kind ORDER BY count DESC, kind",
@@ -416,7 +415,7 @@ export function facets(db: Database.Database): FacetsResponse {
     kinds,
     years,
   };
-  cache.facets = { value, expires: Date.now() + FACETS_TTL_MS };
+  cache.facets = value;
   return value;
 }
 
