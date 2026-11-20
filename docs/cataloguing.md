@@ -404,7 +404,8 @@ From `defaultFilters()`:
 | `page`                                          | yes          | `page`; `includeTotal` is `"false"` when `page > 1` else `"true"`                |
 | `withoutGenres`                                 | **no**       | unused                                                                           |
 | `ratingMax`                                     | **no**       | type default `10`; `matchesRatingFilters` exists but is not on the discover path |
-| `language`                                      | **no**       | unused                                                                           |
+| `languages`                                     | yes          | `language`, alias codes added; matches the original language (TMDb position 0)   |
+| `excludeLanguages`                              | yes          | `withoutLanguage`, alias codes added; drops a title when any language matches    |
 | `cast` / `directors` / `keywords` / `providers` | **no**       | IPC stubs return `[]`                                                            |
 
 **Always-on catalogue rule (not a UI toggle):** search `WHERE` excludes skipped titles. The `NOT EXISTS (… status = 'skipped')` subquery is omitted when there are zero skipped library rows.
@@ -525,6 +526,8 @@ Base: `http://127.0.0.1:3847`. v1 mounted at `/v1`.
 | `order`                                     | `asc\|desc`                                            | `asc`                       |
 | `query`                                     | trim, 1–200 chars                                      | omitted                     |
 | `genre`                                     | string or array, split commas, max 30 names × 60 chars | → `genres`                  |
+| `language`                                  | ISO codes, split commas, max 400; original language    | → `languages`               |
+| `withoutLanguage`                           | ISO codes, split commas, max 400; any title language   | → `withoutLanguages`        |
 | `kind`                                      | 1–40 chars                                             | omitted                     |
 | `yearMin` / `yearMax`                       | int 1870–3000; min ≤ max                               | omitted                     |
 | `ratingMin`                                 | 0–10                                                   | omitted                     |
@@ -589,23 +592,23 @@ Optional per title: `originalTitle`, `synopsis`, `posterUrl` (URL). Upsert repla
 
 Invoke (renderer → main):
 
-| Channel                  | Preload             | Handler                                          |
-| ------------------------ | ------------------- | ------------------------------------------------ |
-| `catalog:configured`     | `configured()`      | `GET /health` → `ready`                          |
-| `catalog:status`         | `catalogStatus()`   | runtime snapshot                                 |
-| `catalog:retry`          | `retryCatalog()`    | restart bootstrap                                |
-| `catalog:rebuild`        | `rebuildCatalog()`  | `POST /v1/catalog/rebuild` `{ force: true }`     |
-| `catalog:genres`         | `genres()`          | `GET /v1/facets` → `{ id: genreId(name), name }` |
-| `catalog:discover`       | `discover(filters)` | section 6                                        |
-| `catalog:title`          | `movie(id)`         | `GET /v1/titles/:id`                             |
-| `catalog:providers`      | `providers()`       | **stub `[]`**                                    |
-| `catalog:searchKeywords` | `searchKeywords()`  | **stub `[]`**                                    |
-| `library:list`           | `listLibrary()`     | `GET /v1/library`                                |
-| `library:upsert`         | `upsertLibrary()`   | `PUT /v1/library/:id`                            |
-| `library:remove`         | `removeLibrary()`   | `DELETE /v1/library/:id`                         |
-| `imdb:authStatus`        | `imdbAuthStatus()`  | stored IMDb email; whether a password is saved   |
-| `imdb:setCredentials`    | `setImdbCredentials()` | main-process IMDb email/password store        |
-| `imdb:importWatched`     | `importImdbWatched()` | scrape Check-ins, `PUT` watched, no score      |
+| Channel                  | Preload                | Handler                                          |
+| ------------------------ | ---------------------- | ------------------------------------------------ |
+| `catalog:configured`     | `configured()`         | `GET /health` → `ready`                          |
+| `catalog:status`         | `catalogStatus()`      | runtime snapshot                                 |
+| `catalog:retry`          | `retryCatalog()`       | restart bootstrap                                |
+| `catalog:rebuild`        | `rebuildCatalog()`     | `POST /v1/catalog/rebuild` `{ force: true }`     |
+| `catalog:genres`         | `genres()`             | `GET /v1/facets` → `{ id: genreId(name), name }` |
+| `catalog:discover`       | `discover(filters)`    | section 6                                        |
+| `catalog:title`          | `movie(id)`            | `GET /v1/titles/:id`                             |
+| `catalog:providers`      | `providers()`          | **stub `[]`**                                    |
+| `catalog:searchKeywords` | `searchKeywords()`     | **stub `[]`**                                    |
+| `library:list`           | `listLibrary()`        | `GET /v1/library`                                |
+| `library:upsert`         | `upsertLibrary()`      | `PUT /v1/library/:id`                            |
+| `library:remove`         | `removeLibrary()`      | `DELETE /v1/library/:id`                         |
+| `imdb:authStatus`        | `imdbAuthStatus()`     | stored IMDb email; whether a password is saved   |
+| `imdb:setCredentials`    | `setImdbCredentials()` | main-process IMDb email/password store           |
+| `imdb:importWatched`     | `importImdbWatched()`  | scrape Check-ins, `PUT` watched, no score        |
 
 Push (main → renderer): `catalog:status` with `CatalogStatus`.
 
@@ -674,7 +677,7 @@ Do **not** implement these as working catalogue features. They exist as TypeScri
 
 - `catalog:providers`, `catalog:searchKeywords` → `[]`
 - People search (`GET /v1/people`) and the `director` / `cast` title filters: removed, with the `people_name_idx` index only they read
-- Discover fields `withoutGenres`, `cast`, `directors`, `keywords`, `providers`, `language`, `ratingMax` are not query parameters
+- Discover fields `withoutGenres`, `cast`, `directors`, `keywords`, `providers`, `ratingMax` are not query parameters
 - Separate people / keyword / watch-provider indexes
 - Desktop-direct TMDB or IMDb HTTP
 - Ranking algorithm, ranking modes, For You insight text, IMDb CSV import UI

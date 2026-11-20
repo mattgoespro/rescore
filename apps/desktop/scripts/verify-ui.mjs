@@ -1251,6 +1251,28 @@ try {
   await page.keyboard.press("Escape");
   check("Hiding takes any number of languages and stays on screen");
 
+  await page.getByRole("button", { name: /^Original language/ }).click();
+  const addOriginal = page.getByRole("combobox", { name: "Originally in" });
+  // Japanese is hidden above, so a title in it could never show.
+  await addOriginal.fill("Japanese");
+  assert.equal(
+    await page.getByRole("option", { name: "Japanese", exact: true }).count(),
+    0,
+  );
+  await addOriginal.fill("Portuguese");
+  await page.getByRole("option", { name: "Portuguese", exact: true }).click();
+  await page.waitForFunction(() =>
+    window.__uiTest.lastFilters.languages.includes("pt"),
+  );
+  await page.keyboard.press("Escape");
+  assert.match(
+    await page.getByRole("button", { name: /^Original language/ }).innerText(),
+    /Portuguese/,
+  );
+  check(
+    "Language includes original languages, offers none that are hidden, and reads them on its pill",
+  );
+
   assert.deepEqual(runtimeErrors, []);
   check("No renderer runtime exceptions");
   await writeFile(

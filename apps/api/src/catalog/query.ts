@@ -289,12 +289,25 @@ const sortIndex: Partial<Record<TitleQuery["sort"], string>> = {
  */
 export const FTS_SET_THRESHOLD = 2000;
 
+/**
+ * Original-language matches up to which a page reads every match and sorts
+ * them, instead of walking the sort index. A sparse language made the walk
+ * cross most of the index (about 250 ms on a 500k-title catalogue) where
+ * reading its matches took under 4 ms; past this many, matches are dense
+ * enough for the walk to fill a page quickly.
+ */
+export const LANGUAGE_SET_THRESHOLD = 10_000;
+
 export function listTitles(
   db: Database.Database,
   query: TitleQuery,
 ): TitleListResponse {
   const index = query.kind ? sortIndex[query.sort] : undefined;
-  const { condition, params, fts } = buildWhere(query, db, Boolean(index));
+  const { condition, params, fts, narrow } = buildWhere(
+    query,
+    db,
+    Boolean(index),
+  );
   const order = query.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
   const useCursor = Boolean(query.cursor);
   const offset = useCursor ? 0 : (query.page - 1) * query.pageSize;
@@ -309,13 +322,16 @@ export function listTitles(
   const counts = queryCache(db).counts;
   const cached = counts.get(cacheKey);
 
-  // CROSS JOIN pins the full-text hits as the outer loop. Otherwise the planner
-  // can walk a sort index over every title and re-run MATCH for each one.
+  // CROSS JOIN pins the full-text hits, or a sparse language's titles, as the
+  // outer loop. Otherwise the planner can walk a sort index over every title
+  // and test each one, which depends on statistics it may not have.
   const from = fts
     ? "titles_fts f CROSS JOIN titles t ON t.rowid = f.rowid"
-    : "titles t";
+    : narrow
+      ? "title_languages tl INDEXED BY title_languages_original_idx CROSS JOIN titles t ON t.id = tl.title_id"
+      : "titles t";
   const rowFrom =
-    index && !fts && params.id === undefined
+    index && !fts && !narrow && params.id === undefined
       ? `titles t INDEXED BY ${index}`
       : from;
   // One row past the page answers whether another page exists.
@@ -697,10 +713,16 @@ function buildWhere(
   condition: string;
   params: Record<string, string | number>;
   fts: boolean;
+  /**
+   * The original-language filter matches few enough titles to read them all
+   * and sort; the query then reads from `title_languages tl`.
+   */
+  narrow: boolean;
 } {
   const where: string[] = [];
   const params: Record<string, string | number> = {};
   let fts = false;
+  let narrow = false;
   const raw = query.query?.trim();
   if (raw) {
     if (IMDB_ID.test(raw)) {
@@ -760,6 +782,27 @@ function buildWhere(
       `NOT EXISTS (SELECT 1 FROM title_languages tl WHERE tl.title_id = t.id AND tl.language IN (${placeholders.join(",")}))`,
     );
   }
+  if (query.languages?.length) {
+    const codes: Record<string, string> = {};
+    const placeholders = query.languages.map((language, index) => {
+      const key = `language${index}`;
+      codes[key] = language;
+      return `@${key}`;
+    });
+    // Position 0 is the original language. Any spoken language would match
+    // mostly English films with a scene in the chosen one.
+    const list = placeholders.join(",");
+    const matches = `SELECT title_id FROM title_languages INDEXED BY title_languages_original_idx WHERE position = 0 AND language IN (${list})`;
+    Object.assign(params, codes);
+    // A sparse language drives the page (see LANGUAGE_SET_THRESHOLD): its
+    // titles join in as the outer loop. A dense one is a filter on the walk.
+    narrow = !fts && fewMatches(db, matches, codes);
+    where.push(
+      narrow
+        ? `tl.position = 0 AND tl.language IN (${list})`
+        : `t.id IN (${matches})`,
+    );
+  }
   if (query.kind) {
     where.push("t.kind=@kind");
     params.kind = query.kind;
@@ -801,7 +844,21 @@ function buildWhere(
     condition: where.length ? `WHERE ${where.join(" AND ")}` : "",
     params,
     fts,
+    narrow,
   };
+}
+
+function fewMatches(
+  db: Database.Database,
+  matches: string,
+  params: Record<string, string>,
+): boolean {
+  const { n } = db
+    .prepare(
+      `SELECT count(*) AS n FROM (${matches} LIMIT ${LANGUAGE_SET_THRESHOLD + 1})`,
+    )
+    .get(params) as { n: number };
+  return n <= LANGUAGE_SET_THRESHOLD;
 }
 
 function commonMatch(db: Database.Database, match: string): boolean {

@@ -13,7 +13,7 @@ import {
 } from "../components/filter-panel/constants";
 
 export type FilterFieldId =
-  "genres" | "released" | "quality" | "runtime" | "hiding";
+  "genres" | "languages" | "released" | "quality" | "runtime" | "hiding";
 
 /**
  * One filter in the Discover bar, shown as a pill that opens its editor.
@@ -89,6 +89,15 @@ export const FILTER_FIELDS: readonly FilterFieldSpec[] = [
       excluded: genreNames(f.withoutGenres, genres),
     }),
     clear: () => ({ genres: [], withoutGenres: [] }),
+  },
+  {
+    id: "languages",
+    label: "Language",
+    name: "Original language",
+    changed: (f) => f.languages.length > 0,
+    summary: (f) =>
+      f.languages.length ? f.languages.map(languageName).join(", ") : "Any",
+    clear: () => ({ languages: [] }),
   },
   {
     id: "released",

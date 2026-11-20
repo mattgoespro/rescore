@@ -9,6 +9,7 @@ import { createApp } from "../app.js";
 import { ingestTitles } from "../build/import-basics.js";
 import { RatingsStore } from "../services/ratings-store.js";
 import { CatalogDatabase } from "./database.js";
+import type { TitleQuery } from "./types.js";
 import Database from "better-sqlite3";
 import { FTS_SET_THRESHOLD, libraryListSql } from "./query.js";
 import { applyMigrations, migrations } from "./schema.js";
@@ -1444,6 +1445,48 @@ test("excluded languages drop a title when any stored language matches", () => {
       .data.map((row) => row.id),
     ["tt0000003"],
   );
+  catalog.close();
+});
+
+test("included languages keep titles whose original language matches", () => {
+  const catalog = openCatalog();
+  catalog.upsertTitles([
+    { id: "tt0000001", title: "French original", kind: "movie" },
+    { id: "tt0000002", title: "English with French", kind: "movie" },
+    { id: "tt0000003", title: "Japanese original", kind: "movie" },
+    { id: "tt0000004", title: "Unknown", kind: "movie" },
+  ]);
+  catalog.updatePosterUrls([
+    { id: "tt0000001", languages: ["fr", "en"] },
+    { id: "tt0000002", languages: ["en", "fr"] },
+    { id: "tt0000003", languages: ["ja"] },
+  ]);
+  const ids = (query: Partial<TitleQuery>) =>
+    catalog
+      .listTitles({
+        page: 1,
+        pageSize: 10,
+        sort: "title",
+        order: "asc",
+        includeTotal: true,
+        ...query,
+      })
+      .data.map((row) => row.id);
+  // A spoken language is not enough, and a title TMDb has not described yet
+  // has no original language to match.
+  assert.deepEqual(ids({ languages: ["fr"] }), ["tt0000001"]);
+  assert.deepEqual(ids({ languages: ["fr", "ja"] }), [
+    "tt0000001",
+    "tt0000003",
+  ]);
+  // Hiding still drops a title when any of its languages is hidden.
+  assert.deepEqual(ids({ languages: ["fr", "ja"], withoutLanguages: ["en"] }), [
+    "tt0000003",
+  ]);
+  // The sort-index path (a kind and an indexed sort) agrees.
+  assert.deepEqual(ids({ languages: ["fr"], kind: "movie", sort: "votes" }), [
+    "tt0000001",
+  ]);
   catalog.close();
 });
 

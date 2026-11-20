@@ -36,6 +36,9 @@ export function discoverQueryParams(
     withoutGenre: names.withoutGenres.length
       ? names.withoutGenres.join(",")
       : undefined,
+    language: filters.languages.length
+      ? languageQueryCodes(filters.languages).join(",")
+      : undefined,
     withoutLanguage: filters.excludeLanguages.length
       ? languageQueryCodes(filters.excludeLanguages).join(",")
       : undefined,

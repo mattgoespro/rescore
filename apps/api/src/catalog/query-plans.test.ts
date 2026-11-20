@@ -9,6 +9,7 @@ import {
   facets,
   listForYouCandidates,
   listLibrary,
+  LANGUAGE_SET_THRESHOLD,
   listTitles,
 } from "./query.js";
 import { applyMigrations, TMDB_HYDRATION_PENDING_SQL } from "./schema.js";
@@ -112,6 +113,35 @@ test("a kind filter walks the index that matches the sort", () => {
     listTitles(db, { ...page, sort: "votes", kind: "movie" }),
   );
   assert.match(first!.plan, /titles_kind_votes_cover_idx \(kind=\?\)/);
+  db.close();
+});
+
+test("an original-language filter reads a sparse language's titles and walks the sort index for a dense one", () => {
+  const db = catalogue();
+  const position0 = db.prepare(
+    "INSERT INTO title_languages(title_id, language, position) VALUES (?, ?, 0)",
+  );
+  const title = db.prepare(
+    "INSERT INTO titles(id, title, kind, year, imdb_rating, imdb_votes, updated_at) VALUES (?, 'English', 'movie', 2000, 6, 5000, '2026-01-01')",
+  );
+  db.transaction(() => {
+    position0.run("tt1", "is");
+    for (let index = 0; index <= LANGUAGE_SET_THRESHOLD; index++) {
+      title.run(`tt${index + 10}`);
+      position0.run(`tt${index + 10}`, "en");
+    }
+  })();
+  const search = { ...page, sort: "rating", kind: "movie" } as const;
+  const [sparse] = plans(db, () =>
+    listTitles(db, { ...search, languages: ["is"] }),
+  );
+  assert.match(sparse!.plan, /title_languages_original_idx \(language=\?\)/);
+  assert.doesNotMatch(sparse!.plan, /titles_kind_rating_idx/);
+  assert.doesNotMatch(sparse!.plan, FULL_TABLE_SCAN);
+  const [dense] = plans(db, () =>
+    listTitles(db, { ...search, languages: ["en"] }),
+  );
+  assert.match(dense!.plan, /titles_kind_rating_idx \(kind=\?\)/);
   db.close();
 });
 

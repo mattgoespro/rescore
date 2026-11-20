@@ -179,6 +179,10 @@ export const migrations = [
   // shown on each card, and every ratings refresh rewrote the column and index.
   `DROP INDEX IF EXISTS titles_bayesian_idx;
    ALTER TABLE titles DROP COLUMN bayesian_score;`,
+  // Discover's original-language filter reads a language's titles from here;
+  // position 0 is the title's original language.
+  `CREATE INDEX IF NOT EXISTS title_languages_original_idx
+     ON title_languages(language, title_id) WHERE position = 0;`,
 ];
 
 export const FTS_INSERT_TRIGGER = `CREATE TRIGGER IF NOT EXISTS titles_fts_ai AFTER INSERT ON titles BEGIN

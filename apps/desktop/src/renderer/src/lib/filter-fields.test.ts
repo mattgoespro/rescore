@@ -24,7 +24,7 @@ test("a fresh search has no active filters", () => {
 test("the bar shows every filter, runtime included", () => {
   assert.deepEqual(
     FILTER_FIELDS.map((f) => f.id),
-    ["genres", "released", "quality", "runtime", "hiding"],
+    ["genres", "languages", "released", "quality", "runtime", "hiding"],
   );
 });
 
@@ -150,4 +150,16 @@ test("vote counts shorten to thousands", () => {
   assert.equal(compactCount(950), "950");
   assert.equal(compactCount(1000), "1k");
   assert.equal(compactCount(2500), "2.5k");
+});
+
+test("the language pill reads the chosen original languages and clears to any", () => {
+  const filters = {
+    ...defaultFilters(),
+    languages: ["ja" as const, "ko" as const],
+  };
+  assert.equal(field("languages").summary(defaultFilters(), genres), "Any");
+  assert.equal(field("languages").changed(defaultFilters()), false);
+  assert.equal(field("languages").summary(filters, genres), "Japanese, Korean");
+  assert.equal(activeFilterCount(filters), 1);
+  assert.deepEqual(resetFilters(filters).languages, []);
 });

@@ -42,6 +42,7 @@ function ExclusionTail({
 
 const EDITOR_WIDTH: Record<FilterFieldId, number> = {
   genres: 440,
+  languages: 360,
   released: 360,
   quality: 340,
   runtime: 340,

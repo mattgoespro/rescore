@@ -190,3 +190,16 @@ test("an exactly full last page does not request page one again", async () => {
   });
   assert.equal(page.canLoadMore, false);
 });
+
+test("original languages are sent with their alias codes, and only when chosen", () => {
+  const names = { genres: [], withoutGenres: [] };
+  assert.equal(
+    "language" in discoverQueryParams(defaultFilters(), names),
+    false,
+  );
+  const params = discoverQueryParams(
+    { ...defaultFilters(), languages: ["ja", "yue"] },
+    names,
+  );
+  assert.equal(params.language, "ja,cn,yue");
+});

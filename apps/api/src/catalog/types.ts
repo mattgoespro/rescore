@@ -42,6 +42,8 @@ export interface TitleQuery {
   hideMissingSynopsis?: boolean;
   genres?: string[];
   withoutGenres?: string[];
+  /** Original languages, any of which a title must have. */
+  languages?: string[];
   withoutLanguages?: string[];
   runtimeMin?: number;
   runtimeMax?: number;

@@ -43,6 +43,9 @@ const listQuery = z
     genre: queryList(z.string().trim().min(1).max(60), 30),
     withoutGenre: queryList(z.string().trim().min(1).max(60), 30),
     // Above every code the desktop can send, so any selection is accepted.
+    language: queryList(z.string().regex(/^[a-z]{2,3}$/), 400, (value) =>
+      value.toLowerCase(),
+    ),
     withoutLanguage: queryList(z.string().regex(/^[a-z]{2,3}$/), 400, (value) =>
       value.toLowerCase(),
     ),
@@ -67,14 +70,17 @@ const listQuery = z
       !value.yearMin || !value.yearMax || value.yearMin <= value.yearMax,
     { message: "yearMin must be less than or equal to yearMax" },
   )
-  .transform(({ limit, genre, withoutGenre, withoutLanguage, ...query }) => ({
-    ...query,
-    pageSize: limit ?? query.pageSize,
-    genres: genre,
-    withoutGenres: withoutGenre,
-    withoutLanguages: withoutLanguage,
-    includeTotal: query.includeTotal ?? true,
-  }));
+  .transform(
+    ({ limit, genre, withoutGenre, language, withoutLanguage, ...query }) => ({
+      ...query,
+      pageSize: limit ?? query.pageSize,
+      genres: genre,
+      withoutGenres: withoutGenre,
+      languages: language,
+      withoutLanguages: withoutLanguage,
+      includeTotal: query.includeTotal ?? true,
+    }),
+  );
 
 const manifestTitle = z
   .object({

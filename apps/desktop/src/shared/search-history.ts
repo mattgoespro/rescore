@@ -38,6 +38,7 @@ export function searchHistoryKey(entry: {
     full.query.trim(),
     [...full.withoutGenres].sort((a, b) => a - b),
     [...full.excludeLanguages].sort(),
+    [...full.languages].sort(),
     full.ratingMax,
     full.voteCountMin,
     full.runtimeMin,
@@ -102,6 +103,7 @@ export function applySearchHistory(
     titleKind: entry.titleKind,
     genres: entry.genres.map((genre) => genre.id),
     withoutGenres: [...(entry.filters?.withoutGenres ?? [])],
+    languages: [...(entry.filters?.languages ?? [])],
     excludeLanguages: [...(entry.filters?.excludeLanguages ?? [])],
     yearMin: entry.yearMin,
     yearMax: entry.yearMax,
@@ -212,6 +214,7 @@ function historyFilters(
     ...rest,
     genres: [...rest.genres],
     withoutGenres: [...rest.withoutGenres],
+    languages: [...rest.languages],
     excludeLanguages: [...rest.excludeLanguages],
   };
 }
@@ -246,8 +249,10 @@ function normalizeHistoryFilters(raw: unknown): SearchHistoryEntry["filters"] {
         (id): id is number => typeof id === "number" && Number.isFinite(id),
       );
   }
-  if (Array.isArray(input.excludeLanguages))
-    filters.excludeLanguages = input.excludeLanguages.filter(isLanguageCode);
+  for (const key of ["languages", "excludeLanguages"] as const) {
+    if (Array.isArray(input[key]))
+      filters[key] = input[key].filter(isLanguageCode);
+  }
   return historyFilters(filters);
 }
 

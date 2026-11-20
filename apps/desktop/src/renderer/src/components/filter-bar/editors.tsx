@@ -41,6 +41,8 @@ export default function FieldEditor({
           onDone={onDone}
         />
       );
+    case "languages":
+      return <OriginalLanguagesEditor filters={filters} patch={patch} />;
     case "released":
       return <ReleasedEditor filters={filters} patch={patch} />;
     case "quality":
@@ -259,9 +261,13 @@ function LanguagesEditor({
   const search = useCallback(
     async (query: string) =>
       searchLanguages(query, Infinity)
-        .filter((language) => !filters.excludeLanguages.includes(language.id))
+        .filter(
+          (language) =>
+            !filters.excludeLanguages.includes(language.id) &&
+            !filters.languages.includes(language.id),
+        )
         .slice(0, 8),
-    [filters.excludeLanguages],
+    [filters.excludeLanguages, filters.languages],
   );
   return (
     <SuggestField
@@ -282,6 +288,51 @@ function LanguagesEditor({
         patch({
           excludeLanguages: languages.map((language) => language.id),
         })
+      }
+      search={search}
+    />
+  );
+}
+
+/**
+ * Titles whose original language is one of these. A language already hidden
+ * is not offered, since a title in it could never show.
+ */
+function OriginalLanguagesEditor({
+  filters,
+  patch,
+}: {
+  filters: DiscoverFilters;
+  patch: Patch;
+}): JSX.Element {
+  const search = useCallback(
+    async (query: string) =>
+      searchLanguages(query, Infinity)
+        .filter(
+          (language) =>
+            !filters.languages.includes(language.id) &&
+            !filters.excludeLanguages.includes(language.id),
+        )
+        .slice(0, 8),
+    [filters.languages, filters.excludeLanguages],
+  );
+  return (
+    <SuggestField
+      label="Originally in"
+      name="languages"
+      hint={
+        filters.languages.length
+          ? "Shows a title only when its original language is one of these. Titles TMDb has not described yet are left out."
+          : "Any language."
+      }
+      placeholder="Add a language…"
+      minQueryLength={1}
+      values={filters.languages.map((code) => ({
+        id: code,
+        name: languageName(code),
+      }))}
+      onChange={(languages) =>
+        patch({ languages: languages.map((language) => language.id) })
       }
       search={search}
     />

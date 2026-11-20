@@ -8,6 +8,8 @@ export interface DiscoverFilters {
   titleKind: TitleKind;
   genres: number[];
   withoutGenres: number[];
+  /** Original languages a title must have one of; empty means any. */
+  languages: LanguageCode[];
   excludeLanguages: LanguageCode[];
   yearMin: number | null;
   yearMax: number | null;
@@ -149,6 +151,7 @@ export function defaultFilters(): DiscoverFilters {
     voteCountMin: 1000,
     runtimeMin: null,
     runtimeMax: null,
+    languages: [],
     excludeLanguages: [...SOUTH_ASIAN_LANGUAGES],
     sortBy: "match",
     hideWatched: true,
