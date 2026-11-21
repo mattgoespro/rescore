@@ -4,11 +4,17 @@ import {
   useRef,
   useState,
   type JSX,
+  type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
+import { arrowTarget } from "../lib/arrow-target";
 
-/** Measures variable-height rows and keeps keyboard focus mounted while scrolling. */
+/**
+ * Measures variable-height rows and keeps keyboard focus mounted while
+ * scrolling. Arrow keys move between titles (across and down in a grid), and
+ * the title moved to opens as if clicked.
+ */
 export default function VirtualList<T>({
   items,
   scrollRef,
@@ -65,9 +71,32 @@ export default function VirtualList<T>({
     setFocusedRow(null);
   }, [virtualizer, columns, estimateSize, grid]);
 
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    const item = (event.target as HTMLElement).closest<HTMLElement>(
+      "[role=listitem]",
+    );
+    if (!item) return;
+    const index = Number(item.getAttribute("aria-posinset")) - 1;
+    const next = arrowTarget(event.key, index, items.length, columns);
+    if (next == null) return;
+    event.preventDefault();
+    if (next === index) return;
+    // Rows beside the focused one stay mounted, so the title moved to exists.
+    const target = containerRef.current?.querySelector<HTMLElement>(
+      `[aria-posinset="${next + 1}"] button`,
+    );
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.click();
+    virtualizer.scrollToIndex(Math.floor(next / columns), { align: "auto" });
+  };
+
   return (
     <div
       ref={containerRef}
+      onKeyDown={onKeyDown}
       role="list"
       aria-label={label}
       className="relative w-full"
