@@ -20,6 +20,7 @@ import EmptyState from "./empty-state";
 import Heading from "./heading";
 import HeroPoster from "./hero-poster";
 import { inspectorClass } from "./inspector-class";
+import ResizeHandle, { useInspectorWidth } from "./resize-handle";
 import { IconClose } from "../icons";
 import { iconBtn } from "../../lib/ui";
 import { cn } from "../../lib/cn";
@@ -61,9 +62,13 @@ export default function Inspector({
   ) => Promise<void>;
   onRemove: (imdbId: string, mediaType: MediaType) => Promise<void>;
 }): JSX.Element {
+  const { width, setWidth, style } = useInspectorWidth();
+  const handle = <ResizeHandle width={width} setWidth={setWidth} />;
+
   if (!movie) {
     return (
-      <aside className={inspectorClass()}>
+      <aside className={inspectorClass()} style={style}>
+        {handle}
         <EmptyState />
       </aside>
     );
@@ -99,7 +104,9 @@ export default function Inspector({
     <aside
       className={`${inspectorClass(true)} flex flex-col`}
       aria-label="Title details"
+      style={style}
     >
+      {handle}
       {onClose ? (
         <button
           type="button"

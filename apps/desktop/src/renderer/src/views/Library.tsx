@@ -156,7 +156,7 @@ export default function Library({
       className={cn(
         "grid h-full min-h-0 flex-1 grid-cols-1",
         inspector != null &&
-          "grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none",
+          "grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_auto] inspect:grid-rows-none",
       )}
     >
       <div className="flex min-h-0 min-w-0 flex-col gap-6 px-6 pt-6 pb-4">

@@ -237,7 +237,7 @@ export default function Discover({
   return (
     <section
       ref={containerRef}
-      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] inspect:grid-rows-none"
+      className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[1fr_auto] inspect:grid-cols-[minmax(0,1fr)_auto] inspect:grid-rows-none"
     >
       <div className="flex min-h-0 min-w-0 flex-col pt-6 pr-0 pb-4 pl-6">
         {/* Everything that chooses the titles shares one left edge: the kind,

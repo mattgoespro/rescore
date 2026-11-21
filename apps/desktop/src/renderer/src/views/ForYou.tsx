@@ -123,7 +123,7 @@ export default function ForYou({
     <section
       ref={containerRef}
       className={cn(
-        "grid min-h-0 flex-1 grid-cols-1 inspect:grid-cols-[minmax(0,1fr)_360px]",
+        "grid min-h-0 flex-1 grid-cols-1 inspect:grid-cols-[minmax(0,1fr)_auto]",
         inspector != null && "grid-rows-[1fr_auto] inspect:grid-rows-none",
       )}
     >
@@ -225,7 +225,7 @@ export default function ForYou({
       {inspector ?? (
         <aside
           aria-label="Your taste model"
-          className="hidden min-h-0 flex-col gap-6 overflow-auto border-l border-line bg-rail px-6 pt-6 pb-8 inspect:flex"
+          className="hidden min-h-0 flex-col gap-6 overflow-auto border-l border-line bg-rail px-6 pt-6 pb-8 inspect:flex inspect:w-90"
         >
           <div className="flex flex-col gap-1">
             <h2 className="m-0 text-base font-semibold">Your taste model</h2>
