@@ -199,6 +199,7 @@ export default function Discover({
 
   const refreshing = loading && hasResults;
   const countLabel = discoverCountLabel(totalResults, loading && !items.length);
+  const noResults = !loading && !visibleItems.length;
   const activeHistoryId =
     history.find((entry) => matchesSearchHistory(filters, entry))?.id ?? null;
 
@@ -302,8 +303,13 @@ export default function Discover({
             from the filters that choose them. The count's text coming and
             going moves nothing: the controls hold the bar's right end. */}
         <div className="mr-6 mb-3 flex items-center justify-between gap-4 border-t border-line pt-3">
+          {/* With no results the banner below says so; the count stays for
+              screen readers, which the banner does not announce. */}
           <p
-            className="m-0 min-w-0 truncate text-sm text-muted tabular"
+            className={cn(
+              "m-0 min-w-0 truncate text-sm text-muted tabular",
+              noResults && "sr-only",
+            )}
             role="status"
             aria-live="polite"
           >
@@ -352,8 +358,8 @@ export default function Discover({
             id={SCROLLABLE_TARGET_ID}
             className={cn(refreshing && "opacity-45")}
           >
-            {!loading && !visibleItems.length ? (
-              <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+            {noResults ? (
+              <div className="flex min-h-full flex-col items-center justify-center gap-2 px-4 py-12 text-center">
                 <h2 className="m-0 text-base font-semibold text-ink">
                   No titles match these filters
                 </h2>
